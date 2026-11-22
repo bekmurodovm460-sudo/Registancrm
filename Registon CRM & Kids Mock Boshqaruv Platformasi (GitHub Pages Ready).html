@@ -1,0 +1,2928 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Registon · To‘liq CRM, Sinflar, Kids Mock, VIP Vaucher & Kassa</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: { sans: ['Inter', 'sans-serif'] },
+          colors: {
+            rgn: {
+              orange: '#F26522',
+              orangeDark: '#D95314',
+              peach: '#FFF4EE',
+              black: '#0F172A',
+              surface: '#F8FAFC',
+              border: '#E2E8F0'
+            }
+          }
+        }
+      }
+    };
+  </script>
+  <style>
+    body { font-family: 'Inter', sans-serif; background-color: #F8FAFC; color: #0F172A; }
+    .custom-scroll::-webkit-scrollbar { width: 6px; height: 6px; }
+    .custom-scroll::-webkit-scrollbar-track { background: #F1F5F9; border-radius: 9999px; }
+    .custom-scroll::-webkit-scrollbar-thumb { background: #CBD5E1; border-radius: 9999px; }
+    .custom-scroll::-webkit-scrollbar-thumb:hover { background: #94A3B8; }
+    .tg-bg {
+      background-color: #E5EDF5;
+      background-image: radial-gradient(#CBD5E1 1px, transparent 1px);
+      background-size: 16px 16px;
+    }
+    @media print {
+      .no-print { display: none !important; }
+      body { background: #fff !important; }
+    }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col">
+  <!-- TOAST NOTIFICATIONS -->
+  <div id="toastContainer" class="fixed bottom-4 right-4 z-[999] flex flex-col gap-2 max-w-sm pointer-events-none"></div>
+
+  <!-- TOP HEADER -->
+  <header class="sticky top-0 z-40 bg-white border-b border-rgn-border shadow-xs no-print">
+    <div class="max-w-[1440px] mx-auto px-3 sm:px-6 py-2.5 flex flex-wrap items-center justify-between gap-2">
+      <!-- BRAND -->
+      <div class="flex items-center gap-3">
+        <div class="w-10 h-10 rounded-2xl bg-gradient-to-br from-rgn-orange to-rgn-orangeDark text-white flex items-center justify-center font-black text-lg shadow-sm">
+          R
+        </div>
+        <div>
+          <div class="flex items-center gap-2">
+            <span class="font-black text-base sm:text-lg tracking-tight text-rgn-black">REGISTON</span>
+            <span class="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-rgn-peach text-rgn-orange">ALL-IN-ONE CRM & KIDS MOCK</span>
+          </div>
+          <p class="text-[11px] text-gray-500 font-medium">6 ta Maktab · Alohida Sinflar · Kids Mock · VIP Vaucher · Kassa · Ota-ona Portali · TG Bot</p>
+        </div>
+      </div>
+
+      <!-- GLOBAL CONTROLS -->
+      <div class="flex flex-wrap items-center gap-1.5 sm:gap-2">
+        <select id="globalSchoolSelect" onchange="onGlobalSchoolChange(this.value)" class="px-3 py-1.5 rounded-xl text-xs font-extrabold bg-rgn-surface border border-rgn-border text-rgn-black focus:outline-none focus:border-rgn-orange cursor-pointer"></select>
+
+        <button type="button" onclick="openAddStudentModal()" class="px-3 py-1.5 rounded-xl text-xs font-extrabold bg-rgn-orange hover:bg-rgn-orangeDark text-white shadow-sm cursor-pointer">
+          + O‘quvchi
+        </button>
+
+        <button type="button" onclick="downloadStandaloneHtml()" class="px-3 py-1.5 rounded-xl text-xs font-bold bg-sky-600 hover:bg-sky-700 text-white shadow-sm cursor-pointer" title="Barcha ma’lumotlar bilan tayyor HTML yuklash">
+          ⬇️ HTML saqlash
+        </button>
+
+        <button type="button" onclick="resetDemoDatabase()" class="px-2.5 py-1.5 rounded-xl text-xs font-semibold bg-gray-100 hover:bg-red-50 text-gray-700 hover:text-red-600 cursor-pointer" title="Dastlabki bazani tiklash">
+          🔄 Tiklash
+        </button>
+      </div>
+    </div>
+
+    <!-- 13 MODULE TABS -->
+    <nav class="max-w-[1440px] mx-auto px-3 sm:px-6 pb-2 flex items-center gap-1.5 overflow-x-auto custom-scroll">
+      <button type="button" data-tab="dashboard" onclick="switchTab('dashboard')" class="nav-tab px-3 py-1.5 rounded-xl text-xs font-extrabold whitespace-nowrap cursor-pointer">📊 Dashboard</button>
+      <button type="button" data-tab="classes" onclick="switchTab('classes')" class="nav-tab px-3 py-1.5 rounded-xl text-xs font-extrabold whitespace-nowrap cursor-pointer">🗂️ Sinflar</button>
+      <button type="button" data-tab="schools" onclick="switchTab('schools')" class="nav-tab px-3 py-1.5 rounded-xl text-xs font-extrabold whitespace-nowrap cursor-pointer">🏫 6 ta Maktab</button>
+      <button type="button" data-tab="students" onclick="switchTab('students')" class="nav-tab px-3 py-1.5 rounded-xl text-xs font-extrabold whitespace-nowrap cursor-pointer">🎓 Yagona Baza</button>
+      <button type="button" data-tab="callcrm" onclick="switchTab('callcrm')" class="nav-tab px-3 py-1.5 rounded-xl text-xs font-extrabold whitespace-nowrap cursor-pointer">📞 Call CRM & AI</button>
+      <button type="button" data-tab="vipcards" onclick="switchTab('vipcards')" class="nav-tab px-3 py-1.5 rounded-xl text-xs font-extrabold whitespace-nowrap cursor-pointer">🏅 VIP Karta & Promo</button>
+      <button type="button" data-tab="kassa" onclick="switchTab('kassa')" class="nav-tab px-3 py-1.5 rounded-xl text-xs font-extrabold whitespace-nowrap cursor-pointer">💳 Kassa & Guruhlar</button>
+      <button type="button" data-tab="kidsmock" onclick="switchTab('kidsmock')" class="nav-tab px-3 py-1.5 rounded-xl text-xs font-extrabold whitespace-nowrap cursor-pointer">🏆 Kids Mock (4 xona)</button>
+      <button type="button" data-tab="tgbot" onclick="switchTab('tgbot')" class="nav-tab px-3 py-1.5 rounded-xl text-xs font-extrabold whitespace-nowrap cursor-pointer">🤖 Telegram Bot</button>
+      <button type="button" data-tab="approval" onclick="switchTab('approval')" class="nav-tab px-3 py-1.5 rounded-xl text-xs font-extrabold whitespace-nowrap cursor-pointer relative">
+        ✅ Admin Tasdig‘i <span id="pendingApprovalBadge" class="ml-1 px-1.5 py-0.5 rounded-full text-[10px] bg-red-500 text-white hidden">0</span>
+      </button>
+      <button type="button" data-tab="parentportal" onclick="switchTab('parentportal')" class="nav-tab px-3 py-1.5 rounded-xl text-xs font-extrabold whitespace-nowrap cursor-pointer">👨‍👩‍👧 Ota-ona Portali</button>
+      <button type="button" data-tab="staff" onclick="switchTab('staff')" class="nav-tab px-3 py-1.5 rounded-xl text-xs font-extrabold whitespace-nowrap cursor-pointer">👥 Xodimlar & Audit</button>
+      <button type="button" data-tab="excel" onclick="switchTab('excel')" class="nav-tab px-3 py-1.5 rounded-xl text-xs font-extrabold whitespace-nowrap cursor-pointer">📥 Excel & Skaner</button>
+    </nav>
+  </header>
+
+  <!-- MAIN CONTENT -->
+  <main class="flex-1 max-w-[1440px] w-full mx-auto px-3 sm:px-6 py-5 space-y-5">
+
+    <!-- 1. DASHBOARD & MAKTABLARARO KUBOK TAB -->
+    <section id="tab-dashboard" class="tab-panel space-y-5">
+      <div id="dashPendingBanner"></div>
+      <div id="dashKpiGrid" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3"></div>
+
+      <!-- MAKTABLARARO KUBOK & TOP SINF RAHBARLARI -->
+      <div class="bg-gradient-to-r from-rgn-black via-slate-900 to-slate-800 text-white rounded-2xl p-4 sm:p-5 shadow-sm space-y-4">
+        <div class="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <span class="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-amber-400 text-black uppercase">🏆 Maktablararo Kubok & Reyting</span>
+            <h2 class="text-base sm:text-lg font-black mt-1">6 ta Maktab Musobaqasi, Top-3 Sinf Rahbarlari & Haftalik Filial Hisoboti</h2>
+          </div>
+          <div class="flex flex-wrap gap-2">
+            <button type="button" onclick="switchTab('vipcards')" class="px-3.5 py-2 rounded-xl bg-amber-400 hover:bg-amber-300 text-black text-xs font-black cursor-pointer">
+              🏅 VIP Yutuqli Kartalar
+            </button>
+            <button type="button" onclick="switchTab('kassa')" class="px-3.5 py-2 rounded-xl bg-rgn-orange hover:bg-rgn-orangeDark text-white text-xs font-extrabold cursor-pointer">
+              💳 Kassa & Sof Tushum →
+            </button>
+          </div>
+        </div>
+        <div id="schoolCupLeaderboard" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3"></div>
+      </div>
+
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <div class="bg-white rounded-2xl border border-rgn-border p-4 sm:p-5 shadow-xs space-y-3">
+          <div class="flex items-center justify-between">
+            <h3 class="text-sm font-black text-rgn-black">👔 Top Sinf Rahbarlari & Tashakkurnoma Generatori</h3>
+            <span class="text-[11px] font-bold text-emerald-700">Eng faol sinflar</span>
+          </div>
+          <div id="topTeachersCupList" class="space-y-2"></div>
+        </div>
+
+        <div class="bg-white rounded-2xl border border-rgn-border p-4 sm:p-5 shadow-xs space-y-3">
+          <div class="flex items-center justify-between">
+            <h3 class="text-sm font-black text-rgn-black">🏆 Kids Mock Top-8 Natijalar (Tasdiqlangan)</h3>
+            <span id="dashMockMonthLabel" class="text-[11px] font-bold text-rgn-orange"></span>
+          </div>
+          <div id="dashTopMockList" class="space-y-2"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 2. DEDICATED CLASSES WINDOW (ALOHIDA SINFLAR OYNASI) -->
+    <section id="tab-classes" class="tab-panel hidden space-y-4">
+      <div class="bg-white rounded-2xl border border-rgn-border p-4 sm:p-5 shadow-xs space-y-3.5 no-print">
+        <div class="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <h2 class="text-base font-black text-rgn-black">🗂️ Alohida Sinflar Oynasi — Barcha Maktablar Bo‘yicha</h2>
+            <p class="text-xs text-gray-500">Istalgan maktabni tanlang, har bir sinf kartochkasini ochib o‘quvchilari, zaif nuqtalar tahlili va natijalarini alohida boshqaring.</p>
+          </div>
+          <div class="flex flex-wrap items-center gap-2">
+            <button type="button" onclick="openBulkClassesModal()" class="px-3.5 py-2 rounded-xl text-xs font-extrabold bg-rgn-orange hover:bg-rgn-orangeDark text-white shadow-sm cursor-pointer">
+              ⚡ Tezkor ko‘p sinf qo‘shish (A, B, V, G, D, E)
+            </button>
+            <button type="button" onclick="openSingleClassModal()" class="px-3.5 py-2 rounded-xl text-xs font-extrabold bg-rgn-black hover:bg-slate-800 text-white cursor-pointer">
+              + Bitta sinf qo‘shish
+            </button>
+          </div>
+        </div>
+
+        <div id="classesSchoolPills" class="flex flex-wrap items-center gap-1.5"></div>
+
+        <div class="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-rgn-border">
+          <div class="flex flex-wrap items-center gap-1.5" id="classesGradePills"></div>
+          <div class="flex items-center gap-2">
+            <input id="classesSearchInput" oninput="renderClassesTab()" type="text" placeholder="🔍 Sinf (5-A) yoki rahbar..." class="px-3 py-1.5 rounded-xl text-xs bg-rgn-surface border border-rgn-border focus:outline-none focus:border-rgn-orange" />
+            <span id="classesCountBadge" class="px-2.5 py-1.5 rounded-xl text-xs font-extrabold bg-rgn-peach text-rgn-orange">0 ta sinf</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">
+        <div class="lg:col-span-5 bg-white rounded-2xl border border-rgn-border p-3.5 shadow-xs space-y-2.5 no-print">
+          <div class="flex items-center justify-between px-1">
+            <h3 class="text-xs font-black uppercase tracking-wide text-gray-600">📋 Sinflar ro‘yxati</h3>
+            <span class="text-[11px] text-gray-400 font-semibold">Ochish uchun sinfni bosing</span>
+          </div>
+          <div id="classesCardsContainer" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-1 gap-2 max-h-[680px] overflow-y-auto custom-scroll pr-1"></div>
+        </div>
+
+        <div id="selectedClassDetailPanel" class="lg:col-span-7 bg-white rounded-2xl border border-rgn-border p-4 sm:p-5 shadow-xs space-y-4"></div>
+      </div>
+    </section>
+
+    <!-- 3. 6 SCHOOLS TAB -->
+    <section id="tab-schools" class="tab-panel hidden space-y-4">
+      <div class="bg-white rounded-2xl border border-rgn-border p-4 sm:p-5 shadow-xs space-y-3">
+        <div class="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <h2 class="text-base font-black text-rgn-black">🏫 6 ta Maktab — O‘quvchilar Ma’lumotlari va Sinf Kesimi</h2>
+            <p class="text-xs text-gray-500">Har bir maktabning nomi, hududi, sinflari, o‘quvchilar soni va Kids Mock qamrovini boshqaring.</p>
+          </div>
+          <button type="button" onclick="openAddSchoolModal()" class="px-3.5 py-2 rounded-xl text-xs font-extrabold bg-rgn-black hover:bg-rgn-orange text-white cursor-pointer transition">
+            + Maktab qo‘shish
+          </button>
+        </div>
+        <div id="schoolsCardsGrid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"></div>
+      </div>
+    </section>
+
+    <!-- 4. UNIFIED STUDENTS CRM TAB -->
+    <section id="tab-students" class="tab-panel hidden space-y-4">
+      <div class="bg-white rounded-2xl border border-rgn-border p-4 sm:p-5 shadow-xs space-y-3">
+        <div class="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <h2 class="text-base font-black text-rgn-black">🎓 CRM — O‘quvchilar Yagona Bazasi</h2>
+            <p class="text-xs text-gray-500">6 ta maktabning barcha o‘quvchilari, telefonlari, promo-kodlari, Referral bonusi va Kids Mock natijalari.</p>
+          </div>
+          <div class="flex flex-wrap items-center gap-2">
+            <input id="stuSearchInput" oninput="uiState.stuPage=1;renderStudentsTab()" type="text" placeholder="🔍 F.I.Sh., sinf, telefon, promo..." class="px-3 py-1.5 rounded-xl text-xs bg-rgn-surface border border-rgn-border focus:outline-none focus:border-rgn-orange" />
+            <select id="stuClassFilter" onchange="uiState.stuPage=1;renderStudentsTab()" class="px-3 py-1.5 rounded-xl text-xs font-bold bg-rgn-surface border border-rgn-border">
+              <option value="ALL">Barcha sinflar</option>
+            </select>
+            <button type="button" onclick="openAddStudentModal()" class="px-3 py-1.5 rounded-xl text-xs font-extrabold bg-rgn-orange text-white cursor-pointer">+ Yangi</button>
+            <button type="button" onclick="exportAllStudentsExcel()" class="px-3 py-1.5 rounded-xl text-xs font-extrabold bg-emerald-600 text-white cursor-pointer">⬇️ Excel</button>
+          </div>
+        </div>
+
+        <div class="overflow-x-auto custom-scroll rounded-xl border border-rgn-border">
+          <table class="w-full text-left text-xs border-collapse min-w-[1120px]">
+            <thead>
+              <tr class="bg-rgn-black text-white uppercase text-[10px]">
+                <th class="py-2.5 px-3">ID / Promo</th>
+                <th class="py-2.5 px-3">Maktab / Sinf</th>
+                <th class="py-2.5 px-3">O‘quvchi F.I.Sh.</th>
+                <th class="py-2.5 px-3">Ota-ona telefoni</th>
+                <th class="py-2.5 px-3">Call CRM holati</th>
+                <th class="py-2.5 px-2 text-center">Kids Mock</th>
+                <th class="py-2.5 px-2 text-center">Vaucher</th>
+                <th class="py-2.5 px-3 text-center">Amallar</th>
+              </tr>
+            </thead>
+            <tbody id="studentsTableBody" class="divide-y divide-rgn-border"></tbody>
+          </table>
+        </div>
+        <div id="studentsPagination" class="flex flex-wrap items-center justify-between gap-2 pt-1 text-xs"></div>
+      </div>
+    </section>
+
+    <!-- 5. CALL CRM, NO-SHOW RECOVERY, SMS TEMPLATES & OPERATOR KPI TAB -->
+    <section id="tab-callcrm" class="tab-panel hidden space-y-4">
+      <!-- OPERATOR AUTO-DISTRIBUTION & KPI -->
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-4">
+        <div class="lg:col-span-7 bg-white rounded-2xl border border-rgn-border p-4 shadow-xs space-y-3">
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <h3 class="text-sm font-black text-rgn-black">🎯 Operatorlar KPI Reytingi & Avto-Taqsimot</h3>
+              <p class="text-[11px] text-gray-500">Raqamli lidlarni faol Call Operatorlar o‘rtasida teng taqsimlang va konversiyani kuzating.</p>
+            </div>
+            <button type="button" onclick="autoDistributeLeadsToOperators()" class="px-3 py-1.5 rounded-xl bg-rgn-orange hover:bg-rgn-orangeDark text-white text-xs font-extrabold cursor-pointer">
+              ⚡ Lidlarni operatorlarga teng bo‘lish
+            </button>
+          </div>
+          <div id="operatorKpiCards" class="grid grid-cols-1 sm:grid-cols-2 gap-2.5 text-xs"></div>
+        </div>
+
+        <!-- SMS / TELEGRAM TEMPLATES LIBRARY -->
+        <div class="lg:col-span-5 bg-white rounded-2xl border border-rgn-border p-4 shadow-xs space-y-2.5">
+          <h3 class="text-sm font-black text-rgn-black">📲 Tayyor SMS / Telegram Shablonlar Kutubxonasi</h3>
+          <p class="text-[11px] text-gray-500">1 bosishda nusxalab ota-onaga yuboring:</p>
+          <div id="smsTemplatesList" class="space-y-1.5 text-xs"></div>
+        </div>
+      </div>
+
+      <!-- MAIN CALL CRM TABLE + NO-SHOW FILTER -->
+      <div class="bg-white rounded-2xl border border-rgn-border p-4 sm:p-5 shadow-xs space-y-3">
+        <div class="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <h2 class="text-base font-black text-rgn-black">📞 Call CRM — Qo‘ng‘iroqlar, No-Show Recovery & AI Call Coach</h2>
+            <p class="text-xs text-gray-500">E’tiroz yoki izoh yozsangiz, AI Call Coach keyingi qadam bo‘yicha tavsiya beradi.</p>
+          </div>
+          <div class="flex flex-wrap items-center gap-2">
+            <input id="callSearchInput" oninput="uiState.callPage=1;renderCallCrmTab()" type="text" placeholder="🔍 Ism, telefon..." class="px-3 py-1.5 rounded-xl text-xs bg-rgn-surface border border-rgn-border" />
+            <select id="callStatusFilter" onchange="uiState.callPage=1;renderCallCrmTab()" class="px-3 py-1.5 rounded-xl text-xs font-bold bg-rgn-surface border border-rgn-border">
+              <option value="ALL">Barcha holatlar</option>
+              <option value="NOSHOW">⏰ No-Show (Sinov darsiga kelmaganlar)</option>
+              <option value="VIP70">🔥 Yuqori prioritet (70+ ball)</option>
+              <option value="Yangi lead">Yangi lead</option>
+              <option value="Qo‘ng‘iroq qilindi">Qo‘ng‘iroq qilindi</option>
+              <option value="Ko‘tarmadi">Ko‘tarmadi</option>
+              <option value="Sinov darsiga yozildi">Sinov darsiga yozildi</option>
+              <option value="Kursga yozildi">Kursga yozildi</option>
+              <option value="Rad etdi">Rad etdi</option>
+            </select>
+            <button type="button" onclick="exportCallCrmExcel()" class="px-3 py-1.5 rounded-xl text-xs font-extrabold bg-emerald-600 text-white cursor-pointer">⬇️ Excel</button>
+          </div>
+        </div>
+
+        <div id="callCrmStatsRow" class="grid grid-cols-2 sm:grid-cols-6 gap-2.5 text-xs"></div>
+
+        <div class="overflow-x-auto custom-scroll rounded-xl border border-rgn-border">
+          <table class="w-full text-left text-xs border-collapse min-w-[1060px]">
+            <thead>
+              <tr class="bg-rgn-black text-white uppercase text-[10px]">
+                <th class="py-2.5 px-3">№</th>
+                <th class="py-2.5 px-3">Maktab / Sinf</th>
+                <th class="py-2.5 px-3">O‘quvchi F.I.Sh.</th>
+                <th class="py-2.5 px-3">Telefon</th>
+                <th class="py-2.5 px-2 text-center">Ball</th>
+                <th class="py-2.5 px-3">Operator</th>
+                <th class="py-2.5 px-3">Lead holati</th>
+                <th class="py-2.5 px-3">Izoh & AI Call Coach tavsiyasi</th>
+              </tr>
+            </thead>
+            <tbody id="callCrmTableBody" class="divide-y divide-rgn-border"></tbody>
+          </table>
+        </div>
+        <div id="callCrmPagination" class="flex flex-wrap items-center justify-between gap-2 pt-1 text-xs"></div>
+      </div>
+    </section>
+
+    <!-- 6. VIP YUTUQLI KARTA, PROMO-KOD TEKSHIRUVCHISI & REFERRAL BONUS TAB -->
+    <section id="tab-vipcards" class="tab-panel hidden space-y-5">
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-5">
+        <!-- LEFT: PROMO-CODE VERIFIER & REFERRAL BONUS -->
+        <div class="lg:col-span-5 space-y-4">
+          <div class="bg-white rounded-2xl border border-rgn-border p-4 sm:p-5 shadow-xs space-y-3 text-xs">
+            <h2 class="text-base font-black text-rgn-black">🧾 Promo-kod Tekshiruvchisi (Administrator)</h2>
+            <p class="text-gray-500">Ota-ona promo-kodni aytganda kiriting — karta egasi, chegirma miqdori va holatini tekshiring.</p>
+            <div class="flex gap-2">
+              <input id="promoVerifyInput" type="text" placeholder="Masalan: RGN-12-5A-1001" class="flex-1 px-3 py-2 rounded-xl bg-rgn-surface border border-rgn-border font-mono font-bold uppercase" />
+              <button type="button" onclick="verifyPromoCode()" class="px-4 py-2 rounded-xl bg-rgn-black hover:bg-rgn-orange text-white font-extrabold cursor-pointer">
+                🔍 Tekshirish
+              </button>
+            </div>
+            <div id="promoVerifyResult"></div>
+          </div>
+
+          <!-- DO‘STINGNI OLIB KEL (REFERRAL BONUS) -->
+          <div class="bg-white rounded-2xl border border-rgn-border p-4 sm:p-5 shadow-xs space-y-3 text-xs">
+            <h3 class="text-base font-black text-rgn-black">🎁 “Do‘stingni Olib Kel” (Referral +50 000 so‘m)</h3>
+            <p class="text-gray-500">O‘quvchi do‘stini sinov darsiga olib kelsa, ikkalasining vaucheriga avtomatik <b>+50 000 so‘m</b> bonus qo‘shiladi!</p>
+            <div class="space-y-2">
+              <div>
+                <label class="block font-bold text-gray-700 mb-1">Taklif qilgan o‘quvchi:</label>
+                <select id="refInviterSelect" class="w-full px-3 py-2 rounded-xl bg-rgn-surface border border-rgn-border font-bold"></select>
+              </div>
+              <div>
+                <label class="block font-bold text-gray-700 mb-1">Kelgan do‘sti (bazadan tanlang):</label>
+                <select id="refFriendSelect" class="w-full px-3 py-2 rounded-xl bg-rgn-surface border border-rgn-border font-bold"></select>
+              </div>
+              <button type="button" onclick="applyReferralBonus()" class="w-full py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold cursor-pointer">
+                🎁 Ikkalasiga +50 000 so‘m bonus berish
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- RIGHT: LUXURY VIP REWARD CARD GENERATOR -->
+        <div class="lg:col-span-7 bg-white rounded-2xl border border-rgn-border p-4 sm:p-5 shadow-xs space-y-4">
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <h2 class="text-base font-black text-rgn-black">🏅 Shaxsiy VIP Yutuqli Karta Generatori</h2>
+              <p class="text-xs text-gray-500">80+ ball = 200k Oltin · 60–79 ball = 150k Kumush · &lt;60 ball = 100k Bonus Karta</p>
+            </div>
+            <select id="vipCardStudentSelect" onchange="renderVipCardPreview()" class="px-3 py-2 rounded-xl text-xs font-extrabold bg-rgn-surface border border-rgn-border max-w-xs"></select>
+          </div>
+
+          <div id="vipCardPreviewContainer"></div>
+
+          <div class="flex flex-wrap gap-2">
+            <button type="button" onclick="downloadVipCardPng()" class="px-4 py-2.5 rounded-xl bg-rgn-black hover:bg-slate-800 text-white text-xs font-extrabold cursor-pointer">
+              🖼️ VIP Kartani PNG yuklab olish
+            </button>
+            <button type="button" onclick="sendVipCardToTelegram()" class="px-4 py-2.5 rounded-xl bg-rgn-orange hover:bg-rgn-orangeDark text-white text-xs font-extrabold cursor-pointer">
+              ✈️ Yutuqli karta xabarini nusxalash & TG ochish
+            </button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 7. KASSA, TO‘LOV VA GURUHLAR SIG‘IMI TAB -->
+    <section id="tab-kassa" class="tab-panel hidden space-y-5">
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-5">
+        <!-- LEFT: PAYMENT & DISCOUNT CALCULATOR -->
+        <div class="lg:col-span-5 bg-white rounded-2xl border border-rgn-border p-4 sm:p-5 shadow-xs space-y-3 text-xs h-fit">
+          <h2 class="text-base font-black text-rgn-black">💳 Kassa — To‘lov va Chegirma Kalkulyatori</h2>
+          <p class="text-gray-500">O‘quvchini tanlang — tizim uning VIP Yutuqli Karta chegirmasini avtomatik ayirib sof to‘lovni hisoblaydi.</p>
+
+          <div>
+            <label class="block font-bold text-gray-700 mb-1">O‘quvchi:</label>
+            <select id="kassaStudentSelect" onchange="recalcKassaForm()" class="w-full px-3 py-2 rounded-xl bg-rgn-surface border border-rgn-border font-bold"></select>
+          </div>
+          <div class="grid grid-cols-2 gap-2.5">
+            <div>
+              <label class="block font-bold text-gray-700 mb-1">Yo‘nalish / Guruh:</label>
+              <select id="kassaGroupSelect" class="w-full px-3 py-2 rounded-xl bg-rgn-surface border border-rgn-border font-bold"></select>
+            </div>
+            <div>
+              <label class="block font-bold text-gray-700 mb-1">Asosiy kurs narxi (so‘m):</label>
+              <input id="kassaBasePrice" type="number" value="485000" oninput="recalcKassaForm()" class="w-full px-3 py-2 rounded-xl bg-rgn-surface border border-rgn-border font-extrabold" />
+            </div>
+          </div>
+
+          <div id="kassaSummaryBox" class="p-3.5 rounded-2xl bg-rgn-peach/50 border border-rgn-orange/30 space-y-1"></div>
+
+          <button type="button" onclick="recordKassaPayment()" class="w-full py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold cursor-pointer">
+            ✅ To‘lovni qabul qilish va guruhga biriktirish
+          </button>
+        </div>
+
+        <!-- RIGHT: GROUPS CAPACITY & RECENT PAYMENTS -->
+        <div class="lg:col-span-7 space-y-4">
+          <div class="bg-white rounded-2xl border border-rgn-border p-4 sm:p-5 shadow-xs space-y-3">
+            <div class="flex items-center justify-between">
+              <h3 class="text-sm font-black text-rgn-black">📅 Qarshi Globus Guruhlar Sig‘imi va Bo‘sh O‘rinlar</h3>
+              <span id="kassaTotalRevenueBadge" class="px-3 py-1 rounded-xl bg-emerald-100 text-emerald-800 text-xs font-black">Sof tushum: 0 so‘m</span>
+            </div>
+            <div id="groupsCapacityGrid" class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs"></div>
+          </div>
+
+          <div class="bg-white rounded-2xl border border-rgn-border p-4 sm:p-5 shadow-xs space-y-2.5">
+            <h3 class="text-sm font-black text-rgn-black">🧾 Qabul qilingan so‘nggi to‘lovlar</h3>
+            <div id="kassaPaymentsList" class="space-y-1.5 text-xs"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 8. KIDS MOCK TAB -->
+    <section id="tab-kidsmock" class="tab-panel hidden space-y-5">
+      <div class="bg-white rounded-2xl border border-rgn-border p-4 sm:p-5 shadow-xs space-y-4">
+        <div class="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 class="text-base font-black text-rgn-black">🏆 Kids Mock — Har Oylik Imtihon & 4 Xonali O‘rindiq Taqsimoti</h2>
+            <p class="text-xs text-gray-500">1-fan (40 savol × 1.5 = 60 ball) + 2-fan (40 savol × 1 = 40 ball) = 100 ball · Easy / Hard darajali</p>
+          </div>
+          <div class="flex flex-wrap items-center gap-2">
+            <select id="mockMonthSelect" onchange="onMockMonthChange(this.value)" class="px-3 py-2 rounded-xl text-xs font-extrabold bg-rgn-peach text-rgn-orange border border-rgn-orange/30 cursor-pointer"></select>
+            <button type="button" onclick="autoAssignFourRooms()" class="px-3.5 py-2 rounded-xl text-xs font-extrabold bg-rgn-black hover:bg-rgn-orange text-white shadow-sm cursor-pointer transition">
+              🪑 4 ta xonaga o‘rindiqlarni avtomatik taqsimlash
+            </button>
+            <button type="button" onclick="exportKidsMockExcel()" class="px-3.5 py-2 rounded-xl text-xs font-extrabold bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer">
+              ⬇️ Mock Excel
+            </button>
+          </div>
+        </div>
+
+        <div class="p-3.5 rounded-2xl bg-rgn-surface border border-rgn-border space-y-2.5">
+          <p class="text-xs font-black text-rgn-black">➕ O‘quvchini ushbu oylik Kids Mock imtihoniga ro‘yxatdan o‘tkazish:</p>
+          <div class="grid grid-cols-1 sm:grid-cols-12 gap-2 text-xs">
+            <select id="mockRegStudentSelect" class="sm:col-span-4 px-3 py-2 rounded-xl bg-white border border-rgn-border font-bold"></select>
+            <select id="mockRegTrackSelect" onchange="updateMockRegLabels()" class="sm:col-span-3 px-3 py-2 rounded-xl bg-white border border-rgn-border font-extrabold">
+              <option value="MATH_ENG">Math + English (60 + 40)</option>
+              <option value="RUS_MATH">Russian + Math (60 + 40)</option>
+            </select>
+            <select id="mockRegDiff1" class="sm:col-span-2 px-2.5 py-2 rounded-xl bg-white border border-rgn-border font-bold">
+              <option value="Easy">1-fan: Easy</option>
+              <option value="Hard">1-fan: Hard</option>
+            </select>
+            <select id="mockRegDiff2" class="sm:col-span-2 px-2.5 py-2 rounded-xl bg-white border border-rgn-border font-bold">
+              <option value="Easy">2-fan: Easy</option>
+              <option value="Hard">2-fan: Hard</option>
+            </select>
+            <button type="button" onclick="registerStudentToKidsMock()" class="sm:col-span-1 py-2 px-2 rounded-xl bg-rgn-orange hover:bg-rgn-orangeDark text-white font-black cursor-pointer">
+              + Yozish
+            </button>
+          </div>
+        </div>
+
+        <div>
+          <div class="flex items-center justify-between mb-2">
+            <h3 class="text-sm font-black text-rgn-black">🚪 4 ta Imtihon Xonasi (Avtomatik O‘rindiq Taqsimoti)</h3>
+            <span class="text-[11px] font-bold text-gray-500">Har bir o‘quvchiga xona va aniq parta raqami beriladi</span>
+          </div>
+          <div id="fourRoomsGrid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3"></div>
+        </div>
+      </div>
+
+      <div class="bg-white rounded-2xl border border-rgn-border p-4 sm:p-5 shadow-xs space-y-3">
+        <div class="flex flex-wrap items-center justify-between gap-2">
+          <h3 class="text-sm font-black text-rgn-black">📋 Oylik Kids Mock Ishtirokchilari va Natijalari</h3>
+          <select id="mockRoomFilter" onchange="renderKidsMockTab()" class="px-3 py-1.5 rounded-xl text-xs font-bold bg-rgn-surface border border-rgn-border">
+            <option value="ALL">Barcha 4 ta xona</option>
+            <option value="1">1-xona</option>
+            <option value="2">2-xona</option>
+            <option value="3">3-xona</option>
+            <option value="4">4-xona</option>
+          </select>
+        </div>
+
+        <div class="overflow-x-auto custom-scroll rounded-xl border border-rgn-border">
+          <table class="w-full text-left text-xs border-collapse min-w-[960px]">
+            <thead>
+              <tr class="bg-rgn-black text-white uppercase text-[10px]">
+                <th class="py-2.5 px-3">Xona / O‘rindiq</th>
+                <th class="py-2.5 px-3">O‘quvchi F.I.Sh.</th>
+                <th class="py-2.5 px-3">Yo‘nalish & Daraja</th>
+                <th class="py-2.5 px-2 text-center">1-fan (×1.5)</th>
+                <th class="py-2.5 px-2 text-center">2-fan (×1.0)</th>
+                <th class="py-2.5 px-2 text-center">Jami (100)</th>
+                <th class="py-2.5 px-3 text-center">Tasdiq holati</th>
+                <th class="py-2.5 px-3 text-center">Amal</th>
+              </tr>
+            </thead>
+            <tbody id="kidsMockTableBody" class="divide-y divide-rgn-border"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- 9. TELEGRAM BOT TAB -->
+    <section id="tab-tgbot" class="tab-panel hidden space-y-4">
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-5">
+        <div class="lg:col-span-5 bg-white rounded-2xl border border-rgn-border p-4 sm:p-5 shadow-xs space-y-3.5">
+          <div class="flex items-center justify-between gap-2">
+            <div>
+              <h2 class="text-base font-black text-rgn-black">🤖 Telegram Bot — Real Ulanish & Natija Kiritish</h2>
+              <p class="text-xs text-gray-500">Token va Chat ID ni kiriting — natijalar real Telegramga darhol yuboriladi!</p>
+            </div>
+            <span id="tgConnectionBadge" class="px-2.5 py-1 rounded-xl text-[10px] font-black bg-amber-100 text-amber-800 whitespace-nowrap">○ Demo rejim</span>
+          </div>
+
+          <div class="rounded-2xl border border-sky-200 bg-sky-50/70 p-3.5 space-y-2.5 text-xs">
+            <div class="flex items-center justify-between">
+              <p class="font-black text-sky-950">🔌 Haqiqiy Telegram Botni ulash (BotFather)</p>
+              <span class="text-[10px] font-bold text-sky-700">Token ulangan</span>
+            </div>
+            <div class="space-y-2">
+              <input id="tgBotTokenInput" type="password" placeholder="Bot Token" class="w-full px-3 py-2 rounded-xl bg-white border border-sky-200 font-mono text-[11px]" />
+              <div class="flex gap-1.5">
+                <input id="tgAdminChatIdInput" type="text" placeholder="Admin yoki Guruh Chat ID" class="flex-1 px-3 py-2 rounded-xl bg-white border border-sky-200 font-mono text-[11px]" />
+                <button type="button" onclick="autoDetectAdminChatId()" class="px-3 py-2 rounded-xl bg-sky-600 hover:bg-sky-700 text-white font-extrabold whitespace-nowrap cursor-pointer">
+                  🔍 Avto-topish
+                </button>
+              </div>
+            </div>
+            <div class="flex flex-wrap gap-2">
+              <button type="button" onclick="saveTgBotSettings()" class="flex-1 py-2 px-3 rounded-xl bg-rgn-black hover:bg-slate-800 text-white font-extrabold cursor-pointer">
+                💾 Saqlash
+              </button>
+              <button type="button" onclick="testRealTelegramBot()" class="flex-1 py-2 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold cursor-pointer">
+                ⚡ Ulanishni tekshirish
+              </button>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-2 gap-2.5 text-xs">
+            <div>
+              <label class="block font-bold text-gray-700 mb-1">Nazoratchi (Xodim):</label>
+              <select id="botSupervisorSelect" class="w-full px-3 py-2 rounded-xl bg-rgn-surface border border-rgn-border font-bold"></select>
+            </div>
+            <div>
+              <label class="block font-bold text-gray-700 mb-1">Imtihon xonasi:</label>
+              <select id="botRoomSelect" onchange="populateBotStudentsByRoom()" class="w-full px-3 py-2 rounded-xl bg-rgn-surface border border-rgn-border font-extrabold">
+                <option value="ALL">Barcha xonalar</option>
+                <option value="1">🚪 1-xona</option>
+                <option value="2">🚪 2-xona</option>
+                <option value="3">🚪 3-xona</option>
+                <option value="4">🚪 4-xona</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="text-xs">
+            <label class="block font-bold text-gray-700 mb-1">O‘quvchini tanlang:</label>
+            <select id="botStudentSelect" onchange="recalcBotLivePreview()" class="w-full px-3 py-2 rounded-xl bg-rgn-surface border border-rgn-border font-bold"></select>
+          </div>
+
+          <div class="grid grid-cols-2 gap-3 text-xs">
+            <div class="p-3 rounded-xl bg-rgn-peach/50 border border-rgn-orange/30">
+              <label id="botSub1Label" class="block font-extrabold text-rgn-black mb-1">1-fan to‘g‘ri soni (0–40):</label>
+              <input id="botSub1Correct" type="number" min="0" max="40" value="32" oninput="recalcBotLivePreview()" class="w-full px-3 py-2 rounded-xl bg-white border border-rgn-border text-center text-base font-black text-rgn-orange" />
+            </div>
+            <div class="p-3 rounded-xl bg-sky-50 border border-sky-200">
+              <label id="botSub2Label" class="block font-extrabold text-rgn-black mb-1">2-fan to‘g‘ri soni (0–40):</label>
+              <input id="botSub2Correct" type="number" min="0" max="40" value="34" oninput="recalcBotLivePreview()" class="w-full px-3 py-2 rounded-xl bg-white border border-rgn-border text-center text-base font-black text-sky-700" />
+            </div>
+          </div>
+
+          <div id="botLiveCalcCard" class="p-3.5 rounded-2xl bg-rgn-black text-white flex items-center justify-between text-xs"></div>
+
+          <button type="button" onclick="submitResultViaTelegramBot()" class="w-full py-2.5 rounded-xl bg-sky-600 hover:bg-sky-700 text-white text-xs font-extrabold shadow-sm cursor-pointer">
+            ✈️ Telegram Bot orqali yuborish (Real TG + Admin tasdig‘iga)
+          </button>
+        </div>
+
+        <div class="lg:col-span-7 bg-white rounded-2xl border border-rgn-border shadow-xs flex flex-col overflow-hidden min-h-[540px]">
+          <div class="bg-[#2AABEE] text-white px-4 py-3 flex flex-wrap items-center justify-between gap-2">
+            <div class="flex items-center gap-2.5">
+              <div class="w-9 h-9 rounded-full bg-white/20 flex items-center justify-center font-black">🤖</div>
+              <div>
+                <p id="tgBotHeaderTitle" class="text-sm font-black">Registon Kids Mock Bot</p>
+                <p class="text-[11px] text-sky-100">Avtomatik ball hisoblagich · 60 + 40 = 100 tizimi</p>
+              </div>
+            </div>
+            <button type="button" onclick="syncUpdatesFromTelegram()" class="px-3 py-1.5 rounded-xl bg-white/20 hover:bg-white/30 text-white text-[11px] font-extrabold cursor-pointer">
+              🔄 Telegramdan xabarlarni olish
+            </button>
+          </div>
+          <div id="tgChatFeed" class="flex-1 tg-bg p-4 space-y-3 overflow-y-auto custom-scroll max-h-[560px]"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 10. ADMIN APPROVAL TAB -->
+    <section id="tab-approval" class="tab-panel hidden space-y-4">
+      <div class="bg-white rounded-2xl border border-rgn-border p-4 sm:p-5 shadow-xs space-y-4">
+        <div class="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <h2 class="text-base font-black text-rgn-black">✅ Admin Tasdig‘i — Natijalarni Nazorat Qilish Markazi</h2>
+            <p class="text-xs text-gray-500">Nazoratchilar Telegram Botga kiritgan barcha natijalar avval shu yerga tushadi. Admin tasdiqlagandan so‘ng yagona bazada e’lon qilinadi.</p>
+          </div>
+          <div class="flex flex-wrap items-center gap-2">
+            <select id="approvalStatusFilter" onchange="renderApprovalTab()" class="px-3 py-1.5 rounded-xl text-xs font-bold bg-rgn-surface border border-rgn-border">
+              <option value="PENDING">⏳ Tasdiq kutayotganlar</option>
+              <option value="APPROVED">✅ Tasdiqlanganlar</option>
+              <option value="REJECTED">❌ Rad etilganlar</option>
+              <option value="ALL">Barchasi</option>
+            </select>
+            <button type="button" onclick="approveAllPendingResults()" class="px-3.5 py-1.5 rounded-xl text-xs font-extrabold bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer">
+              ✅ Barchasini tasdiqlash
+            </button>
+          </div>
+        </div>
+
+        <div class="overflow-x-auto custom-scroll rounded-xl border border-rgn-border">
+          <table class="w-full text-left text-xs border-collapse min-w-[940px]">
+            <thead>
+              <tr class="bg-rgn-black text-white uppercase text-[10px]">
+                <th class="py-2.5 px-3">Vaqt / Nazoratchi</th>
+                <th class="py-2.5 px-3">O‘quvchi & Maktab</th>
+                <th class="py-2.5 px-3">Xona / Yo‘nalish</th>
+                <th class="py-2.5 px-2 text-center">1-fan (×1.5)</th>
+                <th class="py-2.5 px-2 text-center">2-fan (×1.0)</th>
+                <th class="py-2.5 px-2 text-center">Jami ball</th>
+                <th class="py-2.5 px-3 text-center">Holat</th>
+                <th class="py-2.5 px-3 text-center">Admin qarori</th>
+              </tr>
+            </thead>
+            <tbody id="approvalTableBody" class="divide-y divide-rgn-border"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- 11. PARENT PERSONAL PORTAL TAB (OTA-ONA SHAXSIY NATIJA SAHIFASI) -->
+    <section id="tab-parentportal" class="tab-panel hidden space-y-4">
+      <div class="max-w-2xl mx-auto bg-white rounded-3xl border border-rgn-border p-5 sm:p-7 shadow-sm space-y-4">
+        <div class="text-center space-y-1">
+          <span class="px-3 py-1 rounded-full text-[11px] font-black bg-rgn-peach text-rgn-orange">👨‍👩‍👧‍👦 OTA-ONALAR UCHUN SHAXSIY PORTAL</span>
+          <h2 class="text-lg sm:text-xl font-black text-rgn-black">Farzandingizning Kids Mock Natijasi va VIP Yutuqli Kartasi</h2>
+          <p class="text-xs text-gray-500">Telefon raqamingiz yoki promo-kodingizni kiriting — maktab va sinfdagi o‘rni, fanlar tahlili hamda VIP vaucherni ko‘ring.</p>
+        </div>
+
+        <div class="flex flex-col sm:flex-row gap-2">
+          <input id="parentSearchInput" type="text" placeholder="Telefon (+998 90...) yoki Promo-kod (RGN-12-5A-1001)" class="flex-1 px-4 py-3 rounded-2xl bg-rgn-surface border border-rgn-border text-xs font-bold" />
+          <button type="button" onclick="searchParentPortal()" class="px-5 py-3 rounded-2xl bg-rgn-orange hover:bg-rgn-orangeDark text-white text-xs font-extrabold cursor-pointer">
+            🔍 Natijani ko‘rish
+          </button>
+        </div>
+
+        <div id="parentPortalResult"></div>
+      </div>
+    </section>
+
+    <!-- 12. STAFF & AUDIT LOG TAB -->
+    <section id="tab-staff" class="tab-panel hidden space-y-5">
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-5">
+        <div class="lg:col-span-4 bg-white rounded-2xl border border-rgn-border p-4 sm:p-5 shadow-xs space-y-3 h-fit">
+          <h2 class="text-base font-black text-rgn-black">➕ Yangi Xodim Qo‘shish</h2>
+          <div class="space-y-2.5 text-xs">
+            <input id="staffNameInput" type="text" placeholder="Xodim F.I.Sh." class="w-full px-3 py-2 rounded-xl bg-rgn-surface border border-rgn-border font-bold" />
+            <select id="staffRoleInput" class="w-full px-3 py-2 rounded-xl bg-rgn-surface border border-rgn-border font-bold">
+              <option value="Nazoratchi">🛡️ Nazoratchi (Kids Mock & Bot)</option>
+              <option value="Call Operator">📞 Call Operator (Lead & Qo‘ng‘iroq)</option>
+              <option value="Admin">👑 Admin (Natijalar tasdig‘i)</option>
+              <option value="Koordinator">📋 Maktab Koordinatori</option>
+              <option value="O‘qituvchi">📘 O‘qituvchi</option>
+            </select>
+            <input id="staffPhoneInput" type="text" placeholder="+998 90 123-45-67" class="w-full px-3 py-2 rounded-xl bg-rgn-surface border border-rgn-border" />
+            <input id="staffTgInput" type="text" placeholder="@telegram_username" class="w-full px-3 py-2 rounded-xl bg-rgn-surface border border-rgn-border" />
+            <select id="staffRoomInput" class="w-full px-3 py-2 rounded-xl bg-rgn-surface border border-rgn-border font-bold">
+              <option value="">Umumiy</option>
+              <option value="1">1-imtihon xonasi</option>
+              <option value="2">2-imtihon xonasi</option>
+              <option value="3">3-imtihon xonasi</option>
+              <option value="4">4-imtihon xonasi</option>
+            </select>
+            <button type="button" onclick="addNewStaff()" class="w-full py-2.5 rounded-xl bg-rgn-orange hover:bg-rgn-orangeDark text-white font-extrabold cursor-pointer">
+              + Xodimni bazaga qo‘shish
+            </button>
+          </div>
+        </div>
+
+        <div class="lg:col-span-8 bg-white rounded-2xl border border-rgn-border p-4 sm:p-5 shadow-xs space-y-3">
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <h3 class="text-base font-black text-rgn-black">👥 Xodimlar Ro‘yxati (<span id="staffTotalCount">0</span> nafar)</h3>
+            <select id="staffRoleFilter" onchange="renderStaffTab()" class="px-3 py-1.5 rounded-xl text-xs font-bold bg-rgn-surface border border-rgn-border">
+              <option value="ALL">Barcha rollar</option>
+              <option value="Admin">👑 Admin</option>
+              <option value="Nazoratchi">🛡️ Nazoratchi</option>
+              <option value="Call Operator">📞 Call Operator</option>
+              <option value="Koordinator">📋 Koordinator</option>
+              <option value="O‘qituvchi">📘 O‘qituvchi</option>
+            </select>
+          </div>
+          <div class="overflow-x-auto custom-scroll rounded-xl border border-rgn-border">
+            <table class="w-full text-left text-xs border-collapse min-w-[680px]">
+              <thead>
+                <tr class="bg-rgn-black text-white uppercase text-[10px]">
+                  <th class="py-2.5 px-3">№</th>
+                  <th class="py-2.5 px-3">Xodim F.I.Sh.</th>
+                  <th class="py-2.5 px-3">Lavozim</th>
+                  <th class="py-2.5 px-3">Telefon / Telegram</th>
+                  <th class="py-2.5 px-3 text-center">Xona</th>
+                  <th class="py-2.5 px-3 text-center">Holat</th>
+                  <th class="py-2.5 px-3 text-center">O‘chirish</th>
+                </tr>
+              </thead>
+              <tbody id="staffTableBody" class="divide-y divide-rgn-border"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- AUDIT LOG -->
+      <div class="bg-white rounded-2xl border border-rgn-border p-4 sm:p-5 shadow-xs space-y-2.5">
+        <h3 class="text-sm font-black text-rgn-black">🔐 Kundalik Faollik Jurnali (Audit Log)</h3>
+        <div id="auditLogFeed" class="max-h-52 overflow-y-auto custom-scroll space-y-1.5 text-xs"></div>
+      </div>
+    </section>
+
+    <!-- 13. EXCEL & AI OMR SKANER TAB -->
+    <section id="tab-excel" class="tab-panel hidden space-y-4">
+      <div class="bg-white rounded-2xl border border-rgn-border p-5 shadow-xs space-y-4">
+        <div>
+          <h2 class="text-base font-black text-rgn-black">📥 Excel Eksport, Import & 📷 Javob Varaqasi OMR Skaneri</h2>
+          <p class="text-xs text-gray-500">Barcha bo‘limlar bo‘yicha `.xlsx` yuklab oling yoki javob varaqasi rasmidan tezkor natija kiriting.</p>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5 text-xs">
+          <div class="p-4 rounded-2xl border border-rgn-border bg-rgn-surface flex flex-col justify-between gap-3">
+            <div><span class="text-xl">🎓</span><h3 class="font-black text-sm mt-1">Yagona O‘quvchilar Bazasi</h3></div>
+            <button type="button" onclick="exportAllStudentsExcel()" class="w-full py-2 rounded-xl bg-emerald-600 text-white font-extrabold cursor-pointer">⬇️ Excel yuklash</button>
+          </div>
+          <div class="p-4 rounded-2xl border border-rgn-border bg-rgn-surface flex flex-col justify-between gap-3">
+            <div><span class="text-xl">🏆</span><h3 class="font-black text-sm mt-1">Kids Mock Natijalari</h3></div>
+            <button type="button" onclick="exportKidsMockExcel()" class="w-full py-2 rounded-xl bg-rgn-orange text-white font-extrabold cursor-pointer">⬇️ Excel yuklash</button>
+          </div>
+          <div class="p-4 rounded-2xl border border-rgn-border bg-rgn-surface flex flex-col justify-between gap-3">
+            <div><span class="text-xl">📞</span><h3 class="font-black text-sm mt-1">Call CRM Leadlar</h3></div>
+            <button type="button" onclick="exportCallCrmExcel()" class="w-full py-2 rounded-xl bg-sky-600 text-white font-extrabold cursor-pointer">⬇️ Excel yuklash</button>
+          </div>
+          <div class="p-4 rounded-2xl border border-rgn-border bg-rgn-surface flex flex-col justify-between gap-3">
+            <div><span class="text-xl">👥</span><h3 class="font-black text-sm mt-1">Xodimlar Ro‘yxati</h3></div>
+            <button type="button" onclick="exportStaffExcel()" class="w-full py-2 rounded-xl bg-rgn-black text-white font-extrabold cursor-pointer">⬇️ Excel yuklash</button>
+          </div>
+        </div>
+
+        <!-- OMR SHEET PHOTO SCANNER + EXCEL IMPORT -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <div class="p-4 rounded-2xl border-2 border-dashed border-rgn-border bg-rgn-peach/20 space-y-2.5 text-xs">
+            <h3 class="text-sm font-black text-rgn-black">📤 Excel (.xlsx / .csv) orqali import qilish</h3>
+            <p class="text-gray-600">Ustunlar: <b>Maktab</b>, <b>Sinf</b>, <b>F.I.Sh.</b>, <b>Telefon</b>, <b>Holat</b></p>
+            <div class="flex flex-wrap items-center gap-3">
+              <input type="file" accept=".xlsx,.xls,.csv" onchange="importStudentsFromExcel(event)" class="text-xs file:mr-3 file:py-2 file:px-4 file:rounded-xl file:border-0 file:bg-rgn-black file:text-white file:font-extrabold cursor-pointer" />
+              <button type="button" onclick="downloadImportTemplate()" class="px-3.5 py-2 rounded-xl bg-white border border-rgn-border font-bold cursor-pointer">📄 Shablon</button>
+            </div>
+          </div>
+
+          <div class="p-4 rounded-2xl border-2 border-dashed border-sky-200 bg-sky-50/50 space-y-2.5 text-xs">
+            <h3 class="text-sm font-black text-sky-950">📷 Javob Varaqasi Rasm Skaneri (OMR Yordamchi)</h3>
+            <p class="text-sky-800">Javob varaqasi rasmini yuklang — tizim o‘quvchini tanlab, ballarni tezkor tasdiqlash oynasini ochadi.</p>
+            <input type="file" accept="image/*" onchange="handleOmrSheetUpload(event)" class="text-xs file:mr-3 file:py-2 file:px-4 file:rounded-xl file:border-0 file:bg-sky-600 file:text-white file:font-extrabold cursor-pointer" />
+            <div id="omrScanPreviewBox"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- MODALS -->
+  <div id="addStudentModal" class="fixed inset-0 z-50 hidden items-center justify-center p-4 bg-black/55">
+    <div class="bg-white rounded-2xl max-w-md w-full p-5 shadow-2xl space-y-3 text-xs">
+      <div class="flex items-center justify-between">
+        <h3 class="text-base font-black text-rgn-black">+ Yangi o‘quvchi qo‘shish</h3>
+        <button type="button" onclick="closeModal('addStudentModal')" class="text-gray-400 hover:text-black font-black cursor-pointer">✕</button>
+      </div>
+      <div class="grid grid-cols-2 gap-2.5">
+        <div>
+          <label class="block font-bold text-gray-700 mb-1">Maktab:</label>
+          <select id="modalStuSchool" class="w-full px-3 py-2 rounded-xl bg-rgn-surface border border-rgn-border font-bold"></select>
+        </div>
+        <div>
+          <label class="block font-bold text-gray-700 mb-1">Sinf:</label>
+          <input id="modalStuClass" type="text" value="5-A" class="w-full px-3 py-2 rounded-xl bg-rgn-surface border border-rgn-border font-bold" />
+        </div>
+      </div>
+      <div>
+        <label class="block font-bold text-gray-700 mb-1">O‘quvchi F.I.Sh.:</label>
+        <input id="modalStuName" type="text" placeholder="Masalan: Karimov Azizbek" class="w-full px-3 py-2 rounded-xl bg-rgn-surface border border-rgn-border font-bold" />
+      </div>
+      <div>
+        <label class="block font-bold text-gray-700 mb-1">Ota-ona telefon raqami:</label>
+        <input id="modalStuPhone" type="text" placeholder="+998 90 123-45-67" class="w-full px-3 py-2 rounded-xl bg-rgn-surface border border-rgn-border" />
+      </div>
+      <div class="flex justify-end gap-2 pt-2 border-t border-rgn-border">
+        <button type="button" onclick="closeModal('addStudentModal')" class="px-4 py-2 rounded-xl bg-gray-100 font-bold cursor-pointer">Bekor qilish</button>
+        <button type="button" onclick="saveNewStudentModal()" class="px-4 py-2 rounded-xl bg-rgn-orange text-white font-extrabold cursor-pointer">✅ Saqlash</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="addSchoolModal" class="fixed inset-0 z-50 hidden items-center justify-center p-4 bg-black/55">
+    <div class="bg-white rounded-2xl max-w-md w-full p-5 shadow-2xl space-y-3 text-xs">
+      <div class="flex items-center justify-between">
+        <h3 class="text-base font-black text-rgn-black">🏫 Yangi Maktab Qo‘shish</h3>
+        <button type="button" onclick="closeModal('addSchoolModal')" class="text-gray-400 hover:text-black font-black cursor-pointer">✕</button>
+      </div>
+      <div>
+        <label class="block font-bold text-gray-700 mb-1">Maktab raqami / ID (masalan: 7):</label>
+        <input id="modalSchoolId" type="text" placeholder="7" class="w-full px-3 py-2 rounded-xl bg-rgn-surface border border-rgn-border font-bold" />
+      </div>
+      <div>
+        <label class="block font-bold text-gray-700 mb-1">Maktab nomi:</label>
+        <input id="modalSchoolName" type="text" placeholder="7-maktab" class="w-full px-3 py-2 rounded-xl bg-rgn-surface border border-rgn-border font-bold" />
+      </div>
+      <div>
+        <label class="block font-bold text-gray-700 mb-1">Hudud / Manzil:</label>
+        <input id="modalSchoolCity" type="text" value="Qarshi shahri" class="w-full px-3 py-2 rounded-xl bg-rgn-surface border border-rgn-border" />
+      </div>
+      <div class="flex justify-end gap-2 pt-2 border-t border-rgn-border">
+        <button type="button" onclick="closeModal('addSchoolModal')" class="px-4 py-2 rounded-xl bg-gray-100 font-bold cursor-pointer">Bekor qilish</button>
+        <button type="button" onclick="saveNewSchoolModal()" class="px-4 py-2 rounded-xl bg-rgn-black text-white font-extrabold cursor-pointer">✅ Qo‘shish</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="bulkClassesModal" class="fixed inset-0 z-50 hidden items-center justify-center p-4 bg-black/55">
+    <div class="bg-white rounded-2xl max-w-md w-full p-5 shadow-2xl space-y-3 text-xs">
+      <div class="flex items-center justify-between">
+        <h3 class="text-base font-black text-rgn-black">⚡ Tezkor ko‘p sinf qo‘shish</h3>
+        <button type="button" onclick="closeModal('bulkClassesModal')" class="text-gray-400 hover:text-black font-black cursor-pointer">✕</button>
+      </div>
+      <div class="grid grid-cols-2 gap-2.5">
+        <div>
+          <label class="block font-bold text-gray-700 mb-1">Maktab:</label>
+          <select id="bulkClassSchool" class="w-full px-3 py-2 rounded-xl bg-rgn-surface border border-rgn-border font-bold"></select>
+        </div>
+        <div>
+          <label class="block font-bold text-gray-700 mb-1">Sinf darajasi (2–11):</label>
+          <select id="bulkClassGrade" class="w-full px-3 py-2 rounded-xl bg-rgn-surface border border-rgn-border font-bold">
+            <option value="2">2-sinf</option><option value="3">3-sinf</option><option value="4">4-sinf</option>
+            <option value="5" selected>5-sinf</option><option value="6">6-sinf</option><option value="7">7-sinf</option>
+            <option value="8">8-sinf</option><option value="9">9-sinf</option><option value="10">10-sinf</option><option value="11">11-sinf</option>
+          </select>
+        </div>
+      </div>
+      <div>
+        <label class="block font-bold text-gray-700 mb-1">Parallel harflar:</label>
+        <div class="flex flex-wrap gap-2" id="bulkLettersBox">
+          <label class="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-rgn-surface border border-rgn-border font-extrabold cursor-pointer"><input type="checkbox" value="A" checked /> A</label>
+          <label class="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-rgn-surface border border-rgn-border font-extrabold cursor-pointer"><input type="checkbox" value="B" checked /> B</label>
+          <label class="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-rgn-surface border border-rgn-border font-extrabold cursor-pointer"><input type="checkbox" value="V" checked /> V</label>
+          <label class="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-rgn-surface border border-rgn-border font-extrabold cursor-pointer"><input type="checkbox" value="G" checked /> G</label>
+          <label class="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-rgn-surface border border-rgn-border font-extrabold cursor-pointer"><input type="checkbox" value="D" /> D</label>
+          <label class="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-rgn-surface border border-rgn-border font-extrabold cursor-pointer"><input type="checkbox" value="E" /> E</label>
+        </div>
+      </div>
+      <div>
+        <label class="block font-bold text-gray-700 mb-1">Reja o‘quvchi soni:</label>
+        <input id="bulkClassPlanCount" type="number" min="1" max="60" value="30" class="w-full px-3 py-2 rounded-xl bg-rgn-surface border border-rgn-border font-bold" />
+      </div>
+      <div class="flex justify-end gap-2 pt-2 border-t border-rgn-border">
+        <button type="button" onclick="closeModal('bulkClassesModal')" class="px-4 py-2 rounded-xl bg-gray-100 font-bold cursor-pointer">Bekor qilish</button>
+        <button type="button" onclick="saveBulkClassesModal()" class="px-4 py-2 rounded-xl bg-rgn-orange text-white font-extrabold cursor-pointer">⚡ Yaratish</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="singleClassModal" class="fixed inset-0 z-50 hidden items-center justify-center p-4 bg-black/55">
+    <div class="bg-white rounded-2xl max-w-md w-full p-5 shadow-2xl space-y-3 text-xs">
+      <div class="flex items-center justify-between">
+        <h3 class="text-base font-black text-rgn-black">+ Bitta sinf qo‘shish</h3>
+        <button type="button" onclick="closeModal('singleClassModal')" class="text-gray-400 hover:text-black font-black cursor-pointer">✕</button>
+      </div>
+      <div class="grid grid-cols-2 gap-2.5">
+        <div>
+          <label class="block font-bold text-gray-700 mb-1">Maktab:</label>
+          <select id="singleClassSchool" class="w-full px-3 py-2 rounded-xl bg-rgn-surface border border-rgn-border font-bold"></select>
+        </div>
+        <div>
+          <label class="block font-bold text-gray-700 mb-1">Sinf nomi (masalan: 6-G):</label>
+          <input id="singleClassLabel" type="text" placeholder="6-G" class="w-full px-3 py-2 rounded-xl bg-rgn-surface border border-rgn-border font-bold" />
+        </div>
+      </div>
+      <div>
+        <label class="block font-bold text-gray-700 mb-1">Sinf rahbari F.I.Sh.:</label>
+        <input id="singleClassTeacher" type="text" placeholder="Masalan: Azimova Gulnora" class="w-full px-3 py-2 rounded-xl bg-rgn-surface border border-rgn-border font-bold" />
+      </div>
+      <div class="grid grid-cols-2 gap-2.5">
+        <div>
+          <label class="block font-bold text-gray-700 mb-1">Rahbar telefoni:</label>
+          <input id="singleClassTeacherPhone" type="text" placeholder="+998 90 123-45-67" class="w-full px-3 py-2 rounded-xl bg-rgn-surface border border-rgn-border" />
+        </div>
+        <div>
+          <label class="block font-bold text-gray-700 mb-1">Sinfdagi jami o‘quvchi:</label>
+          <input id="singleClassPlan" type="number" min="1" max="60" value="30" class="w-full px-3 py-2 rounded-xl bg-rgn-surface border border-rgn-border font-bold" />
+        </div>
+      </div>
+      <div class="flex justify-end gap-2 pt-2 border-t border-rgn-border">
+        <button type="button" onclick="closeModal('singleClassModal')" class="px-4 py-2 rounded-xl bg-gray-100 font-bold cursor-pointer">Bekor qilish</button>
+        <button type="button" onclick="saveSingleClassModal()" class="px-4 py-2 rounded-xl bg-rgn-black text-white font-extrabold cursor-pointer">✅ Saqlash</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="rejectReasonModal" class="fixed inset-0 z-50 hidden items-center justify-center p-4 bg-black/55">
+    <div class="bg-white rounded-2xl max-w-md w-full p-5 shadow-2xl space-y-3 text-xs">
+      <div class="flex items-center justify-between">
+        <h3 class="text-base font-black text-red-700">❌ Natijani rad etish</h3>
+        <button type="button" onclick="closeModal('rejectReasonModal')" class="text-gray-400 hover:text-black font-black cursor-pointer">✕</button>
+      </div>
+      <p id="rejectModalStudentInfo" class="text-gray-600 font-semibold"></p>
+      <input id="rejectReasonInput" type="text" placeholder="Rad etish sababi (ixtiyoriy)" class="w-full px-3 py-2 rounded-xl bg-rgn-surface border border-rgn-border font-bold" />
+      <div class="flex justify-end gap-2 pt-2 border-t border-rgn-border">
+        <button type="button" onclick="closeModal('rejectReasonModal')" class="px-4 py-2 rounded-xl bg-gray-100 font-bold cursor-pointer">Bekor qilish</button>
+        <button type="button" onclick="confirmRejectExam()" class="px-4 py-2 rounded-xl bg-red-600 text-white font-extrabold cursor-pointer">❌ Rad etish</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const DEFAULT_MONTHS = [
+      { id: '2026-11', label: '2026-yil Noyabr (Kids Mock #1)' },
+      { id: '2026-12', label: '2026-yil Dekabr (Kids Mock #2)' },
+      { id: '2027-01', label: '2027-yil Yanvar (Kids Mock #3)' }
+    ];
+
+    function getTrackSubjects(track) {
+      if (track === 'RUS_MATH') return { sub1: 'Russian', sub2: 'Math', label: 'Russian + Math' };
+      return { sub1: 'Math', sub2: 'English', label: 'Math + English' };
+    }
+
+    function calcKidsMockScore(c1, c2) {
+      const clean1 = Math.max(0, Math.min(40, Number(c1) || 0));
+      const clean2 = Math.max(0, Math.min(40, Number(c2) || 0));
+      const p1 = Math.round(clean1 * 1.5 * 10) / 10;
+      const p2 = Math.round(clean2 * 1.0 * 10) / 10;
+      const total = Math.round((p1 + p2) * 10) / 10;
+      return { c1: clean1, c2: clean2, p1, p2, total };
+    }
+
+    function getPromoCode(st) {
+      return `RGN-${st.schoolId}-${String(st.classLabel || '5A').replace(/[^A-Z0-9]/gi, '')}-${st.id}`;
+    }
+
+    function getStudentVoucherInfo(st) {
+      const m = getLatestApprovedMock(st.id);
+      const score = m ? m.total : 0;
+      let tier = 'BONUS VAUCHER';
+      let baseAmount = 100000;
+      let badgeClass = 'bg-sky-100 text-sky-800';
+      if (score >= 80) {
+        tier = 'OLTIN YUTUQLI KARTA';
+        baseAmount = 200000;
+        badgeClass = 'bg-amber-100 text-amber-900';
+      } else if (score >= 60) {
+        tier = 'KUMUSH YUTUQLI KARTA';
+        baseAmount = 150000;
+        badgeClass = 'bg-orange-100 text-orange-800';
+      }
+      const refBonus = Number(st.referralBonus) || 0;
+      return {
+        code: getPromoCode(st),
+        tier,
+        baseAmount,
+        refBonus,
+        totalAmount: baseAmount + refBonus,
+        used: Boolean(st.voucherUsed),
+        badgeClass,
+        score
+      };
+    }
+
+    function createInitialData() {
+      const schools = [
+        { id: '12', name: '12-maktab', city: 'Qarshi shahri', targetCount: 161 },
+        { id: '11', name: '11-maktab', city: 'Qarshi shahri', targetCount: 120 },
+        { id: '50', name: '50-maktab', city: 'Qarshi shahri', targetCount: 115 },
+        { id: '26', name: '26-maktab', city: 'Qarshi shahri', targetCount: 110 },
+        { id: '1',  name: '1-maktab',  city: 'Qarshi shahri', targetCount: 105 },
+        { id: '39', name: '39-maktab', city: 'Qarshi shahri', targetCount: 100 }
+      ];
+
+      const teachers = [
+        { id: 101, name: 'Azimova Gulnora (Matematika)', schoolId: '12', phone: '+998 90 412-10-01', telegram: '@gulnora_m12' },
+        { id: 102, name: 'Rahimov Sherzod (Ingliz tili)', schoolId: '12', phone: '+998 91 412-10-02', telegram: '@sherzod_m12' },
+        { id: 103, name: 'Karimova Dilfuza (Rus tili)', schoolId: '12', phone: '+998 93 412-10-03', telegram: '@dilfuza_m12' },
+        { id: 104, name: 'Tursunov Akmal (Matematika)', schoolId: '11', phone: '+998 90 411-20-01', telegram: '@akmal_m11' },
+        { id: 105, name: 'Norqulova Feruza (Ingliz tili)', schoolId: '11', phone: '+998 91 411-20-02', telegram: '@feruza_m11' },
+        { id: 106, name: 'Bozorov Ulug‘bek (Rus tili)', schoolId: '11', phone: '+998 94 411-20-03', telegram: '@ulugbek_m11' },
+        { id: 107, name: 'Qodirova Nargiza (Matematika)', schoolId: '50', phone: '+998 90 450-30-01', telegram: '@nargiza_m50' },
+        { id: 108, name: 'Sattorov Bobur (Ingliz tili)', schoolId: '50', phone: '+998 91 450-30-02', telegram: '@bobur_m50' },
+        { id: 109, name: 'Xoliqova Ziyoda (Rus tili)', schoolId: '50', phone: '+998 99 450-30-03', telegram: '@ziyoda_m50' },
+        { id: 110, name: 'Ergashev Jamshid (Matematika)', schoolId: '26', phone: '+998 90 426-40-01', telegram: '@jamshid_m26' },
+        { id: 111, name: 'Murodova Shahnoza (Ingliz tili)', schoolId: '26', phone: '+998 93 426-40-02', telegram: '@shahnoza_m26' },
+        { id: 112, name: 'Jo‘rayev Farrux (Rus tili)', schoolId: '26', phone: '+998 97 426-40-03', telegram: '@farrux_m26' },
+        { id: 113, name: 'Ismoilova Barno (Matematika)', schoolId: '1',  phone: '+998 90 401-50-01', telegram: '@barno_m1' },
+        { id: 114, name: 'Umarov Rustam (Ingliz tili)', schoolId: '1',  phone: '+998 91 401-50-02', telegram: '@rustam_m1' },
+        { id: 115, name: 'Sultonova Munira (Rus tili)', schoolId: '1',  phone: '+998 94 401-50-03', telegram: '@munira_m1' },
+        { id: 116, name: 'Hamroyev Alisher (Matematika)', schoolId: '39', phone: '+998 90 439-60-01', telegram: '@alisher_m39' },
+        { id: 117, name: 'Berdiyeva Nigora (Ingliz tili)', schoolId: '39', phone: '+998 93 439-60-02', telegram: '@nigora_m39' },
+        { id: 118, name: 'Shodmonov Timur (Rus tili)', schoolId: '39', phone: '+998 99 439-60-03', telegram: '@timur_m39' }
+      ];
+
+      const staff = [
+        { id: 1, name: 'Sardorbek Xolmatov', role: 'Admin', phone: '+998 90 100-00-01', telegram: '@admin_rgn', room: '', active: true },
+        { id: 2, name: 'Dilnoza Karimova', role: 'Nazoratchi', phone: '+998 90 211-11-01', telegram: '@dilnoza_sup', room: '1', active: true },
+        { id: 3, name: 'Javohir Tursunov', role: 'Nazoratchi', phone: '+998 91 322-22-02', telegram: '@javohir_sup', room: '2', active: true },
+        { id: 4, name: 'Malika Raxmonova', role: 'Nazoratchi', phone: '+998 93 433-33-03', telegram: '@malika_sup', room: '3', active: true },
+        { id: 5, name: 'Behruz Qodirov', role: 'Nazoratchi', phone: '+998 99 544-44-04', telegram: '@behruz_sup', room: '4', active: true },
+        { id: 6, name: 'Sevinch Ochilova', role: 'Call Operator', phone: '+998 90 655-55-05', telegram: '@sevinch_call', room: '', active: true },
+        { id: 7, name: 'Shohrux Sattorov', role: 'Call Operator', phone: '+998 91 766-66-06', telegram: '@shohrux_call', room: '', active: true },
+        ...teachers.map(t => ({
+          id: t.id, name: `${t.name} · ${t.schoolId}-maktab`, role: 'O‘qituvchi',
+          phone: t.phone, telegram: t.telegram, room: '', active: true
+        }))
+      ];
+
+      const lastNamesMale = [
+        'Karimov', 'Tursunov', 'Xolmatov', 'Raxmonov', 'Qodirov', 'Bo‘riyev', 'Sattorov', 'Jo‘rayev',
+        'Ochilov', 'Mamatqulov', 'Ergashev', 'Xudoyberdiyev', 'Abdurahmonov', 'Norqulov', 'Umarov',
+        'Ismoilov', 'Yo‘ldoshev', 'Sultonov', 'Murodov', 'Hamroyev', 'Berdiyev', 'Toshpo‘latov',
+        'Shodmonov', 'Nazarov', 'Bozorov', 'Ro‘ziyev', 'Alimov', 'G‘aniyev', 'Salimov', 'Hasanov'
+      ];
+      const firstNamesMale = [
+        'Azizbek', 'Sardorbek', 'Jasurbek', 'Javohir', 'Behruz', 'Dostonbek', 'Shohrux', 'Amirbek',
+        'Samandar', 'Firdavs', 'Sanjarbek', 'Asadbek', 'Islombek', 'Muhammadali', 'Umidjon',
+        'Boburbek', 'Temurbek', 'Farrux', 'Dilshodbek', 'Ozodbek', 'Kamronbek', 'Ibrohim'
+      ];
+      const firstNamesFemale = [
+        'Madina', 'Dilnoza', 'Sevinch', 'Shahzoda', 'Malika', 'Nargiza', 'Zarina', 'Gulsanam',
+        'Mohinur', 'Ruxshona', 'Sabina', 'Durdona', 'Rayhona', 'Marjona', 'Farangiz', 'Charos',
+        'Munisa', 'Zilola', 'Kumush', 'Nozima', 'Jasmina', 'Shirin'
+      ];
+
+      const classTemplates = [
+        '2-A', '2-B', '3-A', '3-B', '3-V', '4-A', '4-B', '4-V',
+        '5-A', '5-B', '5-V', '6-A', '6-B', '6-V', '7-A', '7-B', '7-V', '8-A', '8-B', '9-A', '9-B'
+      ];
+      const statuses = ['Yangi lead', 'Qo‘ng‘iroq qilindi', 'Sinov darsiga yozildi', 'Kursga yozildi', 'Ko‘tarmadi'];
+      const operators = ['Sevinch Ochilova', 'Shohrux Sattorov'];
+      const phonePrefixes = ['90', '91', '93', '94', '97', '99', '88', '77'];
+
+      const students = [];
+      const classDirectory = [];
+      let globalIdx = 0;
+
+      schools.forEach(sc => {
+        const scTeachers = teachers.filter(t => t.schoolId === sc.id);
+        classTemplates.forEach((clsLabel, cIdx) => {
+          const tObj = scTeachers[cIdx % scTeachers.length];
+          classDirectory.push({
+            key: `${sc.id}::${clsLabel}`,
+            schoolId: sc.id,
+            classLabel: clsLabel,
+            teacherName: tObj ? tObj.name : '',
+            teacherPhone: tObj ? tObj.phone : '',
+            planCount: 28
+          });
+        });
+
+        for (let i = 0; i < sc.targetCount; i++) {
+          const isFemale = globalIdx % 2 === 1;
+          const baseLast = lastNamesMale[(globalIdx * 7 + i * 3) % lastNamesMale.length];
+          const lastName = isFemale ? `${baseLast}a` : baseLast;
+          const firstName = isFemale
+            ? firstNamesFemale[(globalIdx * 5 + i) % firstNamesFemale.length]
+            : firstNamesMale[(globalIdx * 5 + i) % firstNamesMale.length];
+
+          const pref = phonePrefixes[(globalIdx * 3) % phonePrefixes.length];
+          const p1 = String(100 + ((globalIdx * 37 + 19) % 899)).padStart(3, '0');
+          const p2 = String(10 + ((globalIdx * 13 + 7) % 89)).padStart(2, '0');
+          const p3 = String(10 + ((globalIdx * 29 + 3) % 89)).padStart(2, '0');
+          const clsLabel = classTemplates[i % classTemplates.length];
+          const tObj = scTeachers[(i % classTemplates.length) % scTeachers.length];
+
+          students.push({
+            id: 1001 + globalIdx,
+            schoolId: sc.id,
+            classLabel: clsLabel,
+            name: `${lastName} ${firstName}`,
+            phone: `+998 ${pref} ${p1}-${p2}-${p3}`,
+            teacherName: tObj ? tObj.name : '',
+            teacherPhone: tObj ? tObj.phone : '',
+            callStatus: statuses[globalIdx % statuses.length],
+            operator: operators[globalIdx % operators.length],
+            note: globalIdx % 4 === 0 ? 'Kids Mockga qiziqmoqda' : '',
+            voucherUsed: false,
+            referralBonus: 0,
+            assignedGroup: ''
+          });
+          globalIdx++;
+        }
+      });
+
+      const mockExams = students.slice(0, 80).map((stu, idx) => {
+        const room = (idx % 4) + 1;
+        const seatNo = Math.floor(idx / 4) + 1;
+        const track = idx % 3 === 0 ? 'RUS_MATH' : 'MATH_ENG';
+        const diff1 = idx % 2 === 0 ? 'Hard' : 'Easy';
+        const diff2 = idx % 3 === 0 ? 'Hard' : 'Easy';
+
+        let approvalStatus = 'NOT_SUBMITTED';
+        let c1 = null, c2 = null, p1 = 0, p2 = 0, total = 0, supervisor = '', submittedAt = '';
+        if (idx < 48) {
+          approvalStatus = 'APPROVED';
+          const calc = calcKidsMockScore(24 + (idx % 16), 22 + (idx % 18));
+          c1 = calc.c1; c2 = calc.c2; p1 = calc.p1; p2 = calc.p2; total = calc.total;
+          supervisor = staff[room]?.name || 'Nazoratchi';
+          submittedAt = '22.11 · 09:45';
+        } else if (idx < 64) {
+          approvalStatus = 'PENDING';
+          const calc = calcKidsMockScore(26 + (idx % 14), 25 + (idx % 15));
+          c1 = calc.c1; c2 = calc.c2; p1 = calc.p1; p2 = calc.p2; total = calc.total;
+          supervisor = staff[room]?.name || 'Nazoratchi';
+          submittedAt = '22.11 · 10:15';
+        }
+
+        return {
+          id: 5001 + idx,
+          monthId: '2026-11',
+          studentId: stu.id,
+          track, diff1, diff2,
+          room, seat: `${room}-Xona #${seatNo}`,
+          c1, c2, p1, p2, total,
+          approvalStatus,
+          supervisor, submittedAt, rejectReason: ''
+        };
+      });
+
+      const groups = [
+        { id: 'G1', name: 'Kids Math & English #1 (Dush/Chor/Jum 14:00)', capacity: 16, enrolled: 11, price: 455000 },
+        { id: 'G2', name: 'Kids Math & English #2 (Sesh/Pay/Shan 10:00)', capacity: 16, enrolled: 14, price: 455000 },
+        { id: 'G3', name: 'Kids Russian & Math #1 (Dush/Chor/Jum 15:30)', capacity: 15, enrolled: 9, price: 485000 },
+        { id: 'G4', name: 'Senior English & Math VIP (Sesh/Pay/Shan 15:30)', capacity: 18, enrolled: 15, price: 520000 }
+      ];
+
+      const payments = [
+        { id: 1, studentName: 'Karimov Azizbek', schoolClass: '12-maktab · 2-A', groupName: 'Kids Math & English #1', basePrice: 455000, discount: 200000, paid: 255000, time: 'Bugun · 11:20' }
+      ];
+
+      const tgLogs = [
+        {
+          id: 1, sender: 'BOT', time: '09:30',
+          text: '🤖 Registon Kids Mock Bot faol!\nToken ulangan. Telegramda botga /start bosib «🔍 Avto-topish» tugmasini bosing.'
+        }
+      ];
+
+      const auditLogs = [
+        { time: '09:30', actor: 'Tizim', action: '6 ta maktab, 711 nafar o‘quvchi va 18 nafar o‘qituvchi bazasi yuklandi.' }
+      ];
+
+      return {
+        schools, classDirectory, staff, students, mockExams, groups, payments, tgLogs, auditLogs,
+        botSettings: {
+          token: '',
+          adminChatId: '',
+          botUsername: '',
+          lastUpdateId: 0
+        }
+      };
+    }
+
+    const STORAGE_KEY = 'registon_crm_kidsmock_v1';
+
+    function loadInitialAppData() {
+      if (window.__INITIAL_DATA__ && Array.isArray(window.__INITIAL_DATA__.schools)) {
+        return window.__INITIAL_DATA__;
+      }
+      try {
+        const saved = localStorage.getItem(STORAGE_KEY);
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (parsed && Array.isArray(parsed.schools)) return parsed;
+        }
+      } catch (e) {}
+      return createInitialData();
+    }
+
+    function persistAppData() {
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(appData));
+      } catch (e) {}
+    }
+
+    let appData = loadInitialAppData();
+
+    let uiState = {
+      activeTab: 'dashboard',
+      selectedSchoolId: 'ALL',
+      activeMockMonth: '2026-11',
+      selectedClassGrade: 'ALL',
+      openedClassKey: '12::5-A',
+      pendingRejectExamId: null,
+      stuPage: 1,
+      stuPerPage: 50,
+      callPage: 1,
+      callPerPage: 50
+    };
+
+    function logAudit(actor, action) {
+      if (!appData.auditLogs) appData.auditLogs = [];
+      appData.auditLogs.unshift({ time: new Date().toTimeString().slice(0, 5), actor, action });
+      if (appData.auditLogs.length > 80) appData.auditLogs.pop();
+    }
+
+    function resetDemoDatabase() {
+      const savedBot = appData.botSettings || { token: '', adminChatId: '', botUsername: '', lastUpdateId: 0 };
+      localStorage.removeItem(STORAGE_KEY);
+      appData = createInitialData();
+      appData.botSettings = savedBot;
+      uiState.stuPage = 1;
+      uiState.callPage = 1;
+      uiState.openedClassKey = '12::5-A';
+      renderAll();
+      showToast('🔄 Barcha 711 ta o‘quvchi, sinflar va modullar tiklandi!');
+    }
+
+    function downloadStandaloneHtml() {
+      try {
+        const serialized = JSON.stringify(appData).replace(/<\/script>/gi, '<\\/script>');
+        let htmlDoc = '<!DOCTYPE html>\n' + document.documentElement.outerHTML;
+        const injectScript = `<script>window.__INITIAL_DATA__ = ${serialized};<\/script>`;
+        htmlDoc = htmlDoc.replace('</head>', `${injectScript}\n</head>`);
+        const blob = new Blob([htmlDoc], { type: 'text/html;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `Registon_Full_CRM_${new Date().toISOString().slice(0, 10)}.html`;
+        a.click();
+        URL.revokeObjectURL(url);
+        showToast('⬇️ Tayyor HTML fayl yuklab olindi!');
+      } catch (e) {
+        showToast('HTML saqlashda xatolik yuz berdi', 'error');
+      }
+    }
+
+    /* UTILITIES */
+    function esc(s) {
+      return String(s ?? '').replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]));
+    }
+    function fmtNum(n) {
+      const v = Math.round((Number(n) || 0) * 10) / 10;
+      return Number.isInteger(v) ? String(v) : v.toFixed(1);
+    }
+    function fmtMoney(n) {
+      return (Number(n) || 0).toLocaleString('ru-RU') + ' so‘m';
+    }
+    function getSchoolName(id) {
+      return appData.schools.find(s => String(s.id) === String(id))?.name || `${id}-maktab`;
+    }
+    function getStudentById(id) {
+      return appData.students.find(s => Number(s.id) === Number(id));
+    }
+    function getScopedStudents() {
+      if (uiState.selectedSchoolId === 'ALL') return appData.students;
+      return appData.students.filter(s => String(s.schoolId) === String(uiState.selectedSchoolId));
+    }
+    function getLatestApprovedMock(studentId) {
+      const list = appData.mockExams.filter(m => Number(m.studentId) === Number(studentId) && m.approvalStatus === 'APPROVED');
+      return list.length ? list[list.length - 1] : null;
+    }
+
+    function showToast(msg, type = 'success') {
+      const container = document.getElementById('toastContainer');
+      const el = document.createElement('div');
+      const colors = type === 'error' ? 'bg-red-600 text-white' : (type === 'info' ? 'bg-sky-600 text-white' : 'bg-rgn-black text-white');
+      el.className = `${colors} px-4 py-2.5 rounded-2xl shadow-lg text-xs font-bold pointer-events-auto transition`;
+      el.textContent = msg;
+      container.appendChild(el);
+      setTimeout(() => { el.style.opacity = '0'; setTimeout(() => el.remove(), 250); }, 3200);
+    }
+
+    function copyTextFallback(text) {
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.select();
+      try { document.execCommand('copy'); showToast('📋 Matn nusxalandi!'); } catch (e) {}
+      document.body.removeChild(ta);
+    }
+
+    function openModal(id) {
+      const el = document.getElementById(id);
+      if (el) { el.classList.remove('hidden'); el.classList.add('flex'); }
+    }
+    function closeModal(id) {
+      const el = document.getElementById(id);
+      if (el) { el.classList.add('hidden'); el.classList.remove('flex'); }
+    }
+
+    function switchTab(tabName) {
+      uiState.activeTab = tabName;
+      document.querySelectorAll('.tab-panel').forEach(p => p.classList.add('hidden'));
+      const activePanel = document.getElementById(`tab-${tabName}`);
+      if (activePanel) activePanel.classList.remove('hidden');
+
+      document.querySelectorAll('.nav-tab').forEach(btn => {
+        const isActive = btn.dataset.tab === tabName;
+        btn.className = isActive
+          ? 'nav-tab px-3 py-1.5 rounded-xl text-xs font-extrabold whitespace-nowrap cursor-pointer bg-rgn-orange text-white shadow-sm'
+          : 'nav-tab px-3 py-1.5 rounded-xl text-xs font-extrabold whitespace-nowrap cursor-pointer bg-rgn-surface text-gray-700 hover:bg-rgn-peach hover:text-rgn-orange';
+      });
+      renderCurrentTab();
+    }
+
+    function onGlobalSchoolChange(val) {
+      uiState.selectedSchoolId = val;
+      uiState.stuPage = 1;
+      uiState.callPage = 1;
+      renderAll();
+    }
+    function onMockMonthChange(val) {
+      uiState.activeMockMonth = val;
+      renderAll();
+    }
+
+    function renderGlobalHeaderControls() {
+      const sel = document.getElementById('globalSchoolSelect');
+      sel.innerHTML = `<option value="ALL">🏫 Barcha maktablar (${appData.schools.length} ta · ${appData.students.length} o‘quvchi)</option>` +
+        appData.schools.map(s => {
+          const cnt = appData.students.filter(st => String(st.schoolId) === String(s.id)).length;
+          return `<option value="${esc(s.id)}">🏫 ${esc(s.name)} (${cnt} nafar)</option>`;
+        }).join('');
+      sel.value = uiState.selectedSchoolId;
+
+      const pendingCount = appData.mockExams.filter(m => m.approvalStatus === 'PENDING').length;
+      const badge = document.getElementById('pendingApprovalBadge');
+      if (pendingCount > 0) {
+        badge.textContent = pendingCount;
+        badge.classList.remove('hidden');
+      } else {
+        badge.classList.add('hidden');
+      }
+
+      const monthSel = document.getElementById('mockMonthSelect');
+      if (monthSel) {
+        monthSel.innerHTML = DEFAULT_MONTHS.map(m => `<option value="${m.id}">${esc(m.label)}</option>`).join('');
+        monthSel.value = uiState.activeMockMonth;
+      }
+    }
+
+    function renderCurrentTab() {
+      if (uiState.activeTab === 'dashboard') renderDashboardTab();
+      else if (uiState.activeTab === 'classes') renderClassesTab();
+      else if (uiState.activeTab === 'schools') renderSchoolsTab();
+      else if (uiState.activeTab === 'students') renderStudentsTab();
+      else if (uiState.activeTab === 'callcrm') renderCallCrmTab();
+      else if (uiState.activeTab === 'vipcards') renderVipCardsTab();
+      else if (uiState.activeTab === 'kassa') renderKassaTab();
+      else if (uiState.activeTab === 'kidsmock') renderKidsMockTab();
+      else if (uiState.activeTab === 'tgbot') renderTgBotTab();
+      else if (uiState.activeTab === 'approval') renderApprovalTab();
+      else if (uiState.activeTab === 'staff') renderStaffTab();
+    }
+
+    function renderAll() {
+      persistAppData();
+      renderGlobalHeaderControls();
+      renderCurrentTab();
+    }
+
+    /* ============================================================
+       1. DASHBOARD & MAKTABLARARO KUBOK
+       ============================================================ */
+    function renderDashboardTab() {
+      const scoped = getScopedStudents();
+      const pendingList = appData.mockExams.filter(m => m.approvalStatus === 'PENDING');
+      const approvedMonth = appData.mockExams.filter(m => m.monthId === uiState.activeMockMonth && m.approvalStatus === 'APPROVED');
+      const enrolledCount = scoped.filter(s => s.callStatus === 'Kursga yozildi').length;
+      const trialCount = scoped.filter(s => s.callStatus === 'Sinov darsiga yozildi').length;
+      const totalRevenue = (appData.payments || []).reduce((sum, p) => sum + (Number(p.paid) || 0), 0);
+
+      const banner = document.getElementById('dashPendingBanner');
+      banner.innerHTML = pendingList.length > 0 ? `
+        <div class="bg-amber-50 border border-amber-300 rounded-2xl p-3.5 flex flex-wrap items-center justify-between gap-2 text-xs">
+          <div class="flex items-center gap-2.5">
+            <span class="text-lg">⏳</span>
+            <div>
+              <p class="font-black text-amber-950">${pendingList.length} ta Kids Mock natijasi Admin tasdig‘ini kutmoqda!</p>
+              <p class="text-amber-800">Nazoratchilar Telegram Bot orqali kiritgan ballarni tekshirib tasdiqlang.</p>
+            </div>
+          </div>
+          <button type="button" onclick="switchTab('approval')" class="px-3.5 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-extrabold cursor-pointer">
+            ✅ Tasdiqlash oynasini ochish
+          </button>
+        </div>` : '';
+
+      document.getElementById('dashKpiGrid').innerHTML = `
+        <div class="bg-white rounded-2xl border border-rgn-border p-3.5 shadow-xs">
+          <p class="text-[11px] font-bold text-gray-500">Jami o‘quvchilar</p>
+          <p class="text-2xl font-black text-rgn-black mt-1">${scoped.length}</p>
+          <p class="text-[10px] text-emerald-600 font-bold mt-0.5">${appData.schools.length} ta maktab</p>
+        </div>
+        <div class="bg-white rounded-2xl border border-rgn-border p-3.5 shadow-xs">
+          <p class="text-[11px] font-bold text-gray-500">Kids Mock (Oylik)</p>
+          <p class="text-2xl font-black text-rgn-orange mt-1">${appData.mockExams.filter(m => m.monthId === uiState.activeMockMonth).length}</p>
+          <p class="text-[10px] text-gray-500 font-bold mt-0.5">${approvedMonth.length} tasdiqlangan</p>
+        </div>
+        <div class="bg-white rounded-2xl border border-rgn-border p-3.5 shadow-xs">
+          <p class="text-[11px] font-bold text-gray-500">Sinov darsiga yozildi</p>
+          <p class="text-2xl font-black text-sky-600 mt-1">${trialCount}</p>
+          <p class="text-[10px] text-gray-500 font-bold mt-0.5">Call CRM voronkasi</p>
+        </div>
+        <div class="bg-white rounded-2xl border border-rgn-border p-3.5 shadow-xs">
+          <p class="text-[11px] font-bold text-gray-500">Kursga yozildi</p>
+          <p class="text-2xl font-black text-emerald-600 mt-1">${enrolledCount}</p>
+          <p class="text-[10px] text-emerald-700 font-bold mt-0.5">Shartnoma tuzilgan</p>
+        </div>
+        <div class="bg-white rounded-2xl border border-rgn-border p-3.5 shadow-xs">
+          <p class="text-[11px] font-bold text-gray-500">Ishlatilgan vaucherlar</p>
+          <p class="text-2xl font-black text-amber-600 mt-1">${appData.students.filter(s => s.voucherUsed).length}</p>
+          <p class="text-[10px] text-amber-700 font-bold mt-0.5">VIP Yutuqli Kartalar</p>
+        </div>
+        <div class="bg-white rounded-2xl border border-rgn-border p-3.5 shadow-xs">
+          <p class="text-[11px] font-bold text-gray-500">Kassa sof tushumi</p>
+          <p class="text-lg font-black text-rgn-black mt-1">${fmtMoney(totalRevenue)}</p>
+          <p class="text-[10px] text-emerald-600 font-bold mt-0.5">Chegirmalardan so‘ng</p>
+        </div>`;
+
+      // School Cup Leaderboard
+      const schoolStats = appData.schools.map(sc => {
+        const list = appData.students.filter(s => String(s.schoolId) === String(sc.id));
+        const enrolled = list.filter(s => s.callStatus === 'Kursga yozildi').length;
+        const trials = list.filter(s => s.callStatus === 'Sinov darsiga yozildi').length;
+        const mockScores = list.map(s => getLatestApprovedMock(s.id)).filter(Boolean);
+        const avg = mockScores.length ? mockScores.reduce((a, b) => a + b.total, 0) / mockScores.length : 0;
+        const cupPoints = list.length + enrolled * 5 + Math.round(avg);
+        return { sc, count: list.length, enrolled, trials, avg, cupPoints };
+      }).sort((a, b) => b.cupPoints - a.cupPoints);
+
+      document.getElementById('schoolCupLeaderboard').innerHTML = schoolStats.map((item, idx) => `
+        <div class="bg-white/10 rounded-xl p-3 flex items-center justify-between gap-2 text-xs">
+          <div class="flex items-center gap-2.5">
+            <span class="w-7 h-7 rounded-xl ${idx === 0 ? 'bg-amber-400 text-black' : (idx === 1 ? 'bg-slate-300 text-black' : 'bg-white/15 text-white')} font-black flex items-center justify-center">${idx + 1}</span>
+            <div>
+              <p class="font-black text-white">🏫 ${esc(item.sc.name)} <span class="text-[10px] text-amber-300">(${item.cupPoints} reyting)</span></p>
+              <p class="text-[11px] text-slate-300">${item.count} o‘quvchi · ${item.enrolled} kursda · O‘rtacha: ${fmtNum(item.avg)}</p>
+            </div>
+          </div>
+          <button type="button" onclick="openSchoolInClasses('${esc(item.sc.id)}')" class="px-2.5 py-1 rounded-lg bg-white/15 hover:bg-rgn-orange text-[11px] font-bold cursor-pointer">
+            Sinflar →
+          </button>
+        </div>`).join('');
+
+      // Top Teachers Cup
+      const allClasses = getMergedClassesList().sort((a, b) => b.students.length - a.students.length).slice(0, 6);
+      document.getElementById('topTeachersCupList').innerHTML = allClasses.map((c, idx) => `
+        <div class="flex items-center justify-between p-2.5 rounded-xl bg-rgn-surface border border-rgn-border text-xs">
+          <div>
+            <p class="font-extrabold text-rgn-black">${idx + 1}. ${esc(c.teacherName || 'Sinf rahbari')} <span class="text-rgn-orange">(${esc(getSchoolName(c.schoolId))} · ${esc(c.classLabel)})</span></p>
+            <p class="text-[10px] text-gray-500">${c.students.length} nafar o‘quvchi qatnashgan</p>
+          </div>
+          <button type="button" onclick="generateTeacherCertificate('${esc(c.schoolId)}','${esc(c.classLabel)}')" class="px-2.5 py-1 rounded-lg bg-amber-100 hover:bg-amber-200 text-amber-900 font-extrabold text-[11px] cursor-pointer">
+            🏅 Tashakkurnoma
+          </button>
+        </div>`).join('');
+
+      const mObj = DEFAULT_MONTHS.find(m => m.id === uiState.activeMockMonth);
+      document.getElementById('dashMockMonthLabel').textContent = mObj ? mObj.label : uiState.activeMockMonth;
+
+      const topList = [...approvedMonth].sort((a, b) => b.total - a.total).slice(0, 8);
+      document.getElementById('dashTopMockList').innerHTML = topList.length
+        ? topList.map((m, i) => {
+            const st = getStudentById(m.studentId);
+            const tr = getTrackSubjects(m.track);
+            return `
+              <div class="flex items-center justify-between p-2.5 rounded-xl bg-rgn-surface border border-rgn-border text-xs">
+                <div class="flex items-center gap-2.5">
+                  <span class="w-6 h-6 rounded-lg ${i < 3 ? 'bg-rgn-orange text-white' : 'bg-gray-200 text-gray-700'} font-black flex items-center justify-center text-[11px]">${i + 1}</span>
+                  <div>
+                    <p class="font-extrabold text-rgn-black">${esc(st?.name || 'O‘quvchi')}</p>
+                    <p class="text-[10px] text-gray-500">${esc(getSchoolName(st?.schoolId))} · ${esc(st?.classLabel)} · ${tr.label}</p>
+                  </div>
+                </div>
+                <span class="px-2.5 py-1 rounded-lg bg-emerald-100 text-emerald-800 font-black">${fmtNum(m.total)} / 100</span>
+              </div>`;
+          }).join('')
+        : '<p class="text-xs text-gray-400 text-center py-6">Hali tasdiqlangan Kids Mock natijalari yo‘q.</p>';
+    }
+
+    function generateTeacherCertificate(schoolId, classLabel) {
+      const cls = getMergedClassesList(schoolId).find(c => c.classLabel === classLabel);
+      const tName = cls?.teacherName || 'Hurmatli Sinf Rahbari';
+      const w = window.open('', '_blank', 'width=900,height=640');
+      if (!w) return showToast('Pop-up oynaga ruxsat bering', 'error');
+      w.document.write(`
+        <html><head><title>Tashakkurnoma — ${esc(tName)}</title></head>
+        <body style="font-family:Inter,sans-serif;background:#f8fafc;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;">
+          <div style="width:760px;padding:48px;background:#fff;border:12px double #F26522;border-radius:24px;text-align:center;box-shadow:0 20px 50px rgba(0,0,0,.1);">
+            <div style="font-size:14px;font-weight:900;color:#F26522;letter-spacing:3px;">REGISTON O‘QUV MARKAZI · QARSHI GLOBUS</div>
+            <h1 style="font-size:40px;margin:16px 0 8px;color:#0F172A;font-weight:900;">TASHAKKURNOMA</h1>
+            <p style="font-size:15px;color:#475569;margin-bottom:24px;">Yosh avlodning bilim va salohiyatini yuksaltirishdagi fidokorona mehnati uchun</p>
+            <div style="font-size:28px;font-weight:900;color:#0F172A;border-bottom:2px solid #F26522;display:inline-block;padding:0 24px 8px;">${esc(tName)}</div>
+            <p style="font-size:16px;color:#334155;margin:20px auto;max-width:560px;line-height:1.6;">
+              <b>${esc(getSchoolName(schoolId))}</b>ning <b>${esc(classLabel)}</b> sinf o‘quvchilarini bilimlar sinoviga faol jalb etgani va yuqori natijalarga erishishida qo‘shgan hissasi uchun taqdirlanadi.
+            </p>
+            <div style="margin-top:36px;display:flex;justify-content:space-between;font-size:13px;color:#64748B;font-weight:700;">
+              <span>Filial rahbari: ___________________</span>
+              <span>Sana: 22.11.2026</span>
+            </div>
+            <button onclick="window.print()" style="margin-top:28px;padding:10px 24px;background:#F26522;color:#fff;border:none;border-radius:12px;font-weight:800;cursor:pointer;">🖨️ Chop etish / PDF</button>
+          </div>
+        </body></html>`);
+      w.document.close();
+    }
+
+    /* ============================================================
+       2. DEDICATED CLASSES WINDOW (ALOHIDA SINFLAR OYNASI)
+       ============================================================ */
+    function getMergedClassesList(forceSchoolId = null) {
+      const map = new Map();
+      (appData.classDirectory || []).forEach(c => {
+        if (forceSchoolId && forceSchoolId !== 'ALL' && String(c.schoolId) !== String(forceSchoolId)) return;
+        const key = `${c.schoolId}::${c.classLabel}`;
+        map.set(key, {
+          key, schoolId: String(c.schoolId), classLabel: String(c.classLabel),
+          teacherName: c.teacherName || '', teacherPhone: c.teacherPhone || '',
+          planCount: Number(c.planCount) || 28, students: []
+        });
+      });
+
+      appData.students.forEach(s => {
+        if (forceSchoolId && forceSchoolId !== 'ALL' && String(s.schoolId) !== String(forceSchoolId)) return;
+        const cls = s.classLabel || '5-A';
+        const key = `${s.schoolId}::${cls}`;
+        if (!map.has(key)) {
+          map.set(key, {
+            key, schoolId: String(s.schoolId), classLabel: cls,
+            teacherName: s.teacherName || '', teacherPhone: s.teacherPhone || '',
+            planCount: 28, students: []
+          });
+        }
+        const entry = map.get(key);
+        entry.students.push(s);
+        if (!entry.teacherName && s.teacherName) entry.teacherName = s.teacherName;
+        if (!entry.teacherPhone && s.teacherPhone) entry.teacherPhone = s.teacherPhone;
+      });
+
+      return Array.from(map.values()).sort((a, b) => {
+        const sCmp = Number(a.schoolId) - Number(b.schoolId);
+        if (sCmp !== 0) return sCmp;
+        const ga = parseInt(a.classLabel, 10) || 0;
+        const gb = parseInt(b.classLabel, 10) || 0;
+        if (ga !== gb) return ga - gb;
+        return a.classLabel.localeCompare(b.classLabel);
+      });
+    }
+
+    function openSchoolInClasses(schoolId) {
+      uiState.selectedSchoolId = String(schoolId);
+      const list = getMergedClassesList(schoolId);
+      if (list.length) uiState.openedClassKey = list[0].key;
+      switchTab('classes');
+      renderGlobalHeaderControls();
+    }
+
+    function selectClassInWindow(classKey) {
+      uiState.openedClassKey = classKey;
+      renderClassesTab();
+    }
+    function setClassesGradeFilter(grade) {
+      uiState.selectedClassGrade = grade;
+      renderClassesTab();
+    }
+
+    function renderClassesTab() {
+      const pillsEl = document.getElementById('classesSchoolPills');
+      pillsEl.innerHTML = [
+        `<button type="button" onclick="onGlobalSchoolChange('ALL')" class="px-3 py-1.5 rounded-xl text-xs font-extrabold cursor-pointer ${uiState.selectedSchoolId === 'ALL' ? 'bg-rgn-black text-white' : 'bg-rgn-surface text-gray-700 hover:bg-rgn-peach'}">🏫 Barchasi (${appData.students.length})</button>`,
+        ...appData.schools.map(sc => {
+          const cnt = appData.students.filter(s => String(s.schoolId) === String(sc.id)).length;
+          const active = String(uiState.selectedSchoolId) === String(sc.id);
+          return `<button type="button" onclick="onGlobalSchoolChange('${esc(sc.id)}')" class="px-3 py-1.5 rounded-xl text-xs font-extrabold cursor-pointer ${active ? 'bg-rgn-orange text-white shadow-xs' : 'bg-rgn-surface text-gray-700 hover:bg-rgn-peach hover:text-rgn-orange'}">🏫 ${esc(sc.name)} (${cnt})</button>`;
+        })
+      ].join('');
+
+      const grades = ['ALL', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11'];
+      document.getElementById('classesGradePills').innerHTML = grades.map(g => {
+        const active = uiState.selectedClassGrade === g;
+        return `<button type="button" onclick="setClassesGradeFilter('${g}')" class="px-2.5 py-1 rounded-lg text-[11px] font-extrabold cursor-pointer ${active ? 'bg-rgn-black text-white' : 'bg-rgn-surface text-gray-600 hover:bg-gray-200'}">${g === 'ALL' ? 'Barcha sinflar' : g + '-sinf'}</button>`;
+      }).join('');
+
+      const q = (document.getElementById('classesSearchInput')?.value || '').trim().toLowerCase();
+      let list = getMergedClassesList(uiState.selectedSchoolId);
+      if (uiState.selectedClassGrade !== 'ALL') {
+        list = list.filter(c => String(parseInt(c.classLabel, 10)) === String(uiState.selectedClassGrade));
+      }
+      if (q) {
+        list = list.filter(c =>
+          c.classLabel.toLowerCase().includes(q) ||
+          getSchoolName(c.schoolId).toLowerCase().includes(q) ||
+          (c.teacherName || '').toLowerCase().includes(q)
+        );
+      }
+
+      document.getElementById('classesCountBadge').textContent = `${list.length} ta sinf`;
+      if (list.length && !list.some(c => c.key === uiState.openedClassKey)) {
+        uiState.openedClassKey = list[0].key;
+      }
+
+      const cardsEl = document.getElementById('classesCardsContainer');
+      if (!list.length) {
+        cardsEl.innerHTML = `<div class="p-6 text-center text-xs text-gray-400">Ushbu filtr bo‘yicha sinflar topilmadi.</div>`;
+        document.getElementById('selectedClassDetailPanel').innerHTML = `<div class="py-16 text-center text-xs text-gray-400">Sinf tanlanmagan.</div>`;
+        return;
+      }
+
+      cardsEl.innerHTML = list.map(c => {
+        const isSelected = c.key === uiState.openedClassKey;
+        const pct = Math.min(100, Math.round((c.students.length / Math.max(1, c.planCount)) * 100));
+        const mockScores = c.students.map(st => getLatestApprovedMock(st.id)).filter(Boolean);
+        const avg = mockScores.length ? fmtNum(mockScores.reduce((sum, m) => sum + m.total, 0) / mockScores.length) : null;
+        return `
+          <button type="button" onclick="selectClassInWindow('${esc(c.key)}')" class="w-full text-left p-3 rounded-2xl border transition cursor-pointer ${isSelected ? 'border-rgn-orange bg-rgn-peach/50 shadow-xs' : 'border-rgn-border bg-rgn-surface/60 hover:bg-white hover:border-gray-300'}">
+            <div class="flex items-center justify-between gap-2">
+              <div class="flex items-center gap-2">
+                <span class="px-2.5 py-1 rounded-xl text-xs font-black ${isSelected ? 'bg-rgn-orange text-white' : 'bg-rgn-black text-white'}">${esc(c.classLabel)}</span>
+                <div>
+                  <p class="text-xs font-black text-rgn-black">${esc(getSchoolName(c.schoolId))}</p>
+                  <p class="text-[10px] text-gray-500 truncate max-w-[190px]">${esc(c.teacherName || 'Sinf rahbari kiritilmagan')}</p>
+                </div>
+              </div>
+              <div class="text-right">
+                <p class="text-xs font-black text-rgn-black">${c.students.length} <span class="text-[10px] text-gray-400 font-semibold">/ ${c.planCount}</span></p>
+                ${avg !== null ? `<span class="text-[10px] font-extrabold text-emerald-700">⭐ ${avg} ball</span>` : `<span class="text-[10px] text-gray-400">Mock yo‘q</span>`}
+              </div>
+            </div>
+            <div class="w-full h-1.5 bg-gray-200 rounded-full overflow-hidden mt-2">
+              <div class="h-full ${isSelected ? 'bg-rgn-orange' : 'bg-emerald-500'}" style="width:${pct}%"></div>
+            </div>
+          </button>`;
+      }).join('');
+
+      const opened = list.find(c => c.key === uiState.openedClassKey) || list[0];
+      renderOpenedClassDetail(opened);
+    }
+
+    function renderOpenedClassDetail(cls) {
+      const panel = document.getElementById('selectedClassDetailPanel');
+      const withPhone = cls.students.filter(s => s.phone && s.phone.trim()).length;
+      const enrolled = cls.students.filter(s => s.callStatus === 'Kursga yozildi').length;
+      const mockResults = cls.students.map(s => getLatestApprovedMock(s.id)).filter(Boolean);
+      const avgScore = mockResults.length ? fmtNum(mockResults.reduce((a, b) => a + b.total, 0) / mockResults.length) : '—';
+
+      // Weak subject analysis (#14 feature)
+      let weakAnalysisHtml = '';
+      if (mockResults.length > 0) {
+        const avg1 = mockResults.reduce((a, b) => a + b.p1, 0) / mockResults.length;
+        const avg2 = mockResults.reduce((a, b) => a + b.p2, 0) / mockResults.length;
+        const weakSub = (avg1 / 60) < (avg2 / 40) ? '1-fan (Matematika / Rus tili)' : '2-fan (Ingliz tili / Matematika)';
+        weakAnalysisHtml = `
+          <div class="p-3 rounded-xl bg-sky-50 border border-sky-200 flex flex-wrap items-center justify-between gap-2 text-xs">
+            <div>
+              <span class="font-black text-sky-950">📊 Sinf zaif nuqtalar tahlili:</span>
+              <span class="text-sky-800">Ushbu sinfda <b>${weakSub}</b> bo‘yicha qo‘shimcha intensiv kurs taklifi eng yuqori natija beradi.</span>
+            </div>
+            <button type="button" onclick="copyTextFallback('Assalomu alaykum! ${getSchoolName(cls.schoolId)} ${cls.classLabel} sinf o‘quvchilari uchun ${weakSub} bo‘yicha maxsus intensiv guruh ochildi. Bepul sinov darsiga taklif qilamiz!')" class="px-2.5 py-1 rounded-lg bg-sky-600 text-white font-bold cursor-pointer">
+              📋 Taklif matni
+            </button>
+          </div>`;
+      }
+
+      panel.innerHTML = `
+        <div class="flex flex-wrap items-start justify-between gap-3 pb-3 border-b border-rgn-border">
+          <div>
+            <div class="flex items-center gap-2">
+              <span class="px-3 py-1 rounded-xl bg-rgn-orange text-white text-sm font-black">${esc(cls.classLabel)} sinf</span>
+              <span class="px-2.5 py-1 rounded-xl bg-rgn-surface border border-rgn-border text-xs font-extrabold text-rgn-black">🏫 ${esc(getSchoolName(cls.schoolId))}</span>
+            </div>
+            <p class="text-xs text-gray-500 mt-1.5">Alohida sinf boshqaruv oynasi · O‘quvchilar ro‘yxati, sinf rahbari va Kids Mock natijalari</p>
+          </div>
+          <div class="flex flex-wrap gap-1.5 no-print">
+            <button type="button" onclick="openAddStudentModal('${esc(cls.schoolId)}','${esc(cls.classLabel)}')" class="px-3 py-1.5 rounded-xl bg-rgn-orange hover:bg-rgn-orangeDark text-white text-xs font-extrabold cursor-pointer">
+              + O‘quvchi
+            </button>
+            <button type="button" onclick="exportSingleClassExcel('${esc(cls.schoolId)}','${esc(cls.classLabel)}')" class="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-extrabold cursor-pointer">
+              ⬇️ Excel
+            </button>
+            <button type="button" onclick="copyClassTelegramSummary('${esc(cls.schoolId)}','${esc(cls.classLabel)}')" class="px-3 py-1.5 rounded-xl bg-sky-600 hover:bg-sky-700 text-white text-xs font-extrabold cursor-pointer">
+              📋 TG hisobot
+            </button>
+            <button type="button" onclick="generateTeacherCertificate('${esc(cls.schoolId)}','${esc(cls.classLabel)}')" class="px-3 py-1.5 rounded-xl bg-amber-400 hover:bg-amber-300 text-black text-xs font-extrabold cursor-pointer">
+              🏅 Yorliq
+            </button>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-2 sm:grid-cols-4 gap-2.5 text-xs">
+          <div class="p-3 rounded-xl bg-rgn-surface border border-rgn-border">
+            <p class="text-[10px] font-bold text-gray-500">Kiritilgan / Reja</p>
+            <p class="text-lg font-black text-rgn-black">${cls.students.length} / ${cls.planCount}</p>
+          </div>
+          <div class="p-3 rounded-xl bg-rgn-surface border border-rgn-border">
+            <p class="text-[10px] font-bold text-gray-500">Telefon raqamli</p>
+            <p class="text-lg font-black text-sky-700">${withPhone} nafar</p>
+          </div>
+          <div class="p-3 rounded-xl bg-rgn-surface border border-rgn-border">
+            <p class="text-[10px] font-bold text-gray-500">O‘rtacha Kids Mock</p>
+            <p class="text-lg font-black text-rgn-orange">${avgScore}</p>
+          </div>
+          <div class="p-3 rounded-xl bg-rgn-surface border border-rgn-border">
+            <p class="text-[10px] font-bold text-gray-500">Kursga yozilgan</p>
+            <p class="text-lg font-black text-emerald-700">${enrolled} nafar</p>
+          </div>
+        </div>
+
+        ${weakAnalysisHtml}
+
+        <div class="p-3 rounded-2xl bg-rgn-peach/30 border border-rgn-orange/20 grid grid-cols-1 sm:grid-cols-12 gap-2 text-xs items-end no-print">
+          <div class="sm:col-span-5">
+            <label class="block text-[10px] font-extrabold text-gray-600 mb-1">Sinf rahbari F.I.Sh.:</label>
+            <input id="clsEditTeacherName" type="text" value="${esc(cls.teacherName)}" class="w-full px-2.5 py-1.5 rounded-xl bg-white border border-rgn-border font-bold" />
+          </div>
+          <div class="sm:col-span-3">
+            <label class="block text-[10px] font-extrabold text-gray-600 mb-1">Rahbar telefoni:</label>
+            <input id="clsEditTeacherPhone" type="text" value="${esc(cls.teacherPhone)}" class="w-full px-2.5 py-1.5 rounded-xl bg-white border border-rgn-border font-semibold" />
+          </div>
+          <div class="sm:col-span-2">
+            <label class="block text-[10px] font-extrabold text-gray-600 mb-1">Reja soni:</label>
+            <input id="clsEditPlanCount" type="number" min="1" max="60" value="${cls.planCount}" class="w-full px-2.5 py-1.5 rounded-xl bg-white border border-rgn-border font-bold text-center" />
+          </div>
+          <div class="sm:col-span-2">
+            <button type="button" onclick="saveOpenedClassMeta('${esc(cls.schoolId)}','${esc(cls.classLabel)}')" class="w-full py-1.5 px-2.5 rounded-xl bg-rgn-black hover:bg-slate-800 text-white font-extrabold cursor-pointer">
+              💾 Saqlash
+            </button>
+          </div>
+        </div>
+
+        <div class="overflow-x-auto custom-scroll rounded-xl border border-rgn-border">
+          <table class="w-full text-left text-xs border-collapse min-w-[640px]">
+            <thead>
+              <tr class="bg-rgn-black text-white uppercase text-[10px]">
+                <th class="py-2 px-3">№</th>
+                <th class="py-2 px-3">O‘quvchi F.I.Sh.</th>
+                <th class="py-2 px-3">Ota-ona telefoni</th>
+                <th class="py-2 px-3">Call CRM holati</th>
+                <th class="py-2 px-2 text-center">Kids Mock</th>
+                <th class="py-2 px-2 text-center no-print">VIP</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-rgn-border">
+              ${cls.students.length ? cls.students.map((st, idx) => {
+                const mock = getLatestApprovedMock(st.id);
+                return `
+                  <tr class="hover:bg-rgn-peach/20">
+                    <td class="py-2 px-3 font-bold text-gray-400">${idx + 1}</td>
+                    <td class="py-2 px-3 font-extrabold text-rgn-black">${esc(st.name)}</td>
+                    <td class="py-2 px-3"><a href="tel:${esc(st.phone)}" class="font-bold text-sky-700 hover:underline">${esc(st.phone || '—')}</a></td>
+                    <td class="py-2 px-3">
+                      <select onchange="updateStudent(${st.id}, 'callStatus', this.value)" class="px-2 py-1 rounded-lg bg-rgn-surface border border-rgn-border text-[11px] font-bold">
+                        ${['Yangi lead', 'Qo‘ng‘iroq qilindi', 'Ko‘tarmadi', 'Sinov darsiga yozildi', 'Kursga yozildi', 'Rad etdi'].map(opt => `<option value="${opt}" ${st.callStatus === opt ? 'selected' : ''}>${opt}</option>`).join('')}
+                      </select>
+                    </td>
+                    <td class="py-2 px-2 text-center">${mock ? `<span class="px-2 py-0.5 rounded-lg bg-emerald-100 text-emerald-800 font-black">${fmtNum(mock.total)}</span>` : '<span class="text-gray-400">—</span>'}</td>
+                    <td class="py-2 px-2 text-center no-print">
+                      <button type="button" onclick="openVipCardForStudent(${st.id})" class="px-2 py-1 rounded-lg bg-amber-100 text-amber-900 hover:bg-amber-200 font-extrabold cursor-pointer">🏅</button>
+                    </td>
+                  </tr>`;
+              }).join('') : `<tr><td colspan="6" class="py-8 text-center text-gray-400">Bu sinfda hali o‘quvchi kiritilmagan.</td></tr>`}
+            </tbody>
+          </table>
+        </div>`;
+    }
+
+    function saveOpenedClassMeta(schoolId, classLabel) {
+      const tName = document.getElementById('clsEditTeacherName').value.trim();
+      const tPhone = document.getElementById('clsEditTeacherPhone').value.trim();
+      const planCount = Math.max(1, Number(document.getElementById('clsEditPlanCount').value) || 28);
+      const key = `${schoolId}::${classLabel}`;
+      let dir = appData.classDirectory.find(c => c.key === key);
+      if (!dir) {
+        dir = { key, schoolId: String(schoolId), classLabel, teacherName: tName, teacherPhone: tPhone, planCount };
+        appData.classDirectory.push(dir);
+      } else {
+        dir.teacherName = tName; dir.teacherPhone = tPhone; dir.planCount = planCount;
+      }
+      appData.students.forEach(s => {
+        if (String(s.schoolId) === String(schoolId) && s.classLabel === classLabel) {
+          s.teacherName = tName; s.teacherPhone = tPhone;
+        }
+      });
+      logAudit('Koordinator', `${getSchoolName(schoolId)} · ${classLabel} sinf rahbari yangilandi.`);
+      renderClassesTab();
+      showToast(`✅ ${getSchoolName(schoolId)} · ${classLabel} saqlandi!`);
+    }
+
+    function openBulkClassesModal() {
+      const sel = document.getElementById('bulkClassSchool');
+      sel.innerHTML = appData.schools.map(s => `<option value="${esc(s.id)}">${esc(s.name)}</option>`).join('');
+      if (uiState.selectedSchoolId !== 'ALL') sel.value = uiState.selectedSchoolId;
+      openModal('bulkClassesModal');
+    }
+
+    function saveBulkClassesModal() {
+      const schoolId = document.getElementById('bulkClassSchool').value;
+      const grade = document.getElementById('bulkClassGrade').value;
+      const planCount = Math.max(1, Number(document.getElementById('bulkClassPlanCount').value) || 30);
+      const checked = Array.from(document.querySelectorAll('#bulkLettersBox input[type="checkbox"]:checked')).map(i => i.value);
+      if (!checked.length) return showToast('Kamida 1 ta harf tanlang!', 'error');
+
+      let added = 0;
+      checked.forEach(letter => {
+        const classLabel = `${grade}-${letter}`;
+        const key = `${schoolId}::${classLabel}`;
+        if (!appData.classDirectory.some(c => c.key === key)) {
+          appData.classDirectory.push({ key, schoolId: String(schoolId), classLabel, teacherName: '', teacherPhone: '', planCount });
+          added++;
+        }
+      });
+      uiState.selectedSchoolId = String(schoolId);
+      uiState.openedClassKey = `${schoolId}::${grade}-${checked[0]}`;
+      closeModal('bulkClassesModal');
+      logAudit('Admin', `${getSchoolName(schoolId)} ga ${added} ta yangi sinf yaratildi.`);
+      renderAll();
+      showToast(`⚡ ${getSchoolName(schoolId)} ga ${added} ta sinf yaratildi!`);
+    }
+
+    function openSingleClassModal() {
+      const sel = document.getElementById('singleClassSchool');
+      sel.innerHTML = appData.schools.map(s => `<option value="${esc(s.id)}">${esc(s.name)}</option>`).join('');
+      if (uiState.selectedSchoolId !== 'ALL') sel.value = uiState.selectedSchoolId;
+      document.getElementById('singleClassLabel').value = '';
+      document.getElementById('singleClassTeacher').value = '';
+      document.getElementById('singleClassTeacherPhone').value = '';
+      openModal('singleClassModal');
+    }
+
+    function saveSingleClassModal() {
+      const schoolId = document.getElementById('singleClassSchool').value;
+      const classLabel = document.getElementById('singleClassLabel').value.trim().toUpperCase();
+      const teacherName = document.getElementById('singleClassTeacher').value.trim();
+      const teacherPhone = document.getElementById('singleClassTeacherPhone').value.trim();
+      const planCount = Math.max(1, Number(document.getElementById('singleClassPlan').value) || 30);
+      if (!classLabel) return showToast('Sinf nomini kiriting!', 'error');
+      const key = `${schoolId}::${classLabel}`;
+      if (appData.classDirectory.some(c => c.key === key)) return showToast('Bu sinf mavjud!', 'error');
+
+      appData.classDirectory.push({ key, schoolId: String(schoolId), classLabel, teacherName, teacherPhone, planCount });
+      uiState.selectedSchoolId = String(schoolId);
+      uiState.openedClassKey = key;
+      closeModal('singleClassModal');
+      renderAll();
+      showToast(`✅ ${getSchoolName(schoolId)} · ${classLabel} qo‘shildi!`);
+    }
+
+    function exportSingleClassExcel(schoolId, classLabel) {
+      const list = appData.students.filter(s => String(s.schoolId) === String(schoolId) && s.classLabel === classLabel);
+      const rows = list.map((s, i) => {
+        const m = getLatestApprovedMock(s.id);
+        return { '№': i + 1, 'Maktab': getSchoolName(s.schoolId), 'Sinf': s.classLabel, 'F.I.Sh.': s.name, 'Telefon': s.phone, 'Holat': s.callStatus, 'Kids Mock': m ? m.total : '' };
+      });
+      const ws = XLSX.utils.json_to_sheet(rows);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, `${schoolId}_${classLabel}`);
+      XLSX.writeFile(wb, `Registon_${schoolId}_maktab_${classLabel}.xlsx`);
+    }
+
+    function copyClassTelegramSummary(schoolId, classLabel) {
+      const list = appData.students.filter(s => String(s.schoolId) === String(schoolId) && s.classLabel === classLabel);
+      const ranked = list.map(s => ({ s, m: getLatestApprovedMock(s.id) })).sort((a, b) => (b.m?.total || -1) - (a.m?.total || -1));
+      const lines = [
+        `📊 REGISTON — ${getSchoolName(schoolId).toUpperCase()} · ${classLabel} SINF HISOBOTI`,
+        `👥 Jami o‘quvchilar: ${list.length} nafar`,
+        `──────────────────`,
+        ...ranked.slice(0, 15).map((item, idx) => `${idx + 1}. ${item.s.name} — ${item.m ? fmtNum(item.m.total) + ' / 100 ball' : 'Kids Mock topshirmagan'}`)
+      ];
+      copyTextFallback(lines.join('\n'));
+    }
+
+    /* ============================================================
+       3. 6 SCHOOLS TAB
+       ============================================================ */
+    function renderSchoolsTab() {
+      const grid = document.getElementById('schoolsCardsGrid');
+      grid.innerHTML = appData.schools.map(sc => {
+        const list = appData.students.filter(s => String(s.schoolId) === String(sc.id));
+        const classes = getMergedClassesList(sc.id);
+        const enrolled = list.filter(s => s.callStatus === 'Kursga yozildi').length;
+        return `
+          <div class="rounded-2xl border border-rgn-border bg-rgn-surface/60 p-4 space-y-3 flex flex-col justify-between">
+            <div>
+              <div class="flex items-center justify-between">
+                <span class="px-2.5 py-1 rounded-xl bg-rgn-black text-white text-xs font-black">🏫 ${esc(sc.name)}</span>
+                <span class="text-[11px] font-bold text-gray-500">${esc(sc.city || 'Qarshi')}</span>
+              </div>
+              <div class="grid grid-cols-3 gap-2 mt-3 text-center">
+                <div class="bg-white rounded-xl p-2 border border-rgn-border"><p class="text-[10px] text-gray-500 font-bold">O‘quvchilar</p><p class="text-base font-black text-rgn-black">${list.length}</p></div>
+                <div class="bg-white rounded-xl p-2 border border-rgn-border"><p class="text-[10px] text-gray-500 font-bold">Sinflar</p><p class="text-base font-black text-rgn-orange">${classes.length}</p></div>
+                <div class="bg-white rounded-xl p-2 border border-rgn-border"><p class="text-[10px] text-gray-500 font-bold">Kursda</p><p class="text-base font-black text-emerald-600">${enrolled}</p></div>
+              </div>
+            </div>
+            <div class="flex gap-2 pt-2 border-t border-rgn-border">
+              <button type="button" onclick="openSchoolInClasses('${esc(sc.id)}')" class="flex-1 py-2 rounded-xl bg-rgn-orange hover:bg-rgn-orangeDark text-white text-xs font-extrabold cursor-pointer">🗂️ Sinflar</button>
+              <button type="button" onclick="uiState.selectedSchoolId='${esc(sc.id)}';switchTab('students');renderGlobalHeaderControls();" class="flex-1 py-2 rounded-xl bg-white border border-rgn-border text-rgn-black text-xs font-extrabold cursor-pointer">🎓 O‘quvchilar</button>
+            </div>
+          </div>`;
+      }).join('');
+    }
+
+    function openAddSchoolModal() {
+      document.getElementById('modalSchoolId').value = '';
+      document.getElementById('modalSchoolName').value = '';
+      openModal('addSchoolModal');
+    }
+    function saveNewSchoolModal() {
+      const id = document.getElementById('modalSchoolId').value.trim();
+      const name = document.getElementById('modalSchoolName').value.trim() || `${id}-maktab`;
+      const city = document.getElementById('modalSchoolCity').value.trim() || 'Qarshi shahri';
+      if (!id) return showToast('Maktab raqamini kiriting!', 'error');
+      if (appData.schools.some(s => String(s.id) === String(id))) return showToast('Bu maktab mavjud!', 'error');
+      appData.schools.push({ id, name, city, targetCount: 100 });
+      closeModal('addSchoolModal');
+      renderAll();
+      showToast(`🏫 ${name} bazaga qo‘shildi!`);
+    }
+
+    /* ============================================================
+       4. UNIFIED STUDENTS CRM TAB
+       ============================================================ */
+    function renderStudentsTab() {
+      const scoped = getScopedStudents();
+      const classSel = document.getElementById('stuClassFilter');
+      const prevClass = classSel.value || 'ALL';
+      const uniqueClasses = [...new Set(scoped.map(s => s.classLabel))].sort();
+      classSel.innerHTML = `<option value="ALL">Barcha sinflar (${uniqueClasses.length})</option>` +
+        uniqueClasses.map(c => `<option value="${esc(c)}">${esc(c)}</option>`).join('');
+      classSel.value = uniqueClasses.includes(prevClass) ? prevClass : 'ALL';
+
+      const q = (document.getElementById('stuSearchInput')?.value || '').trim().toLowerCase();
+      let filtered = scoped;
+      if (classSel.value !== 'ALL') filtered = filtered.filter(s => s.classLabel === classSel.value);
+      if (q) {
+        filtered = filtered.filter(s =>
+          s.name.toLowerCase().includes(q) || s.classLabel.toLowerCase().includes(q) ||
+          (s.phone || '').toLowerCase().includes(q) || getPromoCode(s).toLowerCase().includes(q)
+        );
+      }
+
+      const totalPages = Math.max(1, Math.ceil(filtered.length / uiState.stuPerPage));
+      if (uiState.stuPage > totalPages) uiState.stuPage = totalPages;
+      const start = (uiState.stuPage - 1) * uiState.stuPerPage;
+      const pageItems = filtered.slice(start, start + uiState.stuPerPage);
+
+      document.getElementById('studentsTableBody').innerHTML = pageItems.length ? pageItems.map(st => {
+        const mock = getLatestApprovedMock(st.id);
+        const v = getStudentVoucherInfo(st);
+        return `
+          <tr class="hover:bg-rgn-peach/20">
+            <td class="py-2.5 px-3 font-mono text-[11px] text-gray-600">${esc(v.code)}</td>
+            <td class="py-2.5 px-3">
+              <button type="button" onclick="uiState.selectedSchoolId='${esc(st.schoolId)}';uiState.openedClassKey='${esc(st.schoolId)}::${esc(st.classLabel)}';switchTab('classes');renderGlobalHeaderControls();" class="px-2 py-0.5 rounded-lg bg-rgn-surface border border-rgn-border hover:border-rgn-orange font-extrabold text-rgn-black cursor-pointer">
+                ${esc(getSchoolName(st.schoolId))} · ${esc(st.classLabel)}
+              </button>
+            </td>
+            <td class="py-2.5 px-3 font-extrabold text-rgn-black">${esc(st.name)}</td>
+            <td class="py-2.5 px-3"><a href="tel:${esc(st.phone)}" class="font-bold text-sky-700 hover:underline">${esc(st.phone || '—')}</a></td>
+            <td class="py-2.5 px-3">
+              <select onchange="updateStudent(${st.id}, 'callStatus', this.value)" class="px-2 py-1 rounded-lg bg-rgn-surface border border-rgn-border text-[11px] font-bold">
+                ${['Yangi lead', 'Qo‘ng‘iroq qilindi', 'Ko‘tarmadi', 'Sinov darsiga yozildi', 'Kursga yozildi', 'Rad etdi'].map(opt => `<option value="${opt}" ${st.callStatus === opt ? 'selected' : ''}>${opt}</option>`).join('')}
+              </select>
+            </td>
+            <td class="py-2.5 px-2 text-center">${mock ? `<span class="px-2 py-0.5 rounded-lg bg-emerald-100 text-emerald-800 font-black">${fmtNum(mock.total)}</span>` : '—'}</td>
+            <td class="py-2.5 px-2 text-center"><span class="px-2 py-0.5 rounded-lg ${v.badgeClass} text-[10px] font-black">${(v.totalAmount / 1000)}k</span></td>
+            <td class="py-2.5 px-3 text-center">
+              <div class="flex items-center justify-center gap-1">
+                <button type="button" onclick="openVipCardForStudent(${st.id})" class="px-2 py-1 rounded-lg bg-amber-100 text-amber-900 font-bold cursor-pointer" title="VIP Karta">🏅</button>
+                <button type="button" onclick="deleteStudent(${st.id})" class="px-2 py-1 rounded-lg bg-red-50 text-red-600 font-bold cursor-pointer" title="O‘chirish">🗑️</button>
+              </div>
+            </td>
+          </tr>`;
+      }).join('') : `<tr><td colspan="8" class="py-8 text-center text-gray-400">O‘quvchilar topilmadi.</td></tr>`;
+
+      document.getElementById('studentsPagination').innerHTML = `
+        <span class="text-gray-500 font-semibold">Jami: <b>${filtered.length}</b> nafar (Sahifa ${uiState.stuPage} / ${totalPages})</span>
+        <div class="flex items-center gap-1.5">
+          <button type="button" onclick="if(uiState.stuPage>1){uiState.stuPage--;renderStudentsTab();}" class="px-3 py-1.5 rounded-xl bg-rgn-surface border border-rgn-border font-bold cursor-pointer">← Oldingi</button>
+          <button type="button" onclick="if(uiState.stuPage<${totalPages}){uiState.stuPage++;renderStudentsTab();}" class="px-3 py-1.5 rounded-xl bg-rgn-surface border border-rgn-border font-bold cursor-pointer">Keyingi →</button>
+        </div>`;
+    }
+
+    function updateStudent(id, field, value) {
+      const st = getStudentById(id);
+      if (st) {
+        st[field] = value;
+        logAudit(st.operator || 'Operator', `${st.name} (${field} → ${value})`);
+        showToast('✅ O‘zgarish saqlandi');
+      }
+    }
+
+    function deleteStudent(id) {
+      const st = getStudentById(id);
+      appData.students = appData.students.filter(s => Number(s.id) !== Number(id));
+      appData.mockExams = appData.mockExams.filter(m => Number(m.studentId) !== Number(id));
+      if (st) logAudit('Admin', `${st.name} bazadan o‘chirildi.`);
+      renderAll();
+      showToast('🗑️ O‘quvchi bazadan o‘chirildi');
+    }
+
+    function openAddStudentModal(prefillSchoolId = null, prefillClass = null) {
+      const sel = document.getElementById('modalStuSchool');
+      sel.innerHTML = appData.schools.map(s => `<option value="${esc(s.id)}">${esc(s.name)}</option>`).join('');
+      if (prefillSchoolId) sel.value = String(prefillSchoolId);
+      else if (uiState.selectedSchoolId !== 'ALL') sel.value = String(uiState.selectedSchoolId);
+      document.getElementById('modalStuClass').value = prefillClass || '5-A';
+      document.getElementById('modalStuName').value = '';
+      document.getElementById('modalStuPhone').value = '';
+      openModal('addStudentModal');
+    }
+
+    function saveNewStudentModal() {
+      const schoolId = document.getElementById('modalStuSchool').value;
+      const classLabel = document.getElementById('modalStuClass').value.trim().toUpperCase() || '5-A';
+      const name = document.getElementById('modalStuName').value.trim();
+      const phone = document.getElementById('modalStuPhone').value.trim();
+      if (!name) return showToast('O‘quvchi F.I.Sh. ni kiriting!', 'error');
+
+      const newId = appData.students.reduce((m, s) => Math.max(m, Number(s.id) || 0), 1000) + 1;
+      const dir = appData.classDirectory.find(c => c.key === `${schoolId}::${classLabel}`);
+      if (!dir) appData.classDirectory.push({ key: `${schoolId}::${classLabel}`, schoolId: String(schoolId), classLabel, teacherName: '', teacherPhone: '', planCount: 28 });
+
+      appData.students.unshift({
+        id: newId, schoolId: String(schoolId), classLabel, name, phone,
+        teacherName: dir?.teacherName || '', teacherPhone: dir?.teacherPhone || '',
+        callStatus: 'Yangi lead', operator: appData.staff.find(x => x.role === 'Call Operator')?.name || '',
+        note: '', voucherUsed: false, referralBonus: 0, assignedGroup: ''
+      });
+      closeModal('addStudentModal');
+      logAudit('Operator', `Yangi o‘quvchi qo‘shildi: ${name}`);
+      renderAll();
+      showToast(`✅ ${name} qo‘shildi!`);
+    }
+
+    /* ============================================================
+       5. CALL CRM, NO-SHOW, SMS TEMPLATES & AI CALL COACH
+       ============================================================ */
+    function getAiCallCoachTip(st) {
+      const note = (st.note || '').toLowerCase();
+      if (note.includes('qimmat') || note.includes('narx')) return '💡 AI: 200k/150k VIP vaucherni ayting — 1-oylik to‘lov 285k ga tushishini tushuntiring.';
+      if (note.includes('vaqt') || note.includes('band')) return '💡 AI: Shanba/Yakshanba kungi bepul diagnostika va mos smena guruhini taklif qiling.';
+      if (st.callStatus === 'Sinov darsiga yozildi') return '⏰ No-Show nazorati: Darsdan 3 soat oldin manzil lokatsiyasini Telegramdan yuboring.';
+      if (st.callStatus === 'Ko‘tarmadi') return '📲 AI: 2 soatdan keyin qayta tering yoki SMS/TG natija shablonini yuboring.';
+      const m = getLatestApprovedMock(st.id);
+      if (m && m.total >= 70) return '🔥 VIP Lid (70+): Kuchli guruhga taklif qiling va Oltin/Kumush kartani yuboring!';
+      return '✨ AI: Farzandining fanlar kesimidagi tahlilini aytib, bepul sinov darsiga taklif qiling.';
+    }
+
+    function autoDistributeLeadsToOperators() {
+      const ops = appData.staff.filter(s => s.role === 'Call Operator' && s.active).map(s => s.name);
+      if (!ops.length) return showToast('Faol Call Operator topilmadi!', 'error');
+      const scoped = getScopedStudents().filter(s => s.phone && s.phone.trim());
+      scoped.forEach((st, idx) => { st.operator = ops[idx % ops.length]; });
+      logAudit('Admin', `${scoped.length} ta lid ${ops.length} nafar operatorga teng taqsimlandi.`);
+      renderCallCrmTab();
+      showToast(`⚡ ${scoped.length} ta lid ${ops.length} nafar operatorga teng bo‘lindi!`);
+    }
+
+    function renderCallCrmTab() {
+      const scoped = getScopedStudents();
+      const operators = appData.staff.filter(s => s.role === 'Call Operator' && s.active).map(s => s.name);
+
+      // Operator KPI Cards
+      document.getElementById('operatorKpiCards').innerHTML = operators.map(op => {
+        const myLeads = scoped.filter(s => s.operator === op);
+        const trials = myLeads.filter(s => s.callStatus === 'Sinov darsiga yozildi').length;
+        const enrolled = myLeads.filter(s => s.callStatus === 'Kursga yozildi').length;
+        const conv = myLeads.length ? Math.round((enrolled / myLeads.length) * 100) : 0;
+        return `
+          <div class="p-3 rounded-xl bg-rgn-surface border border-rgn-border space-y-1">
+            <div class="flex items-center justify-between">
+              <span class="font-black text-rgn-black">🎧 ${esc(op)}</span>
+              <span class="px-2 py-0.5 rounded-lg bg-emerald-100 text-emerald-800 font-black text-[10px]">Konversiya: ${conv}%</span>
+            </div>
+            <p class="text-[11px] text-gray-600">Lidlar: <b>${myLeads.length}</b> · Sinov: <b>${trials}</b> · Kursga: <b class="text-emerald-700">${enrolled}</b></p>
+          </div>`;
+      }).join('');
+
+      // SMS / TG Templates
+      const templates = [
+        { title: '1-qo‘ng‘iroq javobsiz qolganda', text: 'Assalomu alaykum! Registon o‘quv markazidan qo‘ng‘iroq qildik. Farzandingizning Kids Mock natijalari tayyor bo‘ldi. Qulay vaqtda bog‘lanishimiz mumkinmi?' },
+        { title: 'Sinov darsidan 1 kun oldin eslatma', text: 'Assalomu alaykum! Ertaga Registon Qarshi Globus filialida farzandingiz uchun bepul sinov darsi bo‘lib o‘tadi. Sizni kutib qolamiz!' },
+        { title: 'No-Show (Kelmagan o‘quvchini qaytarish)', text: 'Assalomu alaykum! Bugungi sinov darsiga kela olmadingiz, farzandingiz uchun ajratilgan VIP Yutuqli Kartani yana 2 kunga uzaytirdik. Ertaga kela olasizmi?' }
+      ];
+      document.getElementById('smsTemplatesList').innerHTML = templates.map(t => `
+        <div class="p-2.5 rounded-xl bg-rgn-surface border border-rgn-border flex items-center justify-between gap-2">
+          <div class="truncate">
+            <p class="font-extrabold text-rgn-black">${esc(t.title)}</p>
+            <p class="text-[10px] text-gray-500 truncate">${esc(t.text)}</p>
+          </div>
+          <button type="button" onclick="copyTextFallback('${esc(t.text)}')" class="px-2.5 py-1.5 rounded-lg bg-rgn-black text-white text-[10px] font-extrabold whitespace-nowrap cursor-pointer">📋 Nusxa</button>
+        </div>`).join('');
+
+      const q = (document.getElementById('callSearchInput')?.value || '').trim().toLowerCase();
+      const stFilter = document.getElementById('callStatusFilter')?.value || 'ALL';
+
+      document.getElementById('callCrmStatsRow').innerHTML = [
+        { label: 'Yangi lead', color: 'text-gray-800', cnt: scoped.filter(s => s.callStatus === 'Yangi lead').length },
+        { label: 'Qo‘ng‘iroq qilindi', color: 'text-sky-700', cnt: scoped.filter(s => s.callStatus === 'Qo‘ng‘iroq qilindi').length },
+        { label: 'Ko‘tarmadi', color: 'text-amber-700', cnt: scoped.filter(s => s.callStatus === 'Ko‘tarmadi').length },
+        { label: 'No-Show (Sinov)', color: 'text-red-600', cnt: scoped.filter(s => s.callStatus === 'Sinov darsiga yozildi').length },
+        { label: 'Kursga yozildi', color: 'text-emerald-700', cnt: scoped.filter(s => s.callStatus === 'Kursga yozildi').length },
+        { label: 'VIP (70+ ball)', color: 'text-rgn-orange', cnt: scoped.filter(s => (getLatestApprovedMock(s.id)?.total || 0) >= 70).length }
+      ].map(item => `
+        <div class="p-2.5 rounded-xl bg-rgn-surface border border-rgn-border">
+          <p class="text-[10px] font-bold text-gray-500">${item.label}</p>
+          <p class="text-base font-black ${item.color}">${item.cnt}</p>
+        </div>`).join('');
+
+      let filtered = scoped;
+      if (stFilter === 'NOSHOW') filtered = filtered.filter(s => s.callStatus === 'Sinov darsiga yozildi');
+      else if (stFilter === 'VIP70') filtered = filtered.filter(s => (getLatestApprovedMock(s.id)?.total || 0) >= 70);
+      else if (stFilter !== 'ALL') filtered = filtered.filter(s => s.callStatus === stFilter);
+      if (q) filtered = filtered.filter(s => s.name.toLowerCase().includes(q) || (s.phone || '').toLowerCase().includes(q));
+
+      const totalPages = Math.max(1, Math.ceil(filtered.length / uiState.callPerPage));
+      if (uiState.callPage > totalPages) uiState.callPage = totalPages;
+      const start = (uiState.callPage - 1) * uiState.callPerPage;
+      const pageItems = filtered.slice(start, start + uiState.callPerPage);
+
+      document.getElementById('callCrmTableBody').innerHTML = pageItems.map((st, idx) => {
+        const mock = getLatestApprovedMock(st.id);
+        return `
+          <tr class="hover:bg-rgn-peach/20">
+            <td class="py-2 px-3 text-gray-400 font-bold">${start + idx + 1}</td>
+            <td class="py-2 px-3 font-bold">${esc(getSchoolName(st.schoolId))} · ${esc(st.classLabel)}</td>
+            <td class="py-2 px-3 font-extrabold text-rgn-black">${esc(st.name)}</td>
+            <td class="py-2 px-3"><a href="tel:${esc(st.phone)}" class="font-bold text-sky-700 hover:underline">📞 ${esc(st.phone || '—')}</a></td>
+            <td class="py-2 px-2 text-center">${mock ? `<span class="px-2 py-0.5 rounded-lg bg-emerald-100 text-emerald-800 font-black">${fmtNum(mock.total)}</span>` : '—'}</td>
+            <td class="py-2 px-3">
+              <select onchange="updateStudent(${st.id}, 'operator', this.value)" class="px-2 py-1 rounded-lg bg-rgn-surface border border-rgn-border text-[11px] font-bold">
+                <option value="">Tanlanmagan</option>
+                ${operators.map(op => `<option value="${esc(op)}" ${st.operator === op ? 'selected' : ''}>${esc(op)}</option>`).join('')}
+              </select>
+            </td>
+            <td class="py-2 px-3">
+              <select onchange="updateStudent(${st.id}, 'callStatus', this.value)" class="px-2 py-1 rounded-lg bg-rgn-surface border border-rgn-border text-[11px] font-bold">
+                ${['Yangi lead', 'Qo‘ng‘iroq qilindi', 'Ko‘tarmadi', 'Sinov darsiga yozildi', 'Kursga yozildi', 'Rad etdi'].map(opt => `<option value="${opt}" ${st.callStatus === opt ? 'selected' : ''}>${opt}</option>`).join('')}
+              </select>
+            </td>
+            <td class="py-2 px-3 space-y-1">
+              <input type="text" value="${esc(st.note || '')}" onchange="updateStudent(${st.id}, 'note', this.value);renderCallCrmTab();" placeholder="Izoh yozing (masalan: narx qimmat dedi)..." class="w-full px-2 py-1 rounded-lg bg-white border border-rgn-border text-[11px]" />
+              <p class="text-[10px] text-sky-700 font-semibold">${esc(getAiCallCoachTip(st))}</p>
+            </td>
+          </tr>`;
+      }).join('');
+
+      document.getElementById('callCrmPagination').innerHTML = `
+        <span class="text-gray-500 font-semibold">Jami: <b>${filtered.length}</b> ta lead (Sahifa ${uiState.callPage} / ${totalPages})</span>
+        <div class="flex items-center gap-1.5">
+          <button type="button" onclick="if(uiState.callPage>1){uiState.callPage--;renderCallCrmTab();}" class="px-3 py-1.5 rounded-xl bg-rgn-surface border border-rgn-border font-bold cursor-pointer">← Oldingi</button>
+          <button type="button" onclick="if(uiState.callPage<${totalPages}){uiState.callPage++;renderCallCrmTab();}" class="px-3 py-1.5 rounded-xl bg-rgn-surface border border-rgn-border font-bold cursor-pointer">Keyingi →</button>
+        </div>`;
+    }
+
+    /* ============================================================
+       6. VIP YUTUQLI KARTA, PROMO VERIFIER & REFERRAL BONUS
+       ============================================================ */
+    function openVipCardForStudent(stuId) {
+      switchTab('vipcards');
+      const sel = document.getElementById('vipCardStudentSelect');
+      if (sel) { sel.value = String(stuId); renderVipCardPreview(); }
+    }
+
+    function renderVipCardsTab() {
+      const scoped = getScopedStudents().slice(0, 150);
+      const sel = document.getElementById('vipCardStudentSelect');
+      const prev = sel.value;
+      sel.innerHTML = scoped.map(s => `<option value="${s.id}">${esc(s.name)} (${esc(getSchoolName(s.schoolId))} · ${esc(s.classLabel)})</option>`).join('');
+      if (prev && scoped.some(s => String(s.id) === String(prev))) sel.value = prev;
+
+      const invSel = document.getElementById('refInviterSelect');
+      const frSel = document.getElementById('refFriendSelect');
+      invSel.innerHTML = scoped.slice(0, 80).map(s => `<option value="${s.id}">${esc(s.name)} (${esc(getSchoolName(s.schoolId))})</option>`).join('');
+      frSel.innerHTML = scoped.slice(1, 81).map(s => `<option value="${s.id}">${esc(s.name)} (${esc(getSchoolName(s.schoolId))})</option>`).join('');
+
+      renderVipCardPreview();
+    }
+
+    function renderVipCardPreview() {
+      const stuId = Number(document.getElementById('vipCardStudentSelect')?.value);
+      const st = getStudentById(stuId) || appData.students[0];
+      if (!st) return;
+      const v = getStudentVoucherInfo(st);
+
+      document.getElementById('vipCardPreviewContainer').innerHTML = `
+        <div class="rounded-3xl bg-gradient-to-br from-[#0F172A] via-[#1E293B] to-[#0F172A] text-white p-6 border-2 border-amber-400/70 shadow-xl relative overflow-hidden">
+          <div class="flex flex-wrap items-center justify-between gap-2 border-b border-white/15 pb-3">
+            <div>
+              <span class="px-2.5 py-0.5 rounded-full bg-amber-400 text-black text-[10px] font-black">${esc(v.tier)}</span>
+              <h3 class="text-lg font-black mt-1 tracking-wide">REGISTON · QARSHI GLOBUS FILIALI</h3>
+            </div>
+            <div class="text-right">
+              <p class="text-[10px] text-amber-300 font-bold">PROMO-KOD</p>
+              <p class="font-mono text-sm font-black text-amber-400">${esc(v.code)}</p>
+            </div>
+          </div>
+          <div class="py-4 grid grid-cols-1 sm:grid-cols-12 gap-4 items-center">
+            <div class="sm:col-span-7 space-y-1">
+              <p class="text-[11px] text-slate-400 uppercase font-bold">Karta egasi:</p>
+              <p class="text-xl font-black text-white">${esc(st.name)}</p>
+              <p class="text-xs text-slate-300">🏫 ${esc(getSchoolName(st.schoolId))} · ${esc(st.classLabel)} sinf · Ball: <b>${fmtNum(v.score)} / 100</b></p>
+              ${v.refBonus > 0 ? `<p class="text-[11px] text-emerald-400 font-bold">+50 000 so‘m “Do‘stingni olib kel” bonusi qo‘shilgan!</p>` : ''}
+            </div>
+            <div class="sm:col-span-5 bg-white/10 rounded-2xl p-3.5 text-center border border-amber-400/40">
+              <p class="text-[10px] text-amber-300 font-bold uppercase">Jami Vaucher Qiymati</p>
+              <p class="text-2xl font-black text-amber-400 mt-0.5">${fmtMoney(v.totalAmount)}</p>
+              <p class="text-[10px] text-slate-300 mt-1">+ 1 ta BEPUL SINOV DARSI</p>
+            </div>
+          </div>
+          <div class="pt-3 border-t border-dashed border-white/25 flex items-center justify-between text-[11px] text-slate-300">
+            <span>Holat: ${v.used ? '<b class="text-red-400">ISHLATILGAN</b>' : '<b class="text-emerald-400">FAOL VAUCHER</b>'}</span>
+            <span>Amal qilish muddati: 7 kun</span>
+          </div>
+        </div>`;
+    }
+
+    function downloadVipCardPng() {
+      const stuId = Number(document.getElementById('vipCardStudentSelect')?.value);
+      const st = getStudentById(stuId) || appData.students[0];
+      if (!st) return;
+      const v = getStudentVoucherInfo(st);
+
+      const canvas = document.createElement('canvas');
+      canvas.width = 1120; canvas.height = 720;
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = '#0F172A'; ctx.fillRect(0, 0, 1120, 720);
+      ctx.strokeStyle = '#FBBF24'; ctx.lineWidth = 10; ctx.strokeRect(24, 24, 1072, 672);
+
+      ctx.fillStyle = '#FBBF24'; ctx.font = '900 28px Inter, sans-serif';
+      ctx.fillText(`🏅 ${v.tier}`, 64, 95);
+      ctx.fillStyle = '#FFFFFF'; ctx.font = '900 36px Inter, sans-serif';
+      ctx.fillText('REGISTON O‘QUV MARKAZI · QARSHI GLOBUS', 64, 148);
+
+      ctx.fillStyle = '#94A3B8'; ctx.font = '700 22px Inter, sans-serif';
+      ctx.fillText('O‘QUVCHI F.I.SH.:', 64, 240);
+      ctx.fillStyle = '#FFFFFF'; ctx.font = '900 44px Inter, sans-serif';
+      ctx.fillText(st.name, 64, 295);
+
+      ctx.fillStyle = '#CBD5E1'; ctx.font = '700 24px Inter, sans-serif';
+      ctx.fillText(`${getSchoolName(st.schoolId)} · ${st.classLabel} sinf · Natija: ${fmtNum(v.score)} / 100 ball`, 64, 345);
+
+      ctx.fillStyle = '#F26522'; ctx.fillRect(64, 410, 992, 140);
+      ctx.fillStyle = '#FFFFFF'; ctx.font = '900 48px Inter, sans-serif';
+      ctx.fillText(`${fmtMoney(v.totalAmount)} VAUCHER + BEPUL SINOV DARSI`, 92, 495);
+
+      ctx.fillStyle = '#FBBF24'; ctx.font = '900 30px monospace';
+      ctx.fillText(`PROMO-KOD: ${v.code}`, 64, 635);
+
+      const a = document.createElement('a');
+      a.href = canvas.toDataURL('image/png');
+      a.download = `${v.code}.png`;
+      a.click();
+      showToast('🖼️ VIP Yutuqli Karta PNG yuklab olindi!');
+    }
+
+    function sendVipCardToTelegram() {
+      const stuId = Number(document.getElementById('vipCardStudentSelect')?.value);
+      const st = getStudentById(stuId) || appData.students[0];
+      if (!st) return;
+      const v = getStudentVoucherInfo(st);
+      const msg = `🏅 TABRIKLAYMIZ!\nHurmatli ota-ona! Farzandingiz ${st.name} (${getSchoolName(st.schoolId)} · ${st.classLabel}) Registon bilimlar sinovida ${fmtNum(v.score)} ball to‘plab, ${fmtMoney(v.totalAmount)} lik ${v.tier} va BEPUL SINOV DARSI sohibi bo‘ldi!\n🎫 Promo-kod: ${v.code}`;
+      copyTextFallback(msg);
+      const digits = (st.phone || '').replace(/\D/g, '');
+      if (digits.length >= 9) window.open(`https://t.me/+${digits}`, '_blank');
+    }
+
+    function verifyPromoCode() {
+      const code = document.getElementById('promoVerifyInput').value.trim().toUpperCase();
+      const box = document.getElementById('promoVerifyResult');
+      if (!code) return showToast('Promo-kodni kiriting!', 'error');
+      const st = appData.students.find(s => getPromoCode(s).toUpperCase() === code);
+      if (!st) {
+        box.innerHTML = `<div class="p-3 rounded-xl bg-red-50 border border-red-200 text-red-700 font-bold">❌ Bunday promo-kod bazada topilmadi!</div>`;
+        return;
+      }
+      const v = getStudentVoucherInfo(st);
+      box.innerHTML = `
+        <div class="p-3.5 rounded-xl border ${v.used ? 'bg-red-50 border-red-200' : 'bg-emerald-50 border-emerald-200'} space-y-2">
+          <p class="font-black text-rgn-black">👤 ${esc(st.name)} (${esc(getSchoolName(st.schoolId))} · ${esc(st.classLabel)})</p>
+          <p class="font-bold">💰 Vaucher miqdori: <span class="text-rgn-orange font-black">${fmtMoney(v.totalAmount)}</span> (${esc(v.tier)})</p>
+          <p class="font-bold">Holat: ${v.used ? '<span class="text-red-600">❌ Allaqachon ishlatilgan</span>' : '<span class="text-emerald-700">✅ Faol — chegirma qo‘llash mumkin</span>'}</p>
+          ${!v.used ? `<button type="button" onclick="markVoucherUsed(${st.id})" class="px-3 py-1.5 rounded-lg bg-emerald-600 text-white font-extrabold cursor-pointer">✅ Ishlatildi deb belgilash</button>` : ''}
+        </div>`;
+    }
+
+    function markVoucherUsed(stuId) {
+      const st = getStudentById(stuId);
+      if (st) {
+        st.voucherUsed = true;
+        logAudit('Administrator', `${st.name} (${getPromoCode(st)}) vaucherini ishlatdi.`);
+        verifyPromoCode();
+        showToast('✅ Vaucher ishlatildi deb belgilandi!');
+      }
+    }
+
+    function applyReferralBonus() {
+      const invId = Number(document.getElementById('refInviterSelect').value);
+      const frId = Number(document.getElementById('refFriendSelect').value);
+      if (!invId || !frId || invId === frId) return showToast('Ikkita turli o‘quvchini tanlang!', 'error');
+      const inv = getStudentById(invId);
+      const fr = getStudentById(frId);
+      inv.referralBonus = (Number(inv.referralBonus) || 0) + 50000;
+      fr.referralBonus = (Number(fr.referralBonus) || 0) + 50000;
+      logAudit('Operator', `Referral bonus: ${inv.name} va ${fr.name} ga +50 000 so‘m berildi.`);
+      renderVipCardPreview();
+      showToast(`🎁 ${inv.name} va ${fr.name} ga +50 000 so‘mdan bonus qo‘shildi!`);
+    }
+
+    /* ============================================================
+       7. KASSA & GROUPS CAPACITY TAB
+       ============================================================ */
+    function renderKassaTab() {
+      const scoped = getScopedStudents().slice(0, 150);
+      const stuSel = document.getElementById('kassaStudentSelect');
+      stuSel.innerHTML = scoped.map(s => `<option value="${s.id}">${esc(s.name)} (${esc(getSchoolName(s.schoolId))} · ${esc(s.classLabel)})</option>`).join('');
+
+      const grpSel = document.getElementById('kassaGroupSelect');
+      grpSel.innerHTML = appData.groups.map(g => `<option value="${g.id}">${esc(g.name)} (${g.capacity - g.enrolled} bo‘sh joy)</option>`).join('');
+
+      const totalRev = (appData.payments || []).reduce((a, b) => a + (Number(b.paid) || 0), 0);
+      document.getElementById('kassaTotalRevenueBadge').textContent = `Sof tushum: ${fmtMoney(totalRev)}`;
+
+      document.getElementById('groupsCapacityGrid').innerHTML = appData.groups.map(g => {
+        const free = Math.max(0, g.capacity - g.enrolled);
+        const pct = Math.min(100, Math.round((g.enrolled / g.capacity) * 100));
+        return `
+          <div class="p-3 rounded-xl bg-rgn-surface border border-rgn-border space-y-1.5">
+            <p class="font-black text-rgn-black">${esc(g.name)}</p>
+            <div class="flex justify-between text-[11px]">
+              <span>Band: <b>${g.enrolled}/${g.capacity}</b></span>
+              <span class="font-extrabold ${free > 0 ? 'text-emerald-700' : 'text-red-600'}">${free} bo‘sh o‘rin</span>
+            </div>
+            <div class="w-full h-1.5 bg-gray-200 rounded-full overflow-hidden"><div class="h-full bg-rgn-orange" style="width:${pct}%"></div></div>
+          </div>`;
+      }).join('');
+
+      document.getElementById('kassaPaymentsList').innerHTML = (appData.payments || []).map(p => `
+        <div class="p-2.5 rounded-xl bg-rgn-surface border border-rgn-border flex items-center justify-between">
+          <div>
+            <p class="font-extrabold text-rgn-black">${esc(p.studentName)} <span class="text-gray-500 font-normal">(${esc(p.schoolClass)})</span></p>
+            <p class="text-[10px] text-gray-500">${esc(p.groupName)} · Chegirma: -${fmtMoney(p.discount)}</p>
+          </div>
+          <span class="font-black text-emerald-700">+${fmtMoney(p.paid)}</span>
+        </div>`).join('');
+
+      recalcKassaForm();
+    }
+
+    function recalcKassaForm() {
+      const stuId = Number(document.getElementById('kassaStudentSelect')?.value);
+      const st = getStudentById(stuId);
+      const basePrice = Number(document.getElementById('kassaBasePrice')?.value) || 485000;
+      const v = st ? getStudentVoucherInfo(st) : { totalAmount: 0, used: false, code: '' };
+      const discount = v.used ? 0 : Math.min(basePrice, v.totalAmount);
+      const finalPay = Math.max(0, basePrice - discount);
+
+      document.getElementById('kassaSummaryBox').innerHTML = `
+        <p class="font-bold">Promo-kod: <span class="font-mono">${esc(v.code)}</span> ${v.used ? '(ishlatilgan)' : ''}</p>
+        <p class="font-bold text-rgn-orange">VIP Karta chegirmasi: -${fmtMoney(discount)}</p>
+        <p class="text-sm font-black text-emerald-700 pt-1 border-t border-rgn-orange/20">To‘lanadigan sof summa: ${fmtMoney(finalPay)}</p>`;
+    }
+
+    function recordKassaPayment() {
+      const stuId = Number(document.getElementById('kassaStudentSelect').value);
+      const grpId = document.getElementById('kassaGroupSelect').value;
+      const st = getStudentById(stuId);
+      const grp = appData.groups.find(g => g.id === grpId);
+      if (!st || !grp) return;
+
+      const basePrice = Number(document.getElementById('kassaBasePrice').value) || 485000;
+      const v = getStudentVoucherInfo(st);
+      const discount = v.used ? 0 : Math.min(basePrice, v.totalAmount);
+      const finalPay = Math.max(0, basePrice - discount);
+
+      st.callStatus = 'Kursga yozildi';
+      st.voucherUsed = true;
+      st.assignedGroup = grp.name;
+      if (grp.enrolled < grp.capacity) grp.enrolled++;
+
+      appData.payments.unshift({
+        id: Date.now(), studentName: st.name, schoolClass: `${getSchoolName(st.schoolId)} · ${st.classLabel}`,
+        groupName: grp.name, basePrice, discount, paid: finalPay, time: 'Hozir'
+      });
+      logAudit('Kassa', `${st.name} kursga yozildi (${fmtMoney(finalPay)}).`);
+      renderKassaTab();
+      showToast(`✅ ${st.name} uchun to‘lov qabul qilindi!`);
+    }
+
+    /* ============================================================
+       8. KIDS MOCK TAB
+       ============================================================ */
+    function updateMockRegLabels() {
+      const tr = getTrackSubjects(document.getElementById('mockRegTrackSelect').value);
+      const d1 = document.getElementById('mockRegDiff1');
+      const d2 = document.getElementById('mockRegDiff2');
+      d1.options[0].text = `${tr.sub1}: Easy`; d1.options[1].text = `${tr.sub1}: Hard`;
+      d2.options[0].text = `${tr.sub2}: Easy`; d2.options[1].text = `${tr.sub2}: Hard`;
+    }
+
+    function renderKidsMockTab() {
+      const monthExams = appData.mockExams.filter(m => m.monthId === uiState.activeMockMonth);
+      const regSel = document.getElementById('mockRegStudentSelect');
+      const registeredIds = new Set(monthExams.map(m => Number(m.studentId)));
+      const unregistered = getScopedStudents().filter(s => !registeredIds.has(Number(s.id))).slice(0, 120);
+      regSel.innerHTML = unregistered.length
+        ? unregistered.map(s => `<option value="${s.id}">${esc(s.name)} (${esc(getSchoolName(s.schoolId))} · ${esc(s.classLabel)})</option>`).join('')
+        : '<option value="">Barcha o‘quvchilar ro‘yxatda</option>';
+      updateMockRegLabels();
+
+      document.getElementById('fourRoomsGrid').innerHTML = [1, 2, 3, 4].map(roomNo => {
+        const inRoom = monthExams.filter(m => Number(m.room) === roomNo);
+        const sup = appData.staff.find(s => s.role === 'Nazoratchi' && String(s.room) === String(roomNo));
+        return `
+          <div class="rounded-2xl border border-rgn-border bg-rgn-surface p-3.5 space-y-2">
+            <div class="flex items-center justify-between">
+              <span class="px-2.5 py-1 rounded-xl bg-rgn-black text-white text-xs font-black">🚪 ${roomNo}-xona</span>
+              <span class="text-xs font-black text-rgn-orange">${inRoom.length} o‘rindiq</span>
+            </div>
+            <p class="text-[11px] text-gray-600 font-bold">🛡️ ${esc(sup ? sup.name : 'Nazoratchi biriktirilmagan')}</p>
+            <div class="max-h-36 overflow-y-auto custom-scroll space-y-1 pt-1 border-t border-rgn-border text-[11px]">
+              ${inRoom.map(m => {
+                const st = getStudentById(m.studentId);
+                return `<div class="flex items-center justify-between bg-white px-2 py-1 rounded-lg border border-rgn-border">
+                  <span class="font-bold truncate max-w-[140px]">${esc(st?.name || 'O‘quvchi')}</span>
+                  <span class="text-[10px] font-mono text-gray-500">${esc(m.seat)}</span>
+                </div>`;
+              }).join('') || '<p class="text-gray-400 text-center py-3">Bo‘sh xona</p>'}
+            </div>
+          </div>`;
+      }).join('');
+
+      const roomFilter = document.getElementById('mockRoomFilter')?.value || 'ALL';
+      const rows = roomFilter === 'ALL' ? monthExams : monthExams.filter(m => String(m.room) === String(roomFilter));
+
+      document.getElementById('kidsMockTableBody').innerHTML = rows.map(m => {
+        const st = getStudentById(m.studentId);
+        const tr = getTrackSubjects(m.track);
+        const statusMap = {
+          APPROVED: '<span class="px-2 py-0.5 rounded-lg bg-emerald-100 text-emerald-800 font-extrabold">✅ Tasdiqlangan</span>',
+          PENDING: '<span class="px-2 py-0.5 rounded-lg bg-amber-100 text-amber-800 font-extrabold">⏳ Kutilmoqda</span>',
+          REJECTED: '<span class="px-2 py-0.5 rounded-lg bg-red-100 text-red-700 font-extrabold">❌ Rad etilgan</span>',
+          NOT_SUBMITTED: '<span class="px-2 py-0.5 rounded-lg bg-gray-100 text-gray-600 font-bold">Kiritilmagan</span>'
+        };
+        return `
+          <tr class="hover:bg-rgn-peach/20">
+            <td class="py-2.5 px-3 font-black text-rgn-black">${esc(m.seat)}</td>
+            <td class="py-2.5 px-3"><p class="font-extrabold text-rgn-black">${esc(st?.name || 'O‘quvchi')}</p><p class="text-[10px] text-gray-500">${esc(getSchoolName(st?.schoolId))} · ${esc(st?.classLabel)}</p></td>
+            <td class="py-2.5 px-3"><p class="font-bold">${tr.label}</p><p class="text-[10px] text-gray-500">${tr.sub1}: ${m.diff1} · ${tr.sub2}: ${m.diff2}</p></td>
+            <td class="py-2.5 px-2 text-center font-bold">${m.c1 !== null ? `${m.c1}/40 (${fmtNum(m.p1)})` : '—'}</td>
+            <td class="py-2.5 px-2 text-center font-bold">${m.c2 !== null ? `${m.c2}/40 (${fmtNum(m.p2)})` : '—'}</td>
+            <td class="py-2.5 px-2 text-center font-black text-rgn-orange">${m.c1 !== null ? fmtNum(m.total) : '—'}</td>
+            <td class="py-2.5 px-3 text-center">${statusMap[m.approvalStatus] || ''}</td>
+            <td class="py-2.5 px-3 text-center"><button type="button" onclick="openExamInBot(${m.id})" class="px-2.5 py-1 rounded-lg bg-sky-50 text-sky-700 font-extrabold cursor-pointer">🤖 Botda</button></td>
+          </tr>`;
+      }).join('');
+    }
+
+    function registerStudentToKidsMock() {
+      const stuId = Number(document.getElementById('mockRegStudentSelect').value);
+      if (!stuId) return showToast('O‘quvchi tanlanmadi!', 'error');
+      const track = document.getElementById('mockRegTrackSelect').value;
+      const diff1 = document.getElementById('mockRegDiff1').value;
+      const diff2 = document.getElementById('mockRegDiff2').value;
+      const monthExams = appData.mockExams.filter(m => m.monthId === uiState.activeMockMonth);
+      const room = (monthExams.length % 4) + 1;
+      const seatNo = monthExams.filter(m => m.room === room).length + 1;
+      const newId = appData.mockExams.reduce((mx, e) => Math.max(mx, Number(e.id) || 0), 5000) + 1;
+
+      appData.mockExams.unshift({
+        id: newId, monthId: uiState.activeMockMonth, studentId: stuId, track, diff1, diff2,
+        room, seat: `${room}-Xona #${seatNo}`, c1: null, c2: null, p1: 0, p2: 0, total: 0,
+        approvalStatus: 'NOT_SUBMITTED', supervisor: '', submittedAt: '', rejectReason: ''
+      });
+      renderAll();
+      showToast(`🏆 Kids Mock (${room}-Xona #${seatNo}) ga yozildi!`);
+    }
+
+    function autoAssignFourRooms() {
+      const monthExams = appData.mockExams.filter(m => m.monthId === uiState.activeMockMonth);
+      const counters = { 1: 0, 2: 0, 3: 0, 4: 0 };
+      monthExams.forEach((m, idx) => { const r = (idx % 4) + 1; counters[r]++; m.room = r; m.seat = `${r}-Xona #${counters[r]}`; });
+      renderKidsMockTab();
+      showToast(`🪑 ${monthExams.length} nafar o‘quvchi 4 ta xonaga taqsimlandi!`);
+    }
+
+    function openExamInBot(examId) {
+      switchTab('tgbot');
+      const sel = document.getElementById('botStudentSelect');
+      if (sel) { sel.value = String(examId); recalcBotLivePreview(); }
+    }
+
+    /* ============================================================
+       9. TELEGRAM BOT TAB
+       ============================================================ */
+    function renderTgBotTab() {
+      const cfg = appData.botSettings || { token: '', adminChatId: '', botUsername: '' };
+      document.getElementById('tgBotTokenInput').value = cfg.token || '';
+      document.getElementById('tgAdminChatIdInput').value = cfg.adminChatId || '';
+
+      const badge = document.getElementById('tgConnectionBadge');
+      const headerTitle = document.getElementById('tgBotHeaderTitle');
+      if (cfg.token && cfg.adminChatId) {
+        badge.className = 'px-2.5 py-1 rounded-xl text-[10px] font-black bg-emerald-100 text-emerald-800 whitespace-nowrap';
+        badge.textContent = cfg.botUsername ? `● Ulangan (@${cfg.botUsername})` : '● Real API faol';
+        headerTitle.textContent = cfg.botUsername ? `@${cfg.botUsername}` : 'Registon Kids Mock Bot';
+      } else {
+        badge.className = 'px-2.5 py-1 rounded-xl text-[10px] font-black bg-amber-100 text-amber-800 whitespace-nowrap';
+        badge.textContent = '○ Token tayyor';
+      }
+
+      const supSel = document.getElementById('botSupervisorSelect');
+      const sups = appData.staff.filter(s => (s.role === 'Nazoratchi' || s.role === 'Admin') && s.active);
+      supSel.innerHTML = sups.map(s => `<option value="${esc(s.name)}">${esc(s.name)} ${s.room ? `(${s.room}-xona)` : ''}</option>`).join('');
+
+      populateBotStudentsByRoom();
+      renderTgChatFeed();
+    }
+
+    function saveTgBotSettings() {
+      appData.botSettings.token = document.getElementById('tgBotTokenInput').value.trim();
+      appData.botSettings.adminChatId = document.getElementById('tgAdminChatIdInput').value.trim();
+      renderTgBotTab();
+      showToast('💾 Bot sozlamalari saqlandi!');
+    }
+
+    async function autoDetectAdminChatId() {
+      saveTgBotSettings();
+      const { token } = appData.botSettings || {};
+      if (!token) return showToast('Avval Bot Tokenni kiriting!', 'error');
+      try {
+        const res = await fetch(`https://api.telegram.org/bot${encodeURIComponent(token)}/getUpdates`);
+        const data = await res.json();
+        if (!data.ok) return showToast(`Token xato: ${data.description}`, 'error');
+        const msgs = (data.result || []).filter(u => u.message?.chat?.id || u.channel_post?.chat?.id);
+        if (!msgs.length) return showToast('Avval Telegramda botingizga /start bosing!', 'info');
+        const last = msgs[msgs.length - 1];
+        const chat = last.message?.chat || last.channel_post?.chat;
+        appData.botSettings.adminChatId = String(chat.id);
+        appData.botSettings.lastUpdateId = Math.max(appData.botSettings.lastUpdateId || 0, last.update_id);
+        document.getElementById('tgAdminChatIdInput').value = String(chat.id);
+        showToast(`✅ Chat ID topildi: ${chat.id}`);
+        await testRealTelegramBot();
+      } catch (e) {
+        showToast('Telegram API ga ulanib bo‘lmadi.', 'error');
+      }
+    }
+
+    async function sendRealTelegramMessage(text) {
+      const { token, adminChatId } = appData.botSettings || {};
+      if (!token || !adminChatId) return { ok: false, skipped: true };
+      try {
+        const res = await fetch(`https://api.telegram.org/bot${encodeURIComponent(token)}/sendMessage`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ chat_id: adminChatId, text })
+        });
+        return await res.json();
+      } catch (e) { return { ok: false }; }
+    }
+
+    async function testRealTelegramBot() {
+      saveTgBotSettings();
+      const { token, adminChatId } = appData.botSettings;
+      if (!token) return showToast('Token kiriting!', 'error');
+      try {
+        const meRes = await fetch(`https://api.telegram.org/bot${encodeURIComponent(token)}/getMe`);
+        const meData = await meRes.json();
+        if (!meData.ok) return showToast(`Token xato: ${meData.description}`, 'error');
+        appData.botSettings.botUsername = meData.result.username;
+        if (adminChatId) {
+          const sendRes = await sendRealTelegramMessage(`✅ Registon Kids Mock CRM @${meData.result.username} botiga ulandi!`);
+          if (sendRes.ok) showToast(`✅ @${meData.result.username} ulandi va test xabari yuborildi!`);
+        } else showToast(`✅ Bot topildi: @${meData.result.username}`, 'info');
+        renderTgBotTab();
+      } catch (e) { showToast('Telegram API ulanish xatosi.', 'error'); }
+    }
+
+    async function syncUpdatesFromTelegram() {
+      const { token } = appData.botSettings || {};
+      if (!token) return showToast('Token kiriting!', 'error');
+      try {
+        const offset = (appData.botSettings.lastUpdateId || 0) + 1;
+        const res = await fetch(`https://api.telegram.org/bot${encodeURIComponent(token)}/getUpdates?offset=${offset}`);
+        const data = await res.json();
+        if (!data.ok || !data.result.length) return showToast('Yangi Telegram xabarlari yo‘q.', 'info');
+        data.result.forEach(upd => {
+          appData.botSettings.lastUpdateId = Math.max(appData.botSettings.lastUpdateId || 0, upd.update_id);
+          if (upd.message?.text) {
+            appData.tgLogs.push({ id: Date.now() + upd.update_id, sender: 'USER', time: new Date().toTimeString().slice(0, 5), text: `💬 ${upd.message.from?.first_name || 'User'}: ${upd.message.text}` });
+          }
+        });
+        renderTgChatFeed();
+      } catch (e) {}
+    }
+
+    function populateBotStudentsByRoom() {
+      const room = document.getElementById('botRoomSelect')?.value || 'ALL';
+      let exams = appData.mockExams.filter(m => m.monthId === uiState.activeMockMonth);
+      if (room !== 'ALL') exams = exams.filter(m => String(m.room) === String(room));
+      const sel = document.getElementById('botStudentSelect');
+      sel.innerHTML = exams.map(m => {
+        const st = getStudentById(m.studentId);
+        return `<option value="${m.id}">${esc(m.seat)} · ${esc(st?.name || 'O‘quvchi')}</option>`;
+      }).join('') || '<option value="">O‘quvchi yo‘q</option>';
+      recalcBotLivePreview();
+    }
+
+    function recalcBotLivePreview() {
+      const examId = Number(document.getElementById('botStudentSelect')?.value);
+      const exam = appData.mockExams.find(m => Number(m.id) === examId);
+      const tr = getTrackSubjects(exam?.track || 'MATH_ENG');
+      document.getElementById('botSub1Label').textContent = `1-fan (${tr.sub1}) to‘g‘ri (0–40):`;
+      document.getElementById('botSub2Label').textContent = `2-fan (${tr.sub2}) to‘g‘ri (0–40):`;
+      const calc = calcKidsMockScore(document.getElementById('botSub1Correct').value, document.getElementById('botSub2Correct').value);
+      document.getElementById('botLiveCalcCard').innerHTML = `
+        <div><p class="text-slate-300 text-[10px]">Avtomatik hisob</p><p class="font-extrabold">${tr.sub1}: ${fmtNum(calc.p1)} · ${tr.sub2}: ${fmtNum(calc.p2)}</p></div>
+        <span class="px-3 py-1 rounded-xl bg-rgn-orange text-white font-black text-sm">${fmtNum(calc.total)} / 100</span>`;
+    }
+
+    async function submitResultViaTelegramBot() {
+      const examId = Number(document.getElementById('botStudentSelect').value);
+      const exam = appData.mockExams.find(m => Number(m.id) === examId);
+      if (!exam) return showToast('O‘quvchi tanlanmadi!', 'error');
+      const st = getStudentById(exam.studentId);
+      const tr = getTrackSubjects(exam.track);
+      const supervisor = document.getElementById('botSupervisorSelect').value || 'Nazoratchi';
+      const calc = calcKidsMockScore(document.getElementById('botSub1Correct').value, document.getElementById('botSub2Correct').value);
+      const nowStr = new Date().toTimeString().slice(0, 5);
+
+      exam.c1 = calc.c1; exam.c2 = calc.c2; exam.p1 = calc.p1; exam.p2 = calc.p2; exam.total = calc.total;
+      exam.supervisor = supervisor; exam.submittedAt = `Bugun · ${nowStr}`; exam.approvalStatus = 'PENDING'; exam.rejectReason = '';
+
+      const botMsg = `🏆 YANGI KIDS MOCK NATIJASI (TASDIQ KUTMOQDA)\n👤 ${st?.name} (${getSchoolName(st?.schoolId)} · ${st?.classLabel})\n📚 ${tr.sub1}: ${calc.c1}/40 (${fmtNum(calc.p1)}) + ${tr.sub2}: ${calc.c2}/40 (${fmtNum(calc.p2)})\n🎯 JAMI: ${fmtNum(calc.total)} / 100 ball\n🛡️ Nazoratchi: ${supervisor}`;
+      appData.tgLogs.push({ id: Date.now(), sender: 'BOT', time: nowStr, text: botMsg });
+      logAudit(supervisor, `${st?.name} natijasi botga kiritildi (${fmtNum(calc.total)} ball).`);
+      await sendRealTelegramMessage(botMsg);
+      renderAll();
+      showToast('✅ Natija hisoblandi va Admin tasdig‘i navbatiga tushdi!');
+    }
+
+    function renderTgChatFeed() {
+      const feed = document.getElementById('tgChatFeed');
+      feed.innerHTML = appData.tgLogs.map(log => {
+        const isBot = log.sender === 'BOT';
+        return `<div class="flex ${isBot ? 'justify-start' : 'justify-end'}"><div class="max-w-[85%] rounded-2xl px-3.5 py-2.5 text-xs shadow-xs whitespace-pre-line ${isBot ? 'bg-white text-rgn-black' : 'bg-[#EFFDDE] text-rgn-black'}"><p>${esc(log.text)}</p><p class="text-[9px] text-gray-400 text-right mt-1">${esc(log.time)}</p></div></div>`;
+      }).join('');
+      feed.scrollTop = feed.scrollHeight;
+    }
+
+    /* ============================================================
+       10. ADMIN APPROVAL TAB
+       ============================================================ */
+    function renderApprovalTab() {
+      const filter = document.getElementById('approvalStatusFilter')?.value || 'PENDING';
+      const list = appData.mockExams.filter(m => m.approvalStatus !== 'NOT_SUBMITTED' && (filter === 'ALL' || m.approvalStatus === filter));
+
+      document.getElementById('approvalTableBody').innerHTML = list.length ? list.map(m => {
+        const st = getStudentById(m.studentId);
+        const tr = getTrackSubjects(m.track);
+        return `
+          <tr class="hover:bg-rgn-peach/20">
+            <td class="py-2.5 px-3"><p class="font-bold text-rgn-black">${esc(m.supervisor || 'Nazoratchi')}</p><p class="text-[10px] text-gray-500">${esc(m.submittedAt)}</p></td>
+            <td class="py-2.5 px-3"><p class="font-extrabold text-rgn-black">${esc(st?.name || 'O‘quvchi')}</p><p class="text-[10px] text-gray-500">${esc(getSchoolName(st?.schoolId))} · ${esc(st?.classLabel)}</p></td>
+            <td class="py-2.5 px-3"><p class="font-bold">${esc(m.seat)}</p><p class="text-[10px] text-gray-500">${tr.label}</p></td>
+            <td class="py-2.5 px-2 text-center font-bold">${m.c1}/40 → ${fmtNum(m.p1)}</td>
+            <td class="py-2.5 px-2 text-center font-bold">${m.c2}/40 → ${fmtNum(m.p2)}</td>
+            <td class="py-2.5 px-2 text-center font-black text-rgn-orange">${fmtNum(m.total)}</td>
+            <td class="py-2.5 px-3 text-center">${m.approvalStatus === 'PENDING' ? '<span class="px-2 py-0.5 rounded-lg bg-amber-100 text-amber-800 font-extrabold">⏳ Kutilmoqda</span>' : (m.approvalStatus === 'APPROVED' ? '<span class="px-2 py-0.5 rounded-lg bg-emerald-100 text-emerald-800 font-extrabold">✅ Tasdiqlangan</span>' : '<span class="px-2 py-0.5 rounded-lg bg-red-100 text-red-700 font-extrabold">❌ Rad etilgan</span>')}</td>
+            <td class="py-2.5 px-3 text-center">
+              <div class="flex items-center justify-center gap-1.5">
+                <button type="button" onclick="approveExamResult(${m.id})" class="px-2.5 py-1 rounded-lg bg-emerald-600 text-white font-extrabold cursor-pointer">✅ Tasdiq</button>
+                <button type="button" onclick="openRejectModal(${m.id})" class="px-2.5 py-1 rounded-lg bg-red-50 text-red-700 font-extrabold cursor-pointer">❌ Rad</button>
+              </div>
+            </td>
+          </tr>`;
+      }).join('') : `<tr><td colspan="8" class="py-8 text-center text-gray-400">Natijalar yo‘q.</td></tr>`;
+    }
+
+    async function approveExamResult(examId) {
+      const m = appData.mockExams.find(x => Number(x.id) === Number(examId));
+      if (!m) return;
+      m.approvalStatus = 'APPROVED';
+      const st = getStudentById(m.studentId);
+      logAudit('Admin', `${st?.name} Kids Mock natijasi tasdiqlandi (${fmtNum(m.total)} ball).`);
+      await sendRealTelegramMessage(`✅ TASDIQLANDI: ${st?.name} (${getSchoolName(st?.schoolId)} · ${st?.classLabel}) — ${fmtNum(m.total)} / 100 ball!`);
+      renderAll();
+      showToast(`✅ ${st?.name} natijasi tasdiqlandi!`);
+    }
+
+    function openRejectModal(examId) {
+      uiState.pendingRejectExamId = examId;
+      const m = appData.mockExams.find(x => Number(x.id) === Number(examId));
+      const st = getStudentById(m?.studentId);
+      document.getElementById('rejectModalStudentInfo').textContent = `${st?.name || 'O‘quvchi'} — ${fmtNum(m?.total)} ball`;
+      openModal('rejectReasonModal');
+    }
+
+    function confirmRejectExam() {
+      const m = appData.mockExams.find(x => Number(x.id) === Number(uiState.pendingRejectExamId));
+      if (m) { m.approvalStatus = 'REJECTED'; m.rejectReason = document.getElementById('rejectReasonInput').value.trim(); }
+      closeModal('rejectReasonModal');
+      renderAll();
+      showToast('❌ Natija rad etildi');
+    }
+
+    function approveAllPendingResults() {
+      let count = 0;
+      appData.mockExams.forEach(m => { if (m.approvalStatus === 'PENDING') { m.approvalStatus = 'APPROVED'; count++; } });
+      logAudit('Admin', `${count} ta natija bir vaqtda tasdiqlandi.`);
+      renderAll();
+      showToast(`✅ ${count} ta natija tasdiqlandi!`);
+    }
+
+    /* ============================================================
+       11. PARENT PERSONAL PORTAL TAB
+       ============================================================ */
+    function searchParentPortal() {
+      const q = document.getElementById('parentSearchInput').value.trim().toLowerCase();
+      const box = document.getElementById('parentPortalResult');
+      if (!q) return showToast('Telefon raqam yoki promo-kod kiriting!', 'error');
+
+      const st = appData.students.find(s =>
+        (s.phone || '').replace(/\D/g, '').includes(q.replace(/\D/g, '')) && q.replace(/\D/g, '').length >= 7 ||
+        getPromoCode(s).toLowerCase() === q
+      );
+
+      if (!st) {
+        box.innerHTML = `<div class="p-4 rounded-2xl bg-red-50 border border-red-200 text-xs text-red-700 font-bold text-center">❌ Ma’lumot topilmadi. Telefon raqamingizni +998 90... ko‘rinishida tekshirib qayta kiriting.</div>`;
+        return;
+      }
+
+      const v = getStudentVoucherInfo(st);
+      const m = getLatestApprovedMock(st.id);
+      const classPeers = appData.students.filter(s => s.schoolId === st.schoolId && s.classLabel === st.classLabel)
+        .map(s => ({ id: s.id, score: getLatestApprovedMock(s.id)?.total || 0 }))
+        .sort((a, b) => b.score - a.score);
+      const classRank = classPeers.findIndex(p => p.id === st.id) + 1;
+
+      box.innerHTML = `
+        <div class="rounded-2xl border border-rgn-border bg-rgn-surface p-4 sm:p-5 space-y-3 text-xs">
+          <div class="flex flex-wrap items-center justify-between gap-2 border-b border-rgn-border pb-3">
+            <div>
+              <h3 class="text-base font-black text-rgn-black">${esc(st.name)}</h3>
+              <p class="text-gray-500">🏫 ${esc(getSchoolName(st.schoolId))} · ${esc(st.classLabel)} sinf</p>
+            </div>
+            <span class="px-3 py-1 rounded-xl bg-rgn-orange text-white font-black">Sinfdagi o‘rni: #${classRank} / ${classPeers.length}</span>
+          </div>
+
+          ${m ? `
+            <div class="grid grid-cols-3 gap-2 text-center">
+              <div class="bg-white p-2.5 rounded-xl border border-rgn-border"><p class="text-[10px] text-gray-500">1-fan ball</p><p class="text-base font-black text-rgn-black">${fmtNum(m.p1)} / 60</p></div>
+              <div class="bg-white p-2.5 rounded-xl border border-rgn-border"><p class="text-[10px] text-gray-500">2-fan ball</p><p class="text-base font-black text-rgn-black">${fmtNum(m.p2)} / 40</p></div>
+              <div class="bg-white p-2.5 rounded-xl border border-rgn-border"><p class="text-[10px] text-gray-500">Jami natija</p><p class="text-base font-black text-emerald-600">${fmtNum(m.total)} / 100</p></div>
+            </div>` : '<p class="text-amber-700 font-bold">Kids Mock natijasi hali tasdiqlanmagan.</p>'}
+
+          <div class="p-3.5 rounded-2xl bg-rgn-black text-white flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <p class="text-[10px] text-amber-300 font-bold">${esc(v.tier)}</p>
+              <p class="text-base font-black text-amber-400">${fmtMoney(v.totalAmount)} VAUCHER</p>
+              <p class="text-[10px] font-mono text-slate-300">Promo-kod: ${esc(v.code)}</p>
+            </div>
+            <button type="button" onclick="openVipCardForStudent(${st.id});downloadVipCardPng();" class="px-3.5 py-2 rounded-xl bg-rgn-orange text-white font-extrabold cursor-pointer">
+              🖼️ VIP Kartani yuklab olish
+            </button>
+          </div>
+        </div>`;
+    }
+
+    /* ============================================================
+       12. STAFF & AUDIT LOG TAB
+       ============================================================ */
+    function renderStaffTab() {
+      const filter = document.getElementById('staffRoleFilter')?.value || 'ALL';
+      const list = filter === 'ALL' ? appData.staff : appData.staff.filter(s => s.role === filter);
+      document.getElementById('staffTotalCount').textContent = list.length;
+
+      document.getElementById('staffTableBody').innerHTML = list.map((st, idx) => `
+        <tr class="hover:bg-rgn-peach/20">
+          <td class="py-2.5 px-3 font-bold text-gray-400">${idx + 1}</td>
+          <td class="py-2.5 px-3 font-extrabold text-rgn-black">${esc(st.name)}</td>
+          <td class="py-2.5 px-3"><span class="px-2 py-0.5 rounded-lg bg-rgn-surface border border-rgn-border font-bold">${esc(st.role)}</span></td>
+          <td class="py-2.5 px-3"><p class="font-bold text-sky-700">${esc(st.phone || '—')}</p><p class="text-[10px] text-gray-500">${esc(st.telegram || '')}</p></td>
+          <td class="py-2.5 px-3 text-center font-bold">${st.room ? `${st.room}-xona` : '—'}</td>
+          <td class="py-2.5 px-3 text-center"><button type="button" onclick="toggleStaffActive(${st.id})" class="px-2.5 py-1 rounded-lg text-[11px] font-extrabold cursor-pointer ${st.active ? 'bg-emerald-100 text-emerald-800' : 'bg-gray-200 text-gray-600'}">${st.active ? '● Faol' : '○ Nofaol'}</button></td>
+          <td class="py-2.5 px-3 text-center"><button type="button" onclick="deleteStaff(${st.id})" class="px-2 py-1 rounded-lg bg-red-50 text-red-600 font-bold cursor-pointer">🗑️</button></td>
+        </tr>`).join('');
+
+      document.getElementById('auditLogFeed').innerHTML = (appData.auditLogs || []).map(l => `
+        <div class="p-2 rounded-xl bg-rgn-surface border border-rgn-border flex items-center justify-between">
+          <span><b class="text-rgn-orange">[${esc(l.actor)}]</b> ${esc(l.action)}</span>
+          <span class="text-[10px] text-gray-400 font-mono">${esc(l.time)}</span>
+        </div>`).join('');
+    }
+
+    function addNewStaff() {
+      const name = document.getElementById('staffNameInput').value.trim();
+      const role = document.getElementById('staffRoleInput').value;
+      const phone = document.getElementById('staffPhoneInput').value.trim();
+      const telegram = document.getElementById('staffTgInput').value.trim();
+      const room = document.getElementById('staffRoomInput').value;
+      if (!name) return showToast('Xodim F.I.Sh. ni kiriting!', 'error');
+
+      const newId = appData.staff.reduce((m, s) => Math.max(m, Number(s.id) || 0), 200) + 1;
+      appData.staff.unshift({ id: newId, name, role, phone, telegram, room, active: true });
+      logAudit('Admin', `Yangi xodim qo‘shildi: ${name} (${role})`);
+      document.getElementById('staffNameInput').value = '';
+      renderAll();
+      showToast(`✅ ${name} qo‘shildi!`);
+    }
+
+    function toggleStaffActive(id) {
+      const s = appData.staff.find(x => Number(x.id) === Number(id));
+      if (s) { s.active = !s.active; renderStaffTab(); }
+    }
+    function deleteStaff(id) {
+      appData.staff = appData.staff.filter(x => Number(x.id) !== Number(id));
+      renderAll();
+      showToast('🗑️ Xodim o‘chirildi');
+    }
+
+    /* ============================================================
+       13. EXCEL & OMR SHEET UPLOAD
+       ============================================================ */
+    function handleOmrSheetUpload(event) {
+      const file = event.target.files?.[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = function (e) {
+        document.getElementById('omrScanPreviewBox').innerHTML = `
+          <div class="p-3 rounded-xl bg-white border border-sky-200 space-y-2">
+            <img src="${e.target.result}" alt="Javob varaqasi" class="max-h-44 rounded-lg border border-gray-200 mx-auto" />
+            <p class="font-bold text-sky-950 text-center">✅ Javob varaqasi yuklandi! Endi ballni 1 bosishda tasdiqlash uchun Bot oynasini oching:</p>
+            <button type="button" onclick="switchTab('tgbot')" class="w-full py-2 rounded-xl bg-sky-600 text-white font-extrabold cursor-pointer">🤖 Ballni kiritish oynasiga o‘tish →</button>
+          </div>`;
+      };
+      reader.readAsDataURL(file);
+    }
+
+    function exportAllStudentsExcel() {
+      const rows = getScopedStudents().map((s, i) => {
+        const m = getLatestApprovedMock(s.id);
+        return { '№': i + 1, 'Promo-kod': getPromoCode(s), 'Maktab': getSchoolName(s.schoolId), 'Sinf': s.classLabel, 'F.I.Sh.': s.name, 'Telefon': s.phone, 'Holat': s.callStatus, 'Kids Mock': m ? m.total : '' };
+      });
+      const ws = XLSX.utils.json_to_sheet(rows); const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'Oquvchilar');
+      XLSX.writeFile(wb, `Registon_Yagona_Baza_${new Date().toISOString().slice(0, 10)}.xlsx`);
+    }
+    function exportKidsMockExcel() {
+      const rows = appData.mockExams.filter(m => m.monthId === uiState.activeMockMonth).map((m, i) => {
+        const st = getStudentById(m.studentId); const tr = getTrackSubjects(m.track);
+        return { '№': i + 1, 'Xona': m.seat, 'Maktab': getSchoolName(st?.schoolId), 'Sinf': st?.classLabel, 'F.I.Sh.': st?.name, 'Yo‘nalish': tr.label, '1-fan': m.p1, '2-fan': m.p2, 'Jami': m.total, 'Holat': m.approvalStatus };
+      });
+      const ws = XLSX.utils.json_to_sheet(rows); const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'KidsMock');
+      XLSX.writeFile(wb, `Registon_KidsMock_${uiState.activeMockMonth}.xlsx`);
+    }
+    function exportCallCrmExcel() {
+      const rows = getScopedStudents().map((s, i) => ({ '№': i + 1, 'Maktab': getSchoolName(s.schoolId), 'Sinf': s.classLabel, 'F.I.Sh.': s.name, 'Telefon': s.phone, 'Operator': s.operator, 'Holat': s.callStatus, 'Izoh': s.note }));
+      const ws = XLSX.utils.json_to_sheet(rows); const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'CallCRM');
+      XLSX.writeFile(wb, `Registon_CallCRM_${new Date().toISOString().slice(0, 10)}.xlsx`);
+    }
+    function exportStaffExcel() {
+      const rows = appData.staff.map((s, i) => ({ '№': i + 1, 'F.I.Sh.': s.name, 'Lavozim': s.role, 'Telefon': s.phone, 'Telegram': s.telegram }));
+      const ws = XLSX.utils.json_to_sheet(rows); const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'Xodimlar');
+      XLSX.writeFile(wb, `Registon_Xodimlar_${new Date().toISOString().slice(0, 10)}.xlsx`);
+    }
+    function downloadImportTemplate() {
+      const ws = XLSX.utils.json_to_sheet([{ Maktab: '12', Sinf: '5-A', 'F.I.Sh.': 'Karimov Azizbek', Telefon: '+998 90 123-45-67', Holat: 'Yangi lead' }]);
+      const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'Shablon');
+      XLSX.writeFile(wb, 'Registon_Import_Shablon.xlsx');
+    }
+    function importStudentsFromExcel(event) {
+      const file = event.target.files?.[0]; if (!file) return;
+      const reader = new FileReader();
+      reader.onload = function (e) {
+        try {
+          const wb = XLSX.read(e.target.result, { type: 'binary' });
+          const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]]);
+          let added = 0; let maxId = appData.students.reduce((m, s) => Math.max(m, Number(s.id) || 0), 1000);
+          rows.forEach(r => {
+            const name = String(r['F.I.Sh.'] || r['Ism'] || '').trim(); if (!name) return;
+            const rawSchool = String(r['Maktab'] || '12').replace(/\D/g, '') || '12';
+            const cls = String(r['Sinf'] || '5-A').trim().toUpperCase();
+            maxId++;
+            appData.students.unshift({ id: maxId, schoolId: rawSchool, classLabel: cls, name, phone: String(r['Telefon'] || ''), teacherName: '', teacherPhone: '', callStatus: String(r['Holat'] || 'Yangi lead'), operator: '', note: '', voucherUsed: false, referralBonus: 0, assignedGroup: '' });
+            added++;
+          });
+          renderAll(); showToast(`📤 ${added} nafar o‘quvchi import qilindi!`);
+        } catch (err) { showToast('Excel xatosi!', 'error'); }
+      };
+      reader.readAsBinaryString(file);
+    }
+
+    /* INIT */
+    window.onload = function () {
+      renderGlobalHeaderControls();
+      switchTab('dashboard');
+    };
+  </script>
+</body>
+</html>
+```
+
+Barcha 15 ta yangi funksiya yagona **`index.html`** tizimiga to‘liq integratsiya qilindi:
+1. **🏆 Dashboard & Maktablararo Kubok:** 6 ta maktab jonli reytingi, Top sinf rahbarlari uchun chop etiladigan **Tashakkurnoma (`🏅`)** va kassa sof tushumi.
+2. **🗂️ Alohida Sinflar Oynasi:** Har bir sinf ichida avtomatik **zaif nuqtalar tahlili** va 1 bosishlik intensiv guruh taklifi.
+3. **📞 Call CRM & AI Call Coach:** Operatorlarga lidlarni teng taqsimlash, operatorlar KPI konversiyasi, **No-Show (kelmaganlarni qaytarish)** filtri, SMS/Telegram shablonlar kutubxonasi va izohga qarab maslahat beruvchi **AI Call Coach**.
+4. **🏅 VIP Yutuqli Karta, Promo-kod Tekshiruvchisi & Referral Bonus:** `80+` (200k Oltin), `60–79` (150k Kumush), `<60` (100k Bonus) PNG karta generatsiyasi, kassada promo-kodni tekshirib **`✅ Ishlatildi`** qilish hamda **“Do‘stingni olib kel” (`+50 000 so‘m`)** bonusi.
+5. **💳 Kassa & Guruhlar Sig‘imi:** Vaucher chegirmasini avtomatik ayirib sof to‘lovni qabul qilish va Qarshi Globus guruhlaridagi bo‘sh joylarni boshqarish.
+6. **👨‍👩‍👧‍👦 Ota-ona Shaxsiy Portali & 🔐 Audit Log:** Ota-ona telefon raqami yoki promo-kodi orqali farzandining natijasi va VIP kartasini o‘zi yuklab oladigan alohida oyna hamda xodimlar harakatlari jurnali.
