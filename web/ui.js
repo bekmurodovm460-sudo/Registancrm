@@ -6,6 +6,8 @@
 //   • Kids Mock: xonalar bo'yicha boshqaruv va ro'yxatni chop etish
 // app.js / platform.js funksiyalarini o'zgartirmaydi — ustidan kengaytiradi.
 // =========================================================
+import { analyze, rowsToRecords, computeScore, nameKey, classKey, regIdOf, FIELDS } from './evalbee.js';
+
 const crm = () => window.crm;
 const sb = () => window.crm.sb;
 const canWrite = () => ['admin', 'operator'].includes(crm()?.role);
@@ -479,6 +481,173 @@ window.crmRoomToMock = room => {
 };
 
 // ---------------------------------------------------------
+// 6) 📥 EvalBee importi (Excel/CSV → maktab testi yoki Kids Mock)
+// ---------------------------------------------------------
+let eb = null; // { rows, headerRow, headers, map, file }
+window.crmOpenEvalbee = (target = 'school') => {
+  eb = null;
+  document.getElementById('crm-eb-modal')?.remove();
+  document.body.insertAdjacentHTML('beforeend', `
+  <div id="crm-eb-modal" class="fixed inset-0 z-[90] bg-slate-950/60 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4">
+    <div class="bg-white w-full sm:max-w-4xl max-h-[94vh] overflow-y-auto rounded-t-3xl sm:rounded-3xl shadow-2xl p-5 sm:p-6 space-y-4">
+      <div class="flex items-start justify-between gap-3">
+        <div><div class="text-lg font-black text-slate-900">📥 EvalBee natijalarini yuklash</div>
+          <div class="text-[11px] text-slate-500">EvalBee’da imtihon → Results → Export (Excel/CSV). Ustunlar avtomatik taniladi, kerak bo‘lsa o‘zgartiring.</div></div>
+        <button onclick="document.getElementById('crm-eb-modal').remove()" class="w-9 h-9 rounded-xl bg-slate-100 font-black shrink-0">✕</button>
+      </div>
+      <div class="grid sm:grid-cols-2 gap-3 text-xs">
+        <label class="block"><span class="font-black text-slate-600">1. Fayl (.xlsx, .xls, .csv)</span>
+          <input id="eb-file" type="file" accept=".xlsx,.xls,.csv" class="mt-1 block w-full text-xs"></label>
+        <div><span class="font-black text-slate-600">2. Qayerga yoziladi</span>
+          <div class="flex gap-2 mt-1">
+            <label class="flex-1 px-3 py-2 rounded-xl border border-slate-300 font-bold cursor-pointer"><input type="radio" name="eb-target" value="school" ${target === 'school' ? 'checked' : ''}> 🏫 Maktab testi</label>
+            <label class="flex-1 px-3 py-2 rounded-xl border border-slate-300 font-bold cursor-pointer"><input type="radio" name="eb-target" value="mock" ${target === 'mock' ? 'checked' : ''}> 🧒 Kids Mock</label>
+          </div></div>
+      </div>
+      <div id="eb-body" class="text-xs text-slate-400 font-bold">Faylni tanlang…</div>
+    </div>
+  </div>`);
+  document.getElementById('eb-file').onchange = ebLoadFile;
+  document.querySelectorAll('input[name="eb-target"]').forEach(r => r.onchange = ebDraw);
+};
+
+async function ebLoadFile(e) {
+  const f = e.target.files[0];
+  if (!f) return;
+  try {
+    const wb = XLSX.read(new Uint8Array(await f.arrayBuffer()), { type: 'array' });
+    const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, raw: true, defval: '' });
+    const a = analyze(rows);
+    eb = { rows, headerRow: a.headerRow, headers: a.headers, map: a.map, file: f.name };
+    ebDraw();
+  } catch (err) {
+    document.getElementById('eb-body').innerHTML = `<div class="text-rose-600">⚠️ Faylni o‘qib bo‘lmadi: ${esc(err.message)}</div>`;
+  }
+}
+
+const ebTarget = () => document.querySelector('input[name="eb-target"]:checked')?.value || 'school';
+const schoolTests = () => (crm()?.tests || []).filter(t => t.kind === 'school');
+
+/** Yozuvlarni hisoblash va CRM bilan solishtirish (oldindan ko'rish va saqlash uchun bitta mantiq) */
+function ebPlan() {
+  const recs = rowsToRecords(eb.rows, eb.headerRow, eb.map);
+  const target = ebTarget();
+  if (target === 'school') {
+    const t = schoolTests().find(x => x.code === document.getElementById('eb-test')?.value);
+    const forced = document.getElementById('eb-class')?.value || '';
+    const clsByKey = new Map((state.classes || []).map(c => [classKey(c.name), c.name]));
+    return recs.map(rec => {
+      const cls = forced || clsByKey.get(classKey(rec.cls));
+      const sc = computeScore(rec, Number(t?.w1) || 1, Number(t?.w2) || 1);
+      if (!cls) return { rec, sc, status: 'skip', why: `sinf topilmadi (${rec.cls || '—'})` };
+      if (!sc) return { rec, sc, status: 'skip', why: 'ball yo‘q' };
+      const st = (state.students || []).find(s => s.className === cls && nameKey(s.fullName) === nameKey(rec.name));
+      return { rec, sc, cls, st, status: st ? 'update' : 'new', test: t };
+    });
+  }
+  const w1 = Number(state.mockRules?.w1) || 1.5, w2 = Number(state.mockRules?.w2) || 1;
+  const regs = (crm()?.registrations || []).filter(r => r.status !== 'Bekor');
+  return recs.map(rec => {
+    const sc = computeScore(rec, w1, w2);
+    if (!sc) return { rec, sc, status: 'skip', why: 'ball yo‘q' };
+    const reg = regs.find(r => nameKey(r.full_name) === nameKey(rec.name)) || (/km/i.test(rec.roll) ? regs.find(r => r.id === regIdOf(rec.roll)) : null);
+    const ms = (state.mockStudents || []).find(m => (reg && m.regId === reg.id) || nameKey(m.fullName) === nameKey(rec.name));
+    return { rec, sc, reg, ms, status: ms ? 'update' : 'new' };
+  });
+}
+
+function ebDraw() {
+  if (!eb) return;
+  const body = document.getElementById('eb-body');
+  const target = ebTarget();
+  const colOpts = sel => `<option value="">—</option>` + eb.headers.map((h, i) => `<option value="${i}" ${String(sel) === String(i) ? 'selected' : ''}>${esc(h || `Ustun ${i + 1}`)}</option>`).join('');
+  const tests = schoolTests();
+  const prevTest = document.getElementById('eb-test')?.value;
+  const prevClass = document.getElementById('eb-class')?.value;
+  body.innerHTML = `
+    <div class="p-3 rounded-2xl bg-slate-50 border border-slate-200">
+      <div class="font-black text-slate-700 mb-2">3. Ustunlar · <span class="text-slate-500 font-bold">${esc(eb.file)}</span></div>
+      <div class="grid grid-cols-2 sm:grid-cols-4 gap-2">${Object.entries(FIELDS).map(([k, label]) => `
+        <label class="block"><span class="text-[10px] font-black text-slate-500">${esc(label)}</span>
+          <select data-ebf="${k}" class="mt-0.5 w-full px-2 py-1.5 rounded-lg border border-slate-300 font-bold bg-white">${colOpts(eb.map[k])}</select></label>`).join('')}</div>
+      <div class="text-[10px] text-slate-500 mt-2">1-fan/2-fan to‘g‘ri javoblari tanlansa — ball testning og‘irliklari bilan hisoblanadi (maktab: test sozlamasi; Kids Mock: ${Number(state.mockRules?.w1) || 1.5} / ${Number(state.mockRules?.w2) || 1}). Aks holda “Jami ball” olinadi.</div>
+    </div>
+    ${target === 'school' ? `<div class="grid sm:grid-cols-2 gap-3">
+      <label class="block"><span class="font-black text-slate-600">Test</span>
+        <select id="eb-test" class="mt-1 w-full px-3 py-2 rounded-xl border border-slate-300 font-bold">${tests.map(t => `<option value="${esc(t.code)}" ${t.code === prevTest ? 'selected' : ''}>${esc(t.code)} — ${esc(t.title)} (${t.w1}/${t.w2} ball)</option>`).join('') || '<option value="">Maktab testi yo‘q</option>'}</select></label>
+      <label class="block"><span class="font-black text-slate-600">Sinf</span>
+        <select id="eb-class" class="mt-1 w-full px-3 py-2 rounded-xl border border-slate-300 font-bold"><option value="">Fayldagi “Sinf” ustunidan</option>${(state.classes || []).map(c => `<option ${c.name === prevClass ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select></label>
+    </div>` : ''}
+    <div id="eb-preview"></div>`;
+  body.querySelectorAll('[data-ebf]').forEach(sel => sel.onchange = () => { eb.map[sel.dataset.ebf] = sel.value === '' ? undefined : Number(sel.value); ebDraw(); });
+  ['eb-test', 'eb-class'].forEach(id => { const el = document.getElementById(id); if (el) el.onchange = ebPreview; });
+  ebPreview();
+}
+
+function ebPreview() {
+  const plan = ebPlan();
+  const cnt = k => plan.filter(p => p.status === k).length;
+  const badge = p => p.status === 'update' ? '<span class="text-emerald-700 font-black">🔄 yangilanadi</span>'
+    : p.status === 'new' ? `<span class="text-sky-700 font-black">🆕 ${ebTarget() === 'mock' ? (p.reg ? 'ariza bilan' : 'arizasiz') : 'yangi o‘quvchi'}</span>`
+    : `<span class="text-amber-700 font-black">⚠️ ${esc(p.why)}</span>`;
+  document.getElementById('eb-preview').innerHTML = `
+    <div class="flex flex-wrap gap-2 my-2">
+      <span class="px-3 py-1 rounded-full bg-slate-100 font-black">Jami: ${plan.length}</span>
+      <span class="px-3 py-1 rounded-full bg-emerald-50 text-emerald-800 font-black">🔄 ${cnt('update')}</span>
+      <span class="px-3 py-1 rounded-full bg-sky-50 text-sky-800 font-black">🆕 ${cnt('new')}</span>
+      <span class="px-3 py-1 rounded-full bg-amber-50 text-amber-800 font-black">⚠️ ${cnt('skip')}</span>
+    </div>
+    <div class="overflow-x-auto max-h-72 border border-slate-200 rounded-2xl"><table class="w-full text-xs">
+      <thead class="sticky top-0 bg-slate-50"><tr class="text-left text-slate-500"><th class="p-2">Qator</th><th>F.I.Sh.</th><th>Sinf</th><th>1-fan</th><th>2-fan</th><th>Ball</th><th>Holat</th></tr></thead>
+      <tbody>${plan.slice(0, 200).map(p => `<tr class="border-t border-slate-100"><td class="p-2 text-slate-400">${p.rec.row}</td><td class="font-bold">${esc(p.rec.name)}</td><td>${esc(p.cls || p.rec.cls || '')}</td><td>${p.sc?.q1 ?? ''}</td><td>${p.sc?.q2 ?? ''}</td><td class="font-black text-[#F2642A]">${p.sc?.score ?? ''}</td><td>${badge(p)}</td></tr>`).join('')}</tbody>
+    </table></div>
+    ${canWrite() ? `<button onclick="crmEvalbeeSave()" ${plan.some(p => p.status !== 'skip') ? '' : 'disabled'} class="mt-3 w-full py-3 rounded-xl bg-[#F2642A] text-white font-black disabled:opacity-40">💾 ${plan.filter(p => p.status !== 'skip').length} ta natijani saqlash</button>` : '<div class="mt-3 text-slate-400 font-bold">Saqlash faqat admin/operator uchun.</div>'}`;
+}
+
+window.crmEvalbeeSave = () => {
+  const plan = ebPlan().filter(p => p.status !== 'skip');
+  const now = new Date().toISOString();
+  let up = 0, add = 0;
+  if (ebTarget() === 'school') {
+    plan.forEach(p => {
+      const lastExam = { test: p.test?.code || 'EVALBEE', score: p.sc.score, at: now };
+      if (p.st) {
+        Object.assign(p.st, { q1: p.sc.q1, q2: p.sc.q2, score: p.sc.score, lastExam });
+        if (!p.st.phone && p.rec.phone) p.st.phone = p.rec.phone;
+        up++;
+      } else {
+        state.students.push({ id: crmNextId(), fullName: p.rec.name, className: p.cls, phone: p.rec.phone || '', q1: p.sc.q1, q2: p.sc.q2, score: p.sc.score,
+          callStatus: p.rec.phone ? 'Yangi' : 'Raqamsiz', note: 'EvalBee importi', source: 'evalbee', lastExam });
+        add++;
+      }
+    });
+  } else {
+    plan.forEach(p => {
+      const extra = p.reg ? { regId: p.reg.id, room: p.reg.room, session: p.reg.session || '', phone: p.reg.phone, subject1: p.reg.subject1 || 'Matematika', level: p.reg.level || 'Oson', subject2: p.reg.subject2 || 'Ingliz tili', level2: p.reg.level2 || 'Oson', teacher: p.reg.teacher || '' } : {};
+      if (p.ms) { Object.assign(p.ms, { q1: p.sc.q1, q2: p.sc.q2, score: p.sc.score, source: 'evalbee' }, extra); up++; }
+      else { state.mockStudents.push({ id: crmNextId(), fullName: p.reg?.full_name || p.rec.name, room: 'EvalBee', session: '', q1: p.sc.q1, q2: p.sc.q2, score: p.sc.score, phone: p.rec.phone || '', source: 'evalbee', ...extra }); add++; }
+    });
+  }
+  saveState();
+  document.getElementById('crm-eb-modal')?.remove();
+  showToast(`EvalBee: ${up} ta yangilandi, ${add} ta qo‘shildi`, '📥');
+  renderCurrentTab();
+};
+
+function addEvalbeeButtons() {
+  if (!canWrite()) return;
+  const add = (tabId, target) => {
+    const host = document.getElementById(tabId);
+    if (!host || host.querySelector('.crm-eb-btn')) return;
+    host.insertAdjacentHTML('afterbegin', `<div class="crm-eb-btn flex items-center justify-between gap-3 flex-wrap p-4 rounded-3xl bg-gradient-to-r from-orange-50 to-amber-50 border border-orange-200">
+      <div><b class="text-slate-900">📥 EvalBee natijalari</b><div class="text-[11px] text-slate-600">EvalBee’dan yuklangan Excel/CSV faylni CRM’ga yozish (botga yuborsa ham bo‘ladi).</div></div>
+      <button onclick="crmOpenEvalbee('${target}')" class="px-4 py-2 rounded-xl bg-[#F2642A] text-white text-xs font-black">📥 Faylni yuklash</button></div>`);
+  };
+  if (currentTab === 'tests') add('tab-tests', 'school');
+  if (currentTab === 'kidsmock') add('tab-kidsmock', 'mock');
+}
+
+// ---------------------------------------------------------
 // Render ilgagi
 // ---------------------------------------------------------
 const prevRender = window.renderCurrentTab;
@@ -487,6 +656,7 @@ window.renderCurrentTab = function () {
   setTimeout(() => {
     if (currentTab === 'dashboard') renderDashboardExtras();
     if (currentTab === 'regs') renderRoomsPanel();
+    addEvalbeeButtons();
     addCardButtons();
     markActive(currentTab);
   }, 0);

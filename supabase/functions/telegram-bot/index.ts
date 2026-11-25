@@ -9,6 +9,8 @@ import jpeg from 'npm:jpeg-js@0.4.4';
 import { admin, getSecret, getSetting, tg, webhookSecret } from '../_shared/common.ts';
 import { readSheet, rgbaToGray, gradeAnswers } from '../_shared/omr.js';
 import { cardPng, money, PRIZES, promoCode } from '../_shared/card.ts';
+import * as XLSX from 'npm:xlsx@0.18.5';
+import { analyze, computeScore, nameKey, classKey, regIdOf, FIELDS } from '../_shared/evalbee.js';
 
 // Asosiy bo'limlar
 const BTN_SEC1 = '📚 Maktab imtihonlari javoblari';
@@ -658,7 +660,7 @@ async function prChooseSchool(chatId: number, p: any) {
   if (!list.length) return void send(chatId, 'Maktablar topilmadi.', { reply_markup: MENU });
   await setSession(chatId, 'pr_school', { proctorId: p.id, proctorName: p.full_name, schoolFilter: p.school_id || null });
   if (list.length === 1) return prChooseGrade(chatId, list[0].id);
-  await send(chatId, '🏫 Maktabni tanlang:', { reply_markup: { inline_keyboard: list.map(x => [{ text: `🏫 ${x.name}`, callback_data: `ps:${x.id}` }]) } });
+  await send(chatId, '🏫 Maktabni tanlang:\n\n<i>📥 EvalBee’dan yuklab olingan Excel faylni ham shu chatga yuborishingiz mumkin — natijalar CRM’ga yoziladi.</i>', { reply_markup: { inline_keyboard: list.map(x => [{ text: `🏫 ${x.name}`, callback_data: `ps:${x.id}` }]) } });
 }
 
 async function prChooseGrade(chatId: number, school: string) {
@@ -712,6 +714,152 @@ async function prAfterResult(chatId: number, s: Session) {
     [{ text: `➕ ${s.data.cls} — keyingi o‘quvchi`, callback_data: 'pn:same' }],
     [{ text: '🔄 Boshqa sinf', callback_data: 'pn:grade' }, { text: '🏁 Tugatish', callback_data: 'pn:end' }]
   ] } });
+}
+
+// =========================================================
+// 📥 EvalBee: OMR ilovasi natijalari (Excel/CSV) → CRM
+// Faqat nazoratchilar yuboradi. Maktab testi yoki Kids Mock tanlanadi.
+// =========================================================
+const isSheetFile = (d: any) => d && /\.(xlsx|xls|csv)$/i.test(d.file_name || '');
+
+async function handleEvalbeeFile(chatId: number, m: any) {
+  const p = await getProctor(m.from?.id);
+  if (!p) return void send(chatId, '⛔ Natija faylini faqat CRM’dagi nazoratchi va ustozlar yuboradi. “👮 Nazorat” orqali raqamingizni tasdiqlang.', { reply_markup: MENU });
+  if ((m.document.file_size || 0) > 5_000_000) return void send(chatId, '⚠️ Fayl 5 MB dan katta.');
+  await tg(await token(), 'sendChatAction', { chat_id: chatId, action: 'typing' });
+  let a;
+  try {
+    const bytes = await downloadTelegramFile(m.document.file_id);
+    const wb = XLSX.read(bytes, { type: 'array' });
+    const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, raw: true, defval: '' }) as unknown[][];
+    a = analyze(rows);
+  } catch (e) {
+    console.error('evalbee parse', e);
+    return void send(chatId, '⚠️ Faylni o‘qib bo‘lmadi. EvalBee’dan <b>Excel (.xlsx)</b> yoki <b>CSV</b> ko‘rinishida yuklab yuboring.');
+  }
+  if (!a.ok || !a.records.length) {
+    return void send(chatId,
+      '⚠️ Faylda kerakli ustunlar topilmadi.\n\nKerak: <b>ism-familiya</b> va <b>ball</b> (yoki 1-fan/2-fan to‘g‘ri javoblari).\n' +
+      `Topilgan sarlavhalar: <code>${esc(a.headers.filter(Boolean).join(' | ').slice(0, 300))}</code>\n\n` +
+      'CRM → 📝 Testlar → “📥 EvalBee importi” orqali ustunlarni qo‘lda tanlab yuklashingiz mumkin.');
+  }
+  const found = Object.keys(a.map).map(k => (FIELDS as any)[k]).join(', ');
+  await setSession(chatId, 'eb_target', { proctorId: p.id, proctorName: p.full_name, schoolFilter: p.school_id || null, file: m.document.file_name, records: a.records.slice(0, 600) });
+  await send(chatId,
+    `📥 <b>${esc(m.document.file_name)}</b>\n👥 ${a.records.length} ta o‘quvchi topildi\n🔎 Ustunlar: ${esc(found)}\n\nNatija qaysi imtihonga yozilsin?`, {
+      reply_markup: { inline_keyboard: [[ib('🏫 Maktab testi', 'eb:school'), ib('🧒 Kids Mock', 'eb:mock')], [ib('❌ Bekor qilish', 'eb:cancel')]] }
+    });
+}
+
+async function ebChooseSchool(chatId: number) {
+  const s = await getSession(chatId);
+  let q = admin.from('crm_schools').select('id,data').order('id');
+  if (s.data.schoolFilter) q = q.eq('id', s.data.schoolFilter);
+  const { data: schools } = await q;
+  const list = (schools || []).map(x => ({ id: x.id as string, name: ((x.data as any)?.name || x.id) as string }));
+  if (!list.length) return void send(chatId, 'Maktablar topilmadi.', { reply_markup: MENU });
+  if (list.length === 1) return ebSchoolPicked(chatId, list[0].id);
+  await send(chatId, '🏫 Qaysi maktab natijalari?', { reply_markup: { inline_keyboard: list.map(x => [ib(`🏫 ${x.name}`, `ebs:${x.id}`)]) } });
+}
+
+async function ebSchoolPicked(chatId: number, school: string) {
+  const s = await getSession(chatId);
+  if (s.step !== 'eb_target') return;
+  if (s.data.schoolFilter && s.data.schoolFilter !== school) return;
+  const hasCls = (s.data.records || []).some((r: any) => r.cls);
+  if (hasCls) return ebImportSchool(chatId, school, null);
+  const { data: classes } = await admin.from('crm_classes').select('name').eq('school_id', school);
+  const names = (classes || []).map(c => c.name as string).sort((a, b) => a.localeCompare(b, 'uz', { numeric: true }));
+  await setSession(chatId, 'eb_target', { ...s.data, school });
+  const rows = [];
+  for (let i = 0; i < names.length; i += 4) rows.push(names.slice(i, i + 4).map(n => ib(n, `ebc:${n}`)));
+  await send(chatId, '🗂 Faylda sinf ustuni yo‘q. Barcha o‘quvchilar qaysi sinfga yozilsin?', { reply_markup: { inline_keyboard: rows } });
+}
+
+async function ebImportSchool(chatId: number, school: string, forcedClass: string | null) {
+  const s = await getSession(chatId);
+  if (s.step !== 'eb_target') return;
+  await setSession(chatId, 'eb_busy', {});
+  await tg(await token(), 'sendChatAction', { chat_id: chatId, action: 'typing' });
+  const records = (s.data.records || []) as any[];
+  const [{ data: classes }, { data: tests }, { data: sc }] = await Promise.all([
+    admin.from('crm_classes').select('name').eq('school_id', school),
+    admin.from('crm_tests').select('code,title,q1_count,w1,w2,grades').eq('active', true).eq('kind', 'school').order('created_at', { ascending: false }),
+    admin.from('crm_schools').select('data').eq('id', school).maybeSingle()
+  ]);
+  const schoolName = (sc?.data as any)?.name || school;
+  const byKey = new Map((classes || []).map(c => [classKey(c.name as string), c.name as string]));
+  const testFor = (cls: string) => {
+    const g = Number(String(cls).match(/\d+/)?.[0] || 0);
+    return (tests || []).find(t => (t.grades || []).includes(g));
+  };
+  let updated = 0, created = 0;
+  const skipped: string[] = [];
+  const subs: any[] = [];
+  const work = records.map(rec => async () => {
+    const cls = forcedClass || byKey.get(classKey(rec.cls));
+    if (!cls) { skipped.push(`${rec.name} (sinf: ${rec.cls || '—'})`); return; }
+    const t = testFor(cls);
+    const sc2 = computeScore(rec, Number(t?.w1) || 1, Number(t?.w2) || 1);
+    if (!sc2) { skipped.push(`${rec.name} (ball yo‘q)`); return; }
+    const { data: r, error } = await admin.rpc('crm_bot_record_result', {
+      p_school: school, p_class: cls, p_name: rec.name, p_q1: sc2.q1, p_q2: sc2.q2, p_score: sc2.score, p_test: t?.code || 'EVALBEE',
+      p_student_phone: null, p_parent_phone: rec.phone ? normPhone(rec.phone) : null
+    });
+    if (error) { skipped.push(`${rec.name} (xato)`); return; }
+    const row = (r as any[])?.[0];
+    row?.matched ? updated++ : created++;
+    subs.push({ test_code: t?.code || 'EVALBEE', source: 'evalbee-bot', chat_id: chatId, student_name: rec.name, correct: rec.correct ?? (sc2.q1 + sc2.q2), q1_correct: sc2.q1, q2_correct: sc2.q2, score: sc2.score, school_id: school, class_name: cls, student_id: row?.student_id || null, proctor_id: s.data.proctorId, details: { file: s.data.file, row: rec.row } });
+  });
+  for (let i = 0; i < work.length; i += 8) await Promise.all(work.slice(i, i + 8).map(f => f()));
+  if (subs.length) await admin.from('crm_omr_submissions').insert(subs);
+  await setSession(chatId, null);
+  await send(chatId,
+    `✅ <b>EvalBee importi tugadi</b> · ${esc(schoolName)}\n\n` +
+    `🔄 Yangilandi: <b>${updated}</b>\n🆕 Sinfga yangi qo‘shildi: <b>${created}</b>\n⚠️ O‘tkazib yuborildi: <b>${skipped.length}</b>` +
+    (skipped.length ? `\n\n${skipped.slice(0, 15).map(x => '• ' + esc(x)).join('\n')}${skipped.length > 15 ? '\n…' : ''}` : ''),
+    { reply_markup: MENU });
+  await notifyAdmin(`📥 EvalBee (bot): ${esc(s.data.proctorName || '')} · ${esc(schoolName)} · ${updated} yangilandi, ${created} yangi, ${skipped.length} o‘tkazildi`);
+}
+
+async function ebImportMock(chatId: number) {
+  const s = await getSession(chatId);
+  if (s.step !== 'eb_target') return;
+  await setSession(chatId, 'eb_busy', {});
+  await tg(await token(), 'sendChatAction', { chat_id: chatId, action: 'typing' });
+  const records = (s.data.records || []) as any[];
+  const [{ data: regs }, rules] = await Promise.all([
+    admin.from('crm_mock_registrations').select('id,full_name,room,session,phone,subject1,level,subject2,level2,teacher').neq('status', 'Bekor'),
+    cachedSetting<any>('mockRules', { w1: 1.5, w2: 1 })
+  ]);
+  const byName = new Map<string, any>();
+  (regs || []).forEach(r => byName.set(nameKey(r.full_name), r));
+  const byId = new Map((regs || []).map(r => [r.id, r]));
+  let matched = 0, extra = 0;
+  const skipped: string[] = [];
+  const upserts: any[] = [];
+  for (const rec of records) {
+    const sc2 = computeScore(rec, Number(rules?.w1) || 1.5, Number(rules?.w2) || 1);
+    if (!sc2) { skipped.push(`${rec.name} (ball yo‘q)`); continue; }
+    const reg = byName.get(nameKey(rec.name)) || (/km/i.test(rec.roll) ? byId.get(regIdOf(rec.roll)) : null);
+    const key = nameKey(rec.name);
+    let h = 0; for (const ch of key) h = (h * 31 + ch.charCodeAt(0)) % 9_000_000;
+    const id = reg ? 700000000 + Number(reg.id) : 980000000 + h;
+    reg ? matched++ : extra++;
+    upserts.push({ id, data: {
+      id, fullName: reg?.full_name || rec.name, room: reg?.room || 'EvalBee', session: reg?.session || '', q1: sc2.q1, q2: sc2.q2, score: sc2.score,
+      phone: reg?.phone || rec.phone || '', source: 'evalbee',
+      ...(reg ? { regId: reg.id, subject1: reg.subject1 || 'Matematika', level: reg.level || 'Oson', subject2: reg.subject2 || 'Ingliz tili', level2: reg.level2 || 'Oson', teacher: reg.teacher || '' } : {})
+    } });
+  }
+  for (let i = 0; i < upserts.length; i += 200) await admin.from('crm_mock_students').upsert(upserts.slice(i, i + 200));
+  await setSession(chatId, null);
+  await send(chatId,
+    `✅ <b>EvalBee importi tugadi</b> · 🧒 Kids Mock\n\n` +
+    `🔗 Ariza bilan bog‘landi: <b>${matched}</b>\n➕ Arizasiz qo‘shildi: <b>${extra}</b>\n⚠️ O‘tkazib yuborildi: <b>${skipped.length}</b>` +
+    (skipped.length ? `\n\n${skipped.slice(0, 15).map(x => '• ' + esc(x)).join('\n')}` : '') +
+    `\n\nNatijalar CRM → 🏆 KIDS MOCK bo‘limida.`, { reply_markup: MENU });
+  await notifyAdmin(`📥 EvalBee (bot) · Kids Mock: ${matched} bog‘landi, ${extra} arizasiz, ${skipped.length} o‘tkazildi`);
 }
 
 // ---------------------------------------------------------
@@ -821,6 +969,8 @@ async function onMessage(m: any) {
   if (text === '/hisobot') return answerReport(chatId);
   if (text === M_PROCTOR || text === BTN_PROCTOR || text === '/nazorat') return startProctor(chatId, m.from?.id);
   if (text === M_HELP || text === BTN_HELP || text === '/yordam' || text === '/help') return sendHelp(chatId);
+
+  if (isSheetFile(m.document)) return handleEvalbeeFile(chatId, m);
 
   const s = await getSession(chatId);
   switch (s.step) {
@@ -981,6 +1131,16 @@ async function routeCallback(q: any) {
     return askTeacher(chatId);
   }
   if (data.startsWith('km:')) return pickMockReg(chatId, Number(data.slice(3)));
+  // EvalBee
+  if (data.startsWith('eb:') || data.startsWith('ebs:') || data.startsWith('ebc:')) {
+    if (data === 'eb:cancel') { await setSession(chatId, null); return void send(chatId, '❌ Import bekor qilindi.', { reply_markup: MENU }); }
+    if (s.step !== 'eb_target') return void send(chatId, s.step === 'eb_busy' ? '⏳ Import davom etmoqda…' : 'Faylni qaytadan yuboring.', { reply_markup: MENU });
+    if (!(await getProctor(q.from?.id))) return void send(chatId, '⛔ Ruxsat yo‘q.', { reply_markup: MENU });
+    if (data === 'eb:school') return ebChooseSchool(chatId);
+    if (data === 'eb:mock') return ebImportMock(chatId);
+    if (data.startsWith('ebs:')) return ebSchoolPicked(chatId, data.slice(4));
+    if (data.startsWith('ebc:') && s.data.school) return ebImportSchool(chatId, s.data.school, data.slice(4));
+  }
   // Nazoratchilar
   if (data.startsWith('ps:') || data.startsWith('pg:') || data.startsWith('pl:') || data.startsWith('pn:')) {
     const p = await getProctor(q.from?.id);
