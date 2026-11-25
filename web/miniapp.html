@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Registan LC</title>
+  <meta name="theme-color" content="#F2642A" />
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #f6f3f0; --card: #ffffff; --ink: #1f1a17; --muted: #7a6f68; --line: #ece4dd;
+      --brand: #F2642A; --brand-2: #e0531b; --soft: #fff1ea; --ok: #15803d; --bad: #dc2626;
+    }
+    html.dark {
+      --bg: #17120f; --card: #221b17; --ink: #f6eee8; --muted: #b3a59b; --line: #3a2f29;
+      --brand: #ff7a45; --brand-2: #ff8f5f; --soft: #3a2419; --ok: #4ade80; --bad: #f87171;
+    }
+    body { font-family: 'Inter', sans-serif; background: var(--bg); color: var(--ink); -webkit-tap-highlight-color: transparent; }
+    .card { background: var(--card); border: 1px solid var(--line); border-radius: 22px; }
+    .muted { color: var(--muted); }
+    .inp { width: 100%; background: var(--card); color: var(--ink); border: 1.5px solid var(--line); border-radius: 14px; padding: 12px 14px; font-size: 15px; font-weight: 600; outline: none; }
+    .inp:focus { border-color: var(--brand); }
+    .btn { width: 100%; background: var(--brand); color: #fff; border-radius: 14px; padding: 14px; font-weight: 900; font-size: 15px; }
+    .btn:active { transform: scale(.985); }
+    .btn:disabled { opacity: .55; }
+    .btn-soft { background: var(--soft); color: var(--brand-2); }
+    .chip { border: 1.5px solid var(--line); border-radius: 12px; padding: 9px 4px; font-weight: 800; font-size: 14px; text-align: center; background: var(--card); }
+    .chip.on { background: var(--brand); border-color: var(--brand); color: #fff; }
+    .tab { color: var(--muted); }
+    .tab.on { color: var(--brand); }
+    .hero { background: linear-gradient(135deg, #F2642A 0%, #f08a3c 60%, #f6b04b 100%); }
+    .pill { background: var(--soft); color: var(--brand-2); border-radius: 999px; padding: 3px 10px; font-size: 11px; font-weight: 800; }
+    .hidden { display: none !important; }
+    .key-cell { border: 1px solid var(--line); border-radius: 10px; text-align: center; padding: 6px 0; }
+    label > span { display: block; font-size: 12px; font-weight: 800; color: var(--muted); margin-bottom: 6px; }
+  </style>
+</head>
+<body class="min-h-screen pb-24">
+  <!-- Sarlavha -->
+  <header class="hero text-white px-5 pt-5 pb-7 rounded-b-[28px]">
+    <div class="flex items-center gap-3">
+      <div class="w-11 h-11 rounded-2xl bg-white/20 flex items-center justify-center text-2xl">🎓</div>
+      <div>
+        <div class="font-black text-lg leading-tight">Registan LC</div>
+        <div id="hello" class="text-xs text-orange-50 font-semibold">Xush kelibsiz!</div>
+      </div>
+    </div>
+  </header>
+
+  <main class="px-4 -mt-4 space-y-4">
+    <div id="fatal" class="card p-5 text-center hidden"></div>
+
+    <!-- ============ KIDS MOCK ============ -->
+    <section id="v-mock" class="space-y-4">
+      <div class="card p-5 space-y-4">
+        <div>
+          <div class="text-lg font-black">🧒 Kids Mock’ga ro‘yxatdan o‘tish</div>
+          <div class="text-xs muted mt-1">Ariza CRM’ga darhol tushadi, xona avtomatik beriladi.</div>
+        </div>
+        <label><span>Farzandingizning familiya va ismi</span>
+          <input id="m-name" class="inp" placeholder="Masalan: Karimov Azizbek" autocomplete="name" /></label>
+        <div>
+          <span class="block text-xs font-extrabold muted mb-2">Nechanchi sinfda o‘qiydi?</span>
+          <div id="m-grades" class="grid grid-cols-4 gap-2"></div>
+        </div>
+        <label><span>Ota-ona telefon raqami</span>
+          <div class="flex gap-2">
+            <input id="m-phone" class="inp" inputmode="tel" placeholder="+998 90 123 45 67" />
+            <button id="m-contact" type="button" class="shrink-0 px-3 rounded-[14px] btn-soft font-black text-sm">📱 Raqamim</button>
+          </div></label>
+        <label id="m-session-wrap"><span>Imtihon sessiyasi</span>
+          <select id="m-session" class="inp"></select></label>
+        <div id="m-err" class="text-sm font-bold" style="color:var(--bad)"></div>
+        <button id="m-submit" class="btn">✅ Ro‘yxatdan o‘tish</button>
+      </div>
+
+      <div id="m-done" class="card p-5 hidden"></div>
+
+      <div class="card p-5">
+        <div class="font-black mb-3">📋 Mening arizalarim</div>
+        <div id="m-list" class="space-y-2 text-sm"></div>
+      </div>
+    </section>
+
+    <!-- ============ VARAQ TEKSHIRISH ============ -->
+    <section id="v-check" class="space-y-4 hidden">
+      <div class="card p-5 space-y-4">
+        <div>
+          <div class="text-lg font-black">📸 Varaqni tekshirish</div>
+          <div class="text-xs muted mt-1">To‘ldirilgan javoblar varaqasini suratga oling — ball darhol chiqadi va CRM’dagi sinfingizga yoziladi.</div>
+        </div>
+        <label><span>1. Test</span><select id="c-test" class="inp"></select></label>
+        <div id="c-school-box" class="space-y-4">
+          <label><span>2. Maktab</span><select id="c-school" class="inp"></select></label>
+          <div><span class="block text-xs font-extrabold muted mb-2">3. Sinf</span><div id="c-classes" class="grid grid-cols-4 gap-2"></div></div>
+        </div>
+        <label><span id="c-name-label">4. Familiya va ism</span>
+          <input id="c-name" class="inp" placeholder="Masalan: Karimov Azizbek" /></label>
+        <input id="c-file" type="file" accept="image/*" capture="environment" class="hidden" />
+        <button id="c-shot" class="btn">📷 Varaqni suratga olish</button>
+        <div class="text-[11px] muted text-center">Varaq tekis va yorug‘ joyda bo‘lsin, 4 ta qora burchak kadrga to‘liq tushsin.</div>
+        <div id="c-err" class="text-sm font-bold" style="color:var(--bad)"></div>
+      </div>
+      <div id="c-result" class="card p-5 hidden"></div>
+    </section>
+
+    <!-- ============ JAVOBLAR KALITI ============ -->
+    <section id="v-keys" class="space-y-4 hidden">
+      <div class="card p-5">
+        <div class="text-lg font-black">🔑 Javoblar kaliti</div>
+        <div class="text-xs muted mt-1">Imtihondan keyin e’lon qilingan to‘g‘ri javoblar.</div>
+        <div id="k-list" class="mt-4 space-y-2"></div>
+      </div>
+      <div id="k-view" class="card p-5 hidden"></div>
+    </section>
+  </main>
+
+  <!-- Pastki menyu -->
+  <nav class="fixed bottom-0 inset-x-0 card rounded-none border-x-0 border-b-0 grid grid-cols-3 text-center py-2 pb-[max(8px,env(safe-area-inset-bottom))]">
+    <button data-tab="mock" class="tab on py-1"><div class="text-xl">🧒</div><div class="text-[11px] font-extrabold">Kids Mock</div></button>
+    <button data-tab="check" class="tab py-1"><div class="text-xl">📸</div><div class="text-[11px] font-extrabold">Tekshirish</div></button>
+    <button data-tab="keys" class="tab py-1"><div class="text-xl">🔑</div><div class="text-[11px] font-extrabold">Javoblar</div></button>
+  </nav>
+
+  <script src="config.js"></script>
+  <script type="module">
+    import { readSheet, rgbaToGray } from './omr.js';
+
+    const tg = window.Telegram?.WebApp;
+    const $ = id => document.getElementById(id);
+    const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    const haptic = t => { try { t === 'ok' ? tg.HapticFeedback.notificationOccurred('success') : t === 'err' ? tg.HapticFeedback.notificationOccurred('error') : tg.HapticFeedback.impactOccurred('light'); } catch (e) {} };
+    const API = `${window.CRM_CONFIG.SUPABASE_URL}/functions/v1/miniapp`;
+    let data = null;
+    let grade = '';
+    let cls = '';
+
+    // ---------- Telegram muhiti ----------
+    if (tg) {
+      tg.ready();
+      tg.expand();
+      if (tg.colorScheme === 'dark') document.documentElement.classList.add('dark');
+      try { tg.setHeaderColor('#F2642A'); tg.setBackgroundColor(tg.colorScheme === 'dark' ? '#17120f' : '#f6f3f0'); } catch (e) {}
+      tg.onEvent?.('themeChanged', () => document.documentElement.classList.toggle('dark', tg.colorScheme === 'dark'));
+    }
+
+    async function api(action, payload = {}) {
+      const res = await fetch(API, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', apikey: window.CRM_CONFIG.SUPABASE_KEY },
+        body: JSON.stringify({ action, initData: tg?.initData || '', ...payload })
+      });
+      const out = await res.json().catch(() => ({ ok: false, error: 'Tarmoq xatosi' }));
+      if (!out.ok && !out.error) out.error = 'Xatolik';
+      return out;
+    }
+
+    function fatal(msg) {
+      $('fatal').classList.remove('hidden');
+      $('fatal').innerHTML = `<div class="text-3xl mb-2">🤖</div><div class="font-black">${esc(msg)}</div>
+        <div class="text-xs muted mt-2">Botni oching va pastdagi “Ilova” tugmasini bosing.</div>`;
+      ['v-mock', 'v-check', 'v-keys'].forEach(id => $(id).classList.add('hidden'));
+    }
+
+    // ---------- Tablar ----------
+    document.querySelectorAll('[data-tab]').forEach(b => b.onclick = () => {
+      haptic();
+      document.querySelectorAll('[data-tab]').forEach(x => x.classList.toggle('on', x === b));
+      ['mock', 'check', 'keys'].forEach(t => $('v-' + t).classList.toggle('hidden', t !== b.dataset.tab));
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    });
+
+    // ---------- KIDS MOCK ----------
+    const GRADES = ['Maktabgacha', '1-sinf', '2-sinf', '3-sinf', '4-sinf', '5-sinf', '6-sinf', '7-sinf', '8-sinf', '9-sinf', '10-sinf', '11-sinf'];
+    $('m-grades').innerHTML = GRADES.map(g => `<button type="button" class="chip ${g === 'Maktabgacha' ? 'col-span-4' : ''}" data-g="${g}">${g.replace('-sinf', '')}${g === 'Maktabgacha' ? '' : '<span class="text-[10px] font-bold opacity-70">-sinf</span>'}</button>`).join('');
+    $('m-grades').onclick = e => {
+      const b = e.target.closest('[data-g]'); if (!b) return;
+      haptic(); grade = b.dataset.g;
+      $('m-grades').querySelectorAll('[data-g]').forEach(x => x.classList.toggle('on', x === b));
+    };
+
+    $('m-contact').onclick = () => {
+      if (!tg?.requestContact) return;
+      tg.requestContact((ok, res) => {
+        const p = res?.responseUnsafe?.contact?.phone_number;
+        if (ok && p) { $('m-phone').value = '+' + String(p).replace(/\D/g, ''); haptic('ok'); }
+      });
+    };
+
+    function regCard(r) {
+      const color = { 'Yangi': 'pill', 'Tasdiqlandi': 'pill', 'Keldi': 'pill', 'Kelmadi': 'pill', 'Bekor': 'pill' }[r.status] || 'pill';
+      return `<div class="p-3 rounded-2xl" style="background:var(--soft)">
+        <div class="flex items-center justify-between gap-2"><b>${esc(r.full_name)}</b><span class="${color}">${esc(r.status)}</span></div>
+        <div class="text-xs muted mt-1">${esc(r.grade)} · ${esc(r.session)}</div>
+        <div class="text-xs mt-1">🚪 Xona: <b>${esc(r.room)}</b> · 🔖 KM-${r.id}</div></div>`;
+    }
+    function renderRegs() {
+      const list = data.registrations || [];
+      $('m-list').innerHTML = list.length ? list.map(regCard).join('') : '<div class="muted text-sm">Hali ariza yo‘q.</div>';
+    }
+
+    $('m-submit').onclick = async () => {
+      $('m-err').textContent = '';
+      const name = $('m-name').value.trim();
+      const phone = $('m-phone').value.trim();
+      if (name.length < 3) return ($('m-err').textContent = 'Familiya va ismni to‘liq yozing', haptic('err'));
+      if (!grade) return ($('m-err').textContent = 'Sinfni tanlang', haptic('err'));
+      if (phone.replace(/\D/g, '').length < 9) return ($('m-err').textContent = 'Telefon raqamini to‘g‘ri kiriting', haptic('err'));
+      $('m-submit').disabled = true; $('m-submit').textContent = '⏳ Yuborilmoqda…';
+      const r = await api('register', { name, grade, phone, session: $('m-session').value });
+      $('m-submit').disabled = false; $('m-submit').textContent = '✅ Ro‘yxatdan o‘tish';
+      if (!r.ok) return ($('m-err').textContent = r.error, haptic('err'));
+      haptic('ok');
+      const reg = r.registration;
+      $('m-done').classList.remove('hidden');
+      $('m-done').innerHTML = `<div class="text-center space-y-2">
+        <div class="text-4xl">${r.duplicate ? 'ℹ️' : '🎉'}</div>
+        <div class="font-black text-lg">${r.duplicate ? 'Bu farzand allaqachon yozilgan' : 'Ro‘yxatdan o‘tdingiz!'}</div>
+        <div class="text-sm">🚪 Xona: <b>${esc(reg.room)}</b> · 🔖 Ariza: <b>KM-${reg.id}</b></div>
+        <div class="text-xs muted">Imtihon kuni shu raqamni ko‘rsating.</div></div>`;
+      if (!r.duplicate) {
+        data.registrations = [reg, ...(data.registrations || [])];
+        renderRegs();
+        $('m-name').value = '';
+      }
+      $('m-done').scrollIntoView({ behavior: 'smooth', block: 'center' });
+    };
+
+    // ---------- VARAQ TEKSHIRISH ----------
+    const curTest = () => (data.tests || []).find(t => t.code === $('c-test').value);
+    async function loadClasses() {
+      cls = '';
+      $('c-classes').innerHTML = '<div class="col-span-4 muted text-sm">⏳</div>';
+      const r = await api('classes', { school: $('c-school').value });
+      $('c-classes').innerHTML = (r.classes || []).map(c => `<button type="button" class="chip" data-c="${esc(c)}">${esc(c)}</button>`).join('') || '<div class="col-span-4 muted text-sm">Sinflar yo‘q</div>';
+    }
+    $('c-classes').onclick = e => {
+      const b = e.target.closest('[data-c]'); if (!b) return;
+      haptic(); cls = b.dataset.c;
+      $('c-classes').querySelectorAll('[data-c]').forEach(x => x.classList.toggle('on', x === b));
+    };
+    function onTestChange() {
+      const t = curTest();
+      const school = t?.kind === 'school';
+      $('c-school-box').classList.toggle('hidden', !school);
+      $('c-name-label').textContent = (school ? '4' : '2') + '. Familiya va ism';
+    }
+    $('c-test').onchange = onTestChange;
+    $('c-school').onchange = loadClasses;
+
+    $('c-shot').onclick = () => {
+      $('c-err').textContent = '';
+      const t = curTest();
+      if (!t) return ($('c-err').textContent = 'Faol test yo‘q', haptic('err'));
+      if (t.kind === 'school' && !cls) return ($('c-err').textContent = 'Sinfni tanlang', haptic('err'));
+      if ($('c-name').value.trim().length < 3) return ($('c-err').textContent = 'Familiya va ismni yozing', haptic('err'));
+      $('c-file').value = '';
+      $('c-file').click();
+    };
+
+    function fileToGray(file) {
+      return new Promise((resolve, reject) => {
+        const img = new Image();
+        img.onload = () => {
+          const s = Math.min(1, 2000 / Math.max(img.width, img.height));
+          const cv = document.createElement('canvas');
+          cv.width = Math.round(img.width * s); cv.height = Math.round(img.height * s);
+          const ctx = cv.getContext('2d');
+          ctx.drawImage(img, 0, 0, cv.width, cv.height);
+          const d = ctx.getImageData(0, 0, cv.width, cv.height);
+          URL.revokeObjectURL(img.src);
+          resolve({ gray: rgbaToGray(d.data, cv.width, cv.height), width: cv.width, height: cv.height });
+        };
+        img.onerror = reject;
+        img.src = URL.createObjectURL(file);
+      });
+    }
+
+    $('c-file').onchange = async () => {
+      const file = $('c-file').files[0]; if (!file) return;
+      const t = curTest();
+      $('c-shot').disabled = true; $('c-shot').textContent = '⏳ O‘qilmoqda…';
+      try {
+        const img = await fileToGray(file);
+        const read = readSheet(img, { numQuestions: t.num_questions, numOptions: t.num_options });
+        if (!read.ok) { $('c-err').textContent = read.error; haptic('err'); return; }
+        const r = await api('check', { code: t.code, school: $('c-school').value, cls, name: $('c-name').value.trim(), answers: read.answers });
+        if (!r.ok) { $('c-err').textContent = r.error; haptic('err'); return; }
+        haptic('ok');
+        showResult(t, r.result);
+      } catch (e) {
+        $('c-err').textContent = 'Rasmni o‘qib bo‘lmadi: ' + e.message; haptic('err');
+      } finally {
+        $('c-shot').disabled = false; $('c-shot').textContent = '📷 Varaqni suratga olish';
+      }
+    };
+
+    function showResult(t, g) {
+      const pct = g.total ? Math.round(g.correct / g.total * 100) : 0;
+      const wrong = g.wrong.map(w => `<div class="key-cell text-xs"><b>${w.q}</b><div>${w.given === '-' ? '∅' : w.given === '*' ? '2×' : esc(w.given)}${w.right ? ` → <b style="color:var(--ok)">${esc(w.right)}</b>` : ''}</div></div>`).join('');
+      $('c-result').classList.remove('hidden');
+      $('c-result').innerHTML = `
+        <div class="text-center">
+          <div class="text-xs muted font-bold">${esc(t.title)}</div>
+          <div class="text-5xl font-black mt-2" style="color:var(--brand)">${g.score}</div>
+          <div class="text-xs font-bold muted">ball</div>
+          <div class="mt-3 text-sm"><b>${g.correct}</b> / ${g.total} to‘g‘ri · ${pct}%</div>
+          ${g.q1Count ? `<div class="flex justify-center gap-2 mt-3">
+              <span class="pill">📐 ${g.q1} × ${g.w1} = ${g.q1 * g.w1}</span>
+              <span class="pill">🇬🇧 ${g.q2} × ${g.w2} = ${g.q2 * g.w2}</span></div>` : ''}
+          ${g.crm ? `<div class="mt-3 text-xs p-2 rounded-xl" style="background:var(--soft)">🗂 ${esc(g.crm.school)} · ${esc(g.crm.cls)} · ${esc(g.crm.fullName)} — ${g.crm.matched ? 'ball yangilandi ✅' : 'sinfga yangi o‘quvchi sifatida qo‘shildi 🆕'}</div>` : ''}
+        </div>
+        ${g.wrong.length ? `<div class="mt-4 text-xs font-black muted">Xato va bo‘sh javoblar (${g.wrong.length})</div><div class="grid grid-cols-5 gap-1.5 mt-2">${wrong}</div>
+          ${g.wrong.some(w => !w.right) ? '<div class="text-[11px] muted mt-2">To‘g‘ri javoblar imtihon kaliti e’lon qilingach ko‘rinadi.</div>' : ''}`
+          : '<div class="text-center mt-4 font-black">🎉 Barcha javoblar to‘g‘ri!</div>'}`;
+      $('c-result').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+
+    // ---------- JAVOBLAR KALITI ----------
+    function renderKeyList() {
+      const keys = data.keys || [];
+      $('k-list').innerHTML = keys.length
+        ? keys.map(k => `<button class="w-full text-left p-3 rounded-2xl flex items-center justify-between" style="background:var(--soft)" data-k="${esc(k.code)}">
+            <span><b>${esc(k.title)}</b><span class="block text-xs muted">${esc(k.code)} · ${k.num_questions} savol</span></span><span class="text-xl">›</span></button>`).join('')
+        : '<div class="muted text-sm">Hozircha e’lon qilingan javoblar yo‘q.</div>';
+    }
+    $('k-list').onclick = async e => {
+      const b = e.target.closest('[data-k]'); if (!b) return;
+      haptic();
+      const r = await api('key', { code: b.dataset.k });
+      if (!r.ok) return;
+      const t = r.test;
+      const key = String(t.answer_key || '');
+      const block = (from, to, label) => `<div class="mt-3 text-xs font-black muted">${label}</div>
+        <div class="grid grid-cols-5 gap-1.5 mt-2">${[...key.slice(from, to)].map((a, i) => `<div class="key-cell"><div class="text-[10px] muted">${from + i + 1}</div><div class="font-black" style="color:var(--brand)">${a}</div></div>`).join('')}</div>`;
+      const q1 = Number(t.q1_count) || 0;
+      $('k-view').classList.remove('hidden');
+      $('k-view').innerHTML = `<div class="font-black">${esc(t.title)}</div><div class="text-xs muted">${esc(t.code)} · ${t.num_questions} savol</div>
+        ${q1 ? block(0, q1, `📐 1–${q1} (${t.w1} ball)`) + block(q1, t.num_questions, `🇬🇧 ${q1 + 1}–${t.num_questions} (${t.w2} ball)`) : block(0, t.num_questions, 'Javoblar')}`;
+      $('k-view').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    };
+
+    // ---------- Boshlash ----------
+    (async () => {
+      if (!tg?.initData) return fatal('Bu sahifa Telegram bot ichida ochiladi');
+      const r = await api('init');
+      if (!r.ok) return fatal(r.error);
+      data = r;
+      $('hello').textContent = `Assalomu alaykum, ${r.user.first_name || 'mehmon'}!`;
+      $('m-session').innerHTML = (r.sessions || []).map(s => `<option>${esc(s)}</option>`).join('');
+      $('m-session-wrap').classList.toggle('hidden', (r.sessions || []).length <= 1);
+      renderRegs();
+      $('c-test').innerHTML = (r.tests || []).map(t => `<option value="${esc(t.code)}">${esc(t.title)}</option>`).join('') || '<option value="">Faol test yo‘q</option>';
+      $('c-school').innerHTML = (r.schools || []).map(s => `<option value="${esc(s.id)}">${esc(s.name)}</option>`).join('');
+      onTestChange();
+      if ((r.schools || []).length) loadClasses();
+      renderKeyList();
+      if (location.hash === '#check') document.querySelector('[data-tab="check"]').click();
+      if (location.hash === '#keys') document.querySelector('[data-tab="keys"]').click();
+    })();
+  </script>
+</body>
+</html>

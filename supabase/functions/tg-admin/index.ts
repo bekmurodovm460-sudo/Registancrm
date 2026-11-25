@@ -1,5 +1,7 @@
 // Telegram botni boshqarish (faqat CRM xodimlari): holat, webhook o'rnatish, karta rasmini yuborish
-import { callerRole, cors, getSecret, json, SUPABASE_URL, tg, webhookSecret } from '../_shared/common.ts';
+import { callerRole, cors, getSecret, getSetting, json, SUPABASE_URL, tg, webhookSecret } from '../_shared/common.ts';
+
+const DEFAULT_MINIAPP_URL = 'https://registanglobusmaktablar.netlify.app/miniapp.html';
 
 Deno.serve(async req => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors });
@@ -50,8 +52,11 @@ Deno.serve(async req => {
             scope: { type: 'chat', chat_id: Number(adminChat) || adminChat }
           });
         }
+        // Mini App: botning menyu tugmasi ("📱 Ilova")
+        const miniAppUrl = String(body.miniAppUrl || await getSetting<string>('miniAppUrl', '') || DEFAULT_MINIAPP_URL);
+        const menu = await tg(token, 'setChatMenuButton', { menu_button: { type: 'web_app', text: '📱 Ilova', web_app: { url: miniAppUrl } } });
         if (!r.ok || !cmd.ok) return json({ ok: false, url, error: r.description || cmd.description });
-        return json({ ok: true, url, commands: cmd.ok, adminCommands: adminCmd ? adminCmd.ok : null });
+        return json({ ok: true, url, commands: cmd.ok, adminCommands: adminCmd ? adminCmd.ok : null, miniApp: menu.ok ? miniAppUrl : null, miniAppError: menu.ok ? undefined : menu.description });
       }
       case 'sendPhoto': {
         const chatId = String(body.chatId || '').trim() || await getSecret('telegram_admin_chat_id');

@@ -112,3 +112,13 @@ Himoya ma’lumotlar bazasi darajasida (Row Level Security). Bot tokeni va eduti
 | `/id` | admin | chat ID |
 
 Karta rasmi serverda (`supabase/functions/_shared/card.ts`, resvg-wasm + Inter shrifti) CRM’dagi dizayn bilan bir xil yasaladi.
+
+## Telegram Mini App (`web/miniapp.html`)
+
+Botning chap pastki burchagidagi **📱 Ilova** tugmasi ochadi (`setChatMenuButton`, manzil: `https://registanglobusmaktablar.netlify.app/miniapp.html`, `crm_settings.miniAppUrl` bilan o‘zgartiriladi).
+
+- **🧒 Kids Mock** — forma (ism, sinf, telefon/“📱 Raqamim”, sessiya) → `crm_mock_registrations`, xona avtomatik; “Mening arizalarim”.
+- **📸 Tekshirish** — test → maktab → sinf → ism → kamera. Varaq telefonda o‘qiladi (`omr.js`), baholash serverda; natija sinfdagi o‘quvchiga yoziladi.
+- **🔑 Javoblar** — faqat e’lon qilingan kalitlar.
+
+Backend: `supabase/functions/miniapp` — har bir so‘rov Telegram `initData` HMAC imzosi bilan tekshiriladi (24 soat); kalit e’lon qilinmaguncha mijozga yuborilmaydi.
