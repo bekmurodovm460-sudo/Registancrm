@@ -113,9 +113,11 @@ async function renderSchoolsTab() {
                 <span class="px-2.5 py-1 rounded-lg bg-white border border-slate-200">🎓 ${s2.students} o‘quvchi</span>
                 <span class="px-2.5 py-1 rounded-lg bg-white border border-slate-200">🗂️ ${s2.classes} sinf</span>
               </div>
+              ${active && (state.classes || []).length ? `<div class="flex flex-wrap gap-1">${[...state.classes].sort((p, q) => p.name.localeCompare(q.name, 'uz', { numeric: true })).map(c => `<button onclick="openClassInside('${esc(c.name)}')" class="px-2 py-0.5 rounded-md bg-white border border-orange-200 text-[10px] font-black text-slate-700 hover:bg-orange-100">${esc(c.name)}</button>`).join('')}</div>` : ''}
               <div class="flex gap-1.5 flex-wrap">
                 ${active ? `<button onclick="switchTab('classes')" class="px-3 py-1.5 rounded-lg bg-slate-900 text-white text-[11px] font-black">🗂️ Sinflarni ochish</button>`
                          : (crm().role !== 'teacher' ? `<button onclick="crmUseSchool('${esc(x.id)}')" class="px-3 py-1.5 rounded-lg bg-[#F2642A] text-white text-[11px] font-black">✅ Tanlash</button>` : '')}
+                ${canWrite() ? `<button onclick="crmAddClassToSchool('${esc(x.id)}')" class="px-3 py-1.5 rounded-lg bg-emerald-600 text-white text-[11px] font-black">➕ Sinf qo‘shish</button>` : ''}
                 ${isAdmin() ? `<button onclick="crmEditSchool('${esc(x.id)}')" class="px-3 py-1.5 rounded-lg bg-white border border-slate-200 text-[11px] font-bold">✏️ Tahrirlash</button>` : ''}
                 ${isAdmin() && x.id !== '12-maktab' ? `<button onclick="crmDeleteSchool('${esc(x.id)}', ${Number(s2.students)}, ${Number(s2.classes)})" class="px-3 py-1.5 rounded-lg bg-rose-50 text-rose-700 text-[11px] font-bold">🗑 O‘chirish</button>` : ''}
               </div>
@@ -169,6 +171,224 @@ window.crmDeleteSchool = (id, students, classes) => {
   saveState();
   crm().applySchoolLabels();
   setTimeout(renderSchoolsTab, 600);
+};
+
+// =========================================================
+// 🗂️ SINF VA O'QUVCHI BOSHQARUVI (maktab → sinf → o'quvchi, sinf rahbari)
+// =========================================================
+async function loadStaff() {
+  if (!['admin', 'operator'].includes(crm().role)) { crm().staff = []; return []; }
+  const { data } = await sb().rpc('crm_staff_list');
+  crm().staff = data || [];
+  return crm().staff;
+}
+const staffLabel = p => `${p.full_name || p.email}${p.role === 'teacher' ? ' 👩‍🏫' : p.role === 'admin' ? ' 👑' : p.role === 'operator' ? ' 🎧' : ' ⏳'}`;
+function homeroomOf(cls) {
+  const staff = crm().staff || [];
+  return staff.find(p => p.school_id === crm().schoolId && p.class_name === cls.name) ||
+         (cls.teacherUserId ? staff.find(p => p.id === cls.teacherUserId) : null) || null;
+}
+function staffOptions(selectedId) {
+  return (crm().staff || []).filter(p => p.role !== 'pending' || isAdmin())
+    .map(p => `<option value="${p.id}" ${p.id === selectedId ? 'selected' : ''}>${esc(staffLabel(p))}${p.class_name ? ` — hozir ${esc(p.class_name)}` : ''}</option>`).join('');
+}
+
+// --- Sinf qo'shish oynasi ---
+const origOpenAddClass = window.openAddClassModal;
+window.openAddClassModal = async function () {
+  origOpenAddClass();
+  ['new-class-name', 'new-class-teacher', 'new-class-phone'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+  const exp = document.getElementById('new-class-expected'); if (exp) exp.value = 30;
+  const sel = document.getElementById('new-class-teacher-user');
+  if (sel && isAdmin()) {
+    await loadStaff();
+    sel.innerHTML = `<option value="">— Hisobsiz (faqat ism) —</option>${staffOptions('')}`;
+  }
+  setTimeout(() => document.getElementById('new-class-name')?.focus(), 50);
+};
+window.crmFillTeacherFromStaff = id => {
+  const p = (crm().staff || []).find(x => x.id === id);
+  if (p) document.getElementById('new-class-teacher').value = p.full_name || p.email;
+};
+window.saveNewClass = async function () {
+  const name = document.getElementById('new-class-name').value.trim().toUpperCase().replace(/\s+/g, '');
+  const teacher = document.getElementById('new-class-teacher').value.trim();
+  const phone = document.getElementById('new-class-phone').value.trim();
+  const expected = Number(document.getElementById('new-class-expected')?.value) || 30;
+  const userId = document.getElementById('new-class-teacher-user')?.value || '';
+  if (!name) return showToast('Sinf nomini kiriting (masalan 5-A)', '⚠️');
+  if (state.classes.some(c => c.name === name)) return showToast(`${name} sinfi bu maktabda allaqachon bor`, '⚠️');
+  state.classes.push({ name, teacher: teacher || `${name} Sinf Rahbari`, phone, expected, schoolId: crm().schoolId, ...(userId ? { teacherUserId: userId } : {}) });
+  saveState();
+  if (userId && isAdmin()) {
+    const { error } = await sb().rpc('crm_assign_homeroom', { p_user: userId, p_school: crm().schoolId, p_class: name });
+    if (error) showToast('Rahbar biriktirilmadi: ' + error.message, '⚠️');
+    await loadStaff();
+  }
+  closeAddClassModal();
+  showToast(`${name} sinfi ${crm().schoolName} ga qo‘shildi — endi o‘quvchilarni qo‘shing`);
+  openClassInside(name);
+};
+
+// --- Sinf ichki oynasini kengaytirish ---
+const origRenderClasses = window.renderClassesTab;
+window.renderClassesTab = function () {
+  origRenderClasses();
+  if (openedClassName) enhanceClassInside();
+};
+
+let staffLoadedFor = null;
+function enhanceClassInside() {
+  const el = document.getElementById('tab-classes');
+  const cls = (state.classes || []).find(c => c.name === openedClassName);
+  if (!cls) return;
+  if (['admin', 'operator'].includes(crm().role) && staffLoadedFor !== crm().schoolId + openedClassName) {
+    staffLoadedFor = crm().schoolId + openedClassName;
+    loadStaff().then(() => { if (openedClassName === cls.name && currentTab === 'classes') window.renderClassesTab(); });
+  }
+  const own = crm().role === 'teacher' && crm().profile?.class_name === cls.name;
+
+  // 1) Sarlavhaga: nomini o'zgartirish / o'chirish
+  const backBtn = el.querySelector('button[onclick^="openedClassName=null"]');
+  if (backBtn && canWrite()) {
+    backBtn.parentElement.insertAdjacentHTML('beforeend', `
+      <button onclick="crmRenameClass('${esc(cls.name)}')" class="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-extrabold">✏️ Nomini o‘zgartirish</button>
+      ${isAdmin() ? `<button onclick="crmDeleteClass('${esc(cls.name)}')" class="px-3 py-1.5 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 text-xs font-extrabold">🗑 Sinfni o‘chirish</button>` : ''}`);
+  }
+
+  // 2) Sinf rahbari: xodim hisobini biriktirish
+  const tInp = document.getElementById('cls-teacher-inp');
+  if (tInp) {
+    const hr = homeroomOf(cls);
+    tInp.parentElement.insertAdjacentHTML('afterbegin', `
+      <div class="p-3 rounded-2xl bg-indigo-50 border border-indigo-200 space-y-2">
+        <div class="font-black text-indigo-900">👩‍🏫 Sinf rahbari (tizim hisobi)</div>
+        <div class="text-[11px] text-indigo-800">${hr ? `<b>${esc(hr.full_name || hr.email)}</b> · ${esc(hr.email || '')}` : 'Hisob biriktirilmagan — rahbar tizimga kira olmaydi.'}</div>
+        ${isAdmin() ? `
+          <select id="cls-teacher-user" class="w-full px-3 py-2 rounded-xl border border-indigo-200 font-semibold bg-white">
+            <option value="">— Xodimni tanlang —</option>${staffOptions(hr?.id || '')}
+          </select>
+          <div class="flex gap-2">
+            <button onclick="crmAssignHomeroom('${esc(cls.name)}')" class="flex-1 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-extrabold">🔗 Biriktirish</button>
+            ${hr ? `<button onclick="crmUnassignHomeroom('${esc(cls.name)}')" class="px-3 py-2 rounded-xl bg-white border border-indigo-200 text-indigo-800 font-bold">✕ Olib tashlash</button>` : ''}
+          </div>
+          <div class="text-[10px] text-indigo-700">Xodim ro‘yxatda yo‘q bo‘lsa — u login sahifasida ro‘yxatdan o‘tsin.</div>` : '<div class="text-[10px] text-indigo-700">Hisob biriktirishni admin bajaradi.</div>'}
+      </div>`);
+  }
+
+  // 3) O'quvchilar jadvaliga tahrirlash tugmasi
+  el.querySelectorAll('button[onclick^="deleteStudentById("]').forEach(b => {
+    const id = Number(b.getAttribute('onclick').match(/\d+/)[0]);
+    if (canWrite() || own) b.insertAdjacentHTML('beforebegin', `<button onclick="crmEditStudent(${id})" class="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold mr-1">✏️</button>`);
+    if (!isAdmin()) b.remove();
+  });
+}
+
+window.crmAssignHomeroom = async className => {
+  const userId = document.getElementById('cls-teacher-user')?.value;
+  if (!userId) return showToast('Xodimni tanlang', '⚠️');
+  const { error } = await sb().rpc('crm_assign_homeroom', { p_user: userId, p_school: crm().schoolId, p_class: className });
+  if (error) return showToast(error.message, '⚠️');
+  await loadStaff();
+  const p = crm().staff.find(x => x.id === userId);
+  const cls = state.classes.find(c => c.name === className);
+  if (cls && p) { cls.teacher = p.full_name || p.email; cls.teacherUserId = userId; saveState(); }
+  showToast(`${p?.full_name || 'Xodim'} ${className} sinfiga rahbar etib biriktirildi`, '👩‍🏫');
+  window.renderClassesTab();
+};
+window.crmUnassignHomeroom = async className => {
+  if (!confirm('Sinf rahbarining tizim hisobini bu sinfdan olib tashlaysizmi?')) return;
+  const { error } = await sb().rpc('crm_assign_homeroom', { p_user: null, p_school: crm().schoolId, p_class: className });
+  if (error) return showToast(error.message, '⚠️');
+  const cls = state.classes.find(c => c.name === className);
+  if (cls) { delete cls.teacherUserId; saveState(); }
+  await loadStaff();
+  window.renderClassesTab();
+};
+
+window.crmRenameClass = async oldName => {
+  const nn = (prompt(`${oldName} sinfining yangi nomi:`, oldName) || '').trim().toUpperCase().replace(/\s+/g, '');
+  if (!nn || nn === oldName) return;
+  if (state.classes.some(c => c.name === nn)) return showToast(`${nn} sinfi allaqachon bor`, '⚠️');
+  const cls = state.classes.find(c => c.name === oldName);
+  cls.name = nn;
+  state.students.forEach(st => { if (st.className === oldName) st.className = nn; });
+  openedClassName = nn;
+  saveState();
+  const hr = homeroomOf({ name: oldName, teacherUserId: cls.teacherUserId });
+  if (hr && isAdmin()) { await sb().rpc('crm_assign_homeroom', { p_user: hr.id, p_school: crm().schoolId, p_class: nn }); await loadStaff(); }
+  window.renderClassesTab();
+  showToast(`${oldName} → ${nn} deb o‘zgartirildi`);
+};
+
+window.crmDeleteClass = async name => {
+  const n = state.students.filter(st => st.className === name).length;
+  if (!confirm(n ? `${name} sinfi va undagi ${n} nafar o‘quvchi o‘chiriladi. Davom etasizmi?` : `${name} sinfini o‘chirasizmi?`)) return;
+  state.students = state.students.filter(st => st.className !== name);
+  state.classes = state.classes.filter(c => c.name !== name);
+  openedClassName = null;
+  saveState();
+  if (isAdmin()) { await sb().rpc('crm_assign_homeroom', { p_user: null, p_school: crm().schoolId, p_class: name }); }
+  window.renderClassesTab();
+  showToast(`${name} sinfi o‘chirildi`, '🗑️');
+};
+
+// --- O'quvchini tahrirlash / boshqa sinfga ko'chirish ---
+window.crmEditStudent = id => {
+  const st = state.students.find(x => x.id === id);
+  if (!st) return;
+  document.getElementById('crm-st-modal')?.remove();
+  const classes = (state.classes || []).map(c => c.name);
+  const lockClass = crm().role === 'teacher';
+  document.body.insertAdjacentHTML('beforeend', `
+    <div id="crm-st-modal" class="fixed inset-0 bg-slate-950/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+      <div class="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl space-y-3 text-xs">
+        <div class="flex items-center justify-between">
+          <h3 class="font-black text-lg text-slate-900">✏️ O‘quvchini tahrirlash</h3>
+          <button onclick="document.getElementById('crm-st-modal').remove()" class="w-8 h-8 rounded-full bg-slate-100 font-bold">✕</button>
+        </div>
+        <label class="font-bold block">F.I.Sh.<input id="ed-name" value="${esc(st.fullName)}" class="${input} w-full mt-1"></label>
+        <label class="font-bold block">Ota-ona telefoni<input id="ed-phone" value="${esc(st.phone || '')}" class="${input} w-full mt-1"></label>
+        <div class="grid grid-cols-2 gap-2">
+          <label class="font-bold">1-fan<input id="ed-q1" type="number" min="0" value="${Number(st.q1) || 0}" class="${input} w-full mt-1"></label>
+          <label class="font-bold">2-fan<input id="ed-q2" type="number" min="0" value="${Number(st.q2) || 0}" class="${input} w-full mt-1"></label>
+        </div>
+        <label class="font-bold block">Sinf ${lockClass ? '' : '(boshqa sinfga ko‘chirish)'}
+          <select id="ed-class" ${lockClass ? 'disabled' : ''} class="${input} w-full mt-1">${classes.map(c => `<option ${c === st.className ? 'selected' : ''}>${esc(c)}</option>`).join('')}</select></label>
+        <label class="font-bold block">Izoh<input id="ed-note" value="${esc(st.note || '')}" class="${input} w-full mt-1"></label>
+        <div class="flex justify-end gap-2 pt-1">
+          <button onclick="document.getElementById('crm-st-modal').remove()" class="px-4 py-2 rounded-xl bg-slate-100 font-bold">Bekor</button>
+          <button onclick="crmSaveStudent(${id})" class="${btn('[#F2642A]')}">💾 Saqlash</button>
+        </div>
+      </div>
+    </div>`);
+};
+window.crmSaveStudent = id => {
+  const st = state.students.find(x => x.id === id);
+  const v = k => document.getElementById(k).value;
+  const name = v('ed-name').trim();
+  if (!name) return showToast('F.I.Sh. bo‘sh bo‘lmasin', '⚠️');
+  const oldClass = st.className;
+  st.fullName = name;
+  st.phone = v('ed-phone').trim();
+  st.q1 = Number(v('ed-q1')) || 0;
+  st.q2 = Number(v('ed-q2')) || 0;
+  st.score = calcScore(st.q1, st.q2, state.schoolRules);
+  st.note = v('ed-note').trim();
+  if (crm().role !== 'teacher') st.className = v('ed-class');
+  if (st.phone && st.callStatus === 'Raqamsiz') st.callStatus = 'Yangi';
+  saveState();
+  document.getElementById('crm-st-modal').remove();
+  renderCurrentTab();
+  showToast(oldClass !== st.className ? `${name} ${st.className} sinfiga ko‘chirildi` : `${name} saqlandi`);
+};
+
+// --- Maktab kartasidan sinf qo'shish ---
+window.crmAddClassToSchool = async id => {
+  if (id !== crm().schoolId) await crm().switchSchool(id);
+  openedClassName = null;
+  switchTab('classes');
+  window.openAddClassModal();
 };
 
 // =========================================================

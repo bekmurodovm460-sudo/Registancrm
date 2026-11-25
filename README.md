@@ -63,3 +63,10 @@ Himoya ma’lumotlar bazasi darajasida (Row Level Security). Bot tokeni va eduti
 - Sinflar, o‘quvchilar, ball tizimi va parallel TOP-3 (150k/100k/75k) **har bir maktab ichida alohida**. Kids Mock, kassa, testlar va bot umumiy.
 - O‘qituvchiga “👥 Xodimlar” bo‘limida maktab va sinf biriktiriladi; u faqat o‘sha maktabni ko‘radi va faqat o‘z sinfini tahrirlaydi.
 - “711 bazani tiklash” faqat 12-Maktab uchun ishlaydi.
+
+## Maktab → sinf → o‘quvchi
+
+- **Sinf qo‘shish:** 🏫 Maktablar kartasidagi “➕ Sinf qo‘shish” yoki 🗂️ Sinflari → “➕ Yangi sinf qo‘shish”. Sinf yaratilgach darhol uning ichki oynasi ochiladi.
+- **O‘quvchi qo‘shish:** sinf ichki oynasidagi “2-Oyna” formasi. Jadvaldagi ✏️ tugmasi bilan o‘quvchi tahrirlanadi yoki boshqa sinfga ko‘chiriladi.
+- **Sinf rahbari:** sinf qo‘shishda yoki sinf ichida (“👩‍🏫 Sinf rahbari (tizim hisobi)”) xodim hisobi biriktiriladi. Xodim avtomatik o‘qituvchi bo‘ladi va faqat shu sinf o‘quvchilarini tahrirlay oladi. Biriktirishni admin bajaradi.
+- Sinfni qayta nomlash (o‘quvchilar va rahbar ham ergashadi) va o‘chirish (admin) sinf oynasi sarlavhasida.
