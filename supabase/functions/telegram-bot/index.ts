@@ -64,11 +64,21 @@ const DEFAULT_CENTER = '📍 <b>Registan LC</b> o‘quv markazi\n\nAloqa ma’lu
 let TOKEN = '';
 let tokenLoadedAt = 0;
 async function token() {
-  if (!TOKEN || Date.now() - tokenLoadedAt > 60_000) {
+  if (!TOKEN || Date.now() - tokenLoadedAt > 600_000) {
     TOKEN = await getSecret('telegram_bot_token');
     tokenLoadedAt = Date.now();
   }
   return TOKEN;
+}
+
+// Sozlamalar keshi (baza boshqa hududda — har so'rovda o'qimaslik uchun)
+const settingCache = new Map<string, { v: unknown; at: number }>();
+async function cachedSetting<T>(key: string, fallback: T, ttl = 120_000): Promise<T> {
+  const c = settingCache.get(key);
+  if (c && Date.now() - c.at < ttl) return c.v as T;
+  const v = await getSetting<T>(key, fallback);
+  settingCache.set(key, { v, at: Date.now() });
+  return v;
 }
 
 type Session = { step: string | null; data: Record<string, any> };
@@ -82,7 +92,9 @@ async function setSession(chatId: number, step: string | null, data: Record<stri
 }
 
 async function send(chatId: number, text: string, extra: Record<string, unknown> = {}) {
-  return tg(await token(), 'sendMessage', { chat_id: chatId, text, parse_mode: 'HTML', ...extra });
+  const r = await tg(await token(), 'sendMessage', { chat_id: chatId, text, parse_mode: 'HTML', ...extra });
+  if (!r?.ok) console.error('tg sendMessage fail', chatId, r?.error_code, r?.description);
+  return r;
 }
 
 const esc = (s: unknown) => String(s ?? '').replace(/[<>&]/g, c => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;' }[c]!));
@@ -356,7 +368,7 @@ async function askPhone(chatId: number) {
 }
 
 async function askSession(chatId: number, s: Session) {
-  const sessions = await getSetting<string[]>('mockSessions', ['2026-11 (Noyabr Mock)']);
+  const sessions = await cachedSetting<string[]>('mockSessions', ['2026-11 (Noyabr Mock)']);
   if (sessions.length <= 1) return finishReg(chatId, s, sessions[0] || '');
   await setSession(chatId, 'reg_session', s.data);
   await send(chatId, 'Qaysi imtihon sessiyasiga yozilasiz?', {
@@ -490,7 +502,7 @@ async function answerMine(chatId: number) {
 // /aloqa — markaz ma'lumoti (CRM'da tahrirlanadi)
 // ---------------------------------------------------------
 async function answerContact(chatId: number) {
-  const info = await getSetting<string>('centerInfo', '');
+  const info = await cachedSetting<string>('centerInfo', '');
   await send(chatId, info ? esc(info) : DEFAULT_CENTER, { reply_markup: MENU, disable_web_page_preview: true });
 }
 
@@ -706,12 +718,14 @@ async function prAfterResult(chatId: number, s: Session) {
 // 🏠 Bosh menyu va bo'limlar (inline tugmalar bilan)
 // ---------------------------------------------------------
 async function miniAppUrl() {
-  return await getSetting<string>('miniAppUrl', '');
+  return await cachedSetting<string>('miniAppUrl', '', 300_000);
 }
 
 async function sendHome(chatId: number, firstName = '') {
-  await send(chatId, `👋 Assalomu alaykum${firstName ? ', <b>' + esc(firstName) + '</b>' : ''}!`, { reply_markup: MENU });
-  const app = await miniAppUrl();
+  const [, app] = await Promise.all([
+    send(chatId, `👋 Assalomu alaykum${firstName ? ', <b>' + esc(firstName) + '</b>' : ''}!`, { reply_markup: MENU }),
+    miniAppUrl()
+  ]);
   const rows: any[] = [
     [ib('🧒 Kids Mock’ga yozilish', 'go:reg'), ib('📸 Natijani tekshirish', 'go:check')],
     [ib('🔑 Javoblar kaliti', 'go:keys'), ib('🏆 TOP-3 sovrindorlar', 'go:top')],
@@ -725,7 +739,7 @@ async function sendHome(chatId: number, firstName = '') {
     '📊 <b>Natijalar</b> — TOP-3 va yutuqli kartalar\n\n' +
     'Kerakli bo‘limni tanlang 👇';
   const r = await tg(await token(), 'sendPhoto', { chat_id: chatId, photo: BANNER_URL, caption, parse_mode: 'HTML', reply_markup: { inline_keyboard: rows } });
-  if (!r?.ok) await send(chatId, caption, { reply_markup: { inline_keyboard: rows } });
+  if (!r?.ok) { console.error('tg sendPhoto fail', r?.error_code, r?.description); await send(chatId, caption, { reply_markup: { inline_keyboard: rows } }); }
 }
 
 async function sectionMock(chatId: number) {
@@ -788,22 +802,22 @@ async function onMessage(m: any) {
     return sendHome(chatId, m.from?.first_name || '');
   }
   if (text === BTN_CANCEL || text === '/cancel') {
-    await setSession(chatId, null);
-    return void send(chatId, '❌ Bekor qilindi. Kerakli bo‘limni tanlang 👇', { reply_markup: MENU });
+    await Promise.all([setSession(chatId, null), send(chatId, '❌ Bekor qilindi. Kerakli bo‘limni tanlang 👇', { reply_markup: MENU })]);
+    return;
   }
   if (text === '/id') { await send(chatId, `Chat ID: <code>${chatId}</code>`); return; }
   // Bo'limlar
-  if (text === M_MOCK || text === BTN_SEC2) { await setSession(chatId, null); return sectionMock(chatId); }
-  if (text === M_RESULTS || text === BTN_SEC3) { await setSession(chatId, null); return sectionResults(chatId); }
-  if (text === BTN_SEC1) { await setSession(chatId, null); return startKeys(chatId); }
+  if (text === M_MOCK || text === BTN_SEC2) { await Promise.all([setSession(chatId, null), sectionMock(chatId)]); return; }
+  if (text === M_RESULTS || text === BTN_SEC3) { await Promise.all([setSession(chatId, null), sectionResults(chatId)]); return; }
+  if (text === BTN_SEC1) { await Promise.all([setSession(chatId, null), startKeys(chatId)]); return; }
   if (text === M_KEYS || text === BTN_KEYS || text === '/javoblar') return startKeys(chatId);
   if (text === BTN_TOP || text === '/top') return startTop(chatId);
   if (text === M_CHECK || text === BTN_CHECK || text === OLD_CHECK || text === '/tekshir') return startCheck(chatId);
   if (text === BTN_REG || text === OLD_REG || text === '/royxat') return startReg(chatId);
   if (text === BTN_RESULT || text === OLD_RESULT || text === '/natija') return startResult(chatId);
   if (text === BTN_CARD || text === '/karta') return startCard(chatId);
-  if (text === BTN_MINE || text === '/mening') { await setSession(chatId, null); return answerMine(chatId); }
-  if (text === M_CONTACT || text === BTN_CONTACT || text === '/aloqa') { await setSession(chatId, null); return answerContact(chatId); }
+  if (text === BTN_MINE || text === '/mening') { await Promise.all([setSession(chatId, null), answerMine(chatId)]); return; }
+  if (text === M_CONTACT || text === BTN_CONTACT || text === '/aloqa') { await Promise.all([setSession(chatId, null), answerContact(chatId)]); return; }
   if (text === '/hisobot') return answerReport(chatId);
   if (text === M_PROCTOR || text === BTN_PROCTOR || text === '/nazorat') return startProctor(chatId, m.from?.id);
   if (text === M_HELP || text === BTN_HELP || text === '/yordam' || text === '/help') return sendHelp(chatId);
@@ -892,26 +906,41 @@ async function onMessage(m: any) {
 }
 
 async function onCallback(q: any) {
+  // Tugma tasdig'i javob bilan parallel ketadi (foydalanuvchi kutmaydi)
+  const ack = token().then(t => tg(t, 'answerCallbackQuery', { callback_query_id: q.id })).catch(() => {});
+  try {
+    await routeCallback(q);
+  } finally {
+    await ack;
+  }
+}
+
+async function routeCallback(q: any) {
   const chatId = q.message?.chat?.id as number;
   const data = String(q.data || '');
-  await tg(await token(), 'answerCallbackQuery', { callback_query_id: q.id }).catch(() => {});
   if (!chatId) return;
   if (data.startsWith('go:')) {
-    await setSession(chatId, null);
-    switch (data.slice(3)) {
-      case 'reg': return startReg(chatId);
-      case 'mine': return answerMine(chatId);
-      case 'check': return startCheck(chatId);
-      case 'keys': return startKeys(chatId);
-      case 'top': return startTop(chatId);
-      case 'result': return startResult(chatId);
-      case 'card': return startCard(chatId);
-      case 'mock': return sectionMock(chatId);
-      case 'results': return sectionResults(chatId);
-      case 'contact': return answerContact(chatId);
-      case 'help': return sendHelp(chatId);
-      case 'proctor': return startProctor(chatId, q.from?.id);
-      default: return sendHome(chatId, q.from?.first_name || '');
+    const go = data.slice(3);
+    // O'z sessiyasini yozadigan bo'limlar sessiyani o'zi almashtiradi; qolganlarida tozalash parallel
+    const reset = ['reg', 'check', 'result', 'card', 'proctor'].includes(go) ? Promise.resolve() : setSession(chatId, null);
+    try {
+      switch (go) {
+        case 'reg': return await startReg(chatId);
+        case 'mine': return await answerMine(chatId);
+        case 'check': return await startCheck(chatId);
+        case 'keys': return await startKeys(chatId);
+        case 'top': return await startTop(chatId);
+        case 'result': return await startResult(chatId);
+        case 'card': return await startCard(chatId);
+        case 'mock': return await sectionMock(chatId);
+        case 'results': return await sectionResults(chatId);
+        case 'contact': return await answerContact(chatId);
+        case 'help': return await sendHelp(chatId);
+        case 'proctor': return await startProctor(chatId, q.from?.id);
+        default: return await sendHome(chatId, q.from?.first_name || '');
+      }
+    } finally {
+      await reset;
     }
   }
   if (data.startsWith('t:')) return pickTest(chatId, data.slice(2));
@@ -978,6 +1007,8 @@ Deno.serve(async req => {
     return new Response('forbidden', { status: 403 });
   }
   const update = await req.json().catch(() => ({}));
+  const um = update.message, uq = update.callback_query;
+  console.log('upd', Object.keys(update).filter(k => k !== 'update_id').join(','), um ? `msg chat=${um.chat?.id}/${um.chat?.type} text=${String(um.text || (um.contact ? '[contact]' : um.photo ? '[photo]' : '')).slice(0, 40)}` : uq ? `cb chat=${uq.message?.chat?.id} data=${uq.data}` : '');
   try {
     if (update.message) await onMessage(update.message);
     else if (update.callback_query) await onCallback(update.callback_query);
