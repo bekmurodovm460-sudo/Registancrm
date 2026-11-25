@@ -191,9 +191,20 @@
           <label class="text-xs font-bold text-slate-600">Sinf nomi (masalan: 5-G yoki 10-A)</label>
           <input type="text" id="new-class-name" placeholder="10-A" class="w-full mt-1 px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm font-bold" />
         </div>
+        <div class="admin-only">
+          <label class="text-xs font-bold text-slate-600">Sinf rahbari — xodim hisobi (ixtiyoriy)</label>
+          <select id="new-class-teacher-user" onchange="crmFillTeacherFromStaff(this.value)" class="w-full mt-1 px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm font-semibold bg-white">
+            <option value="">— Hisobsiz (faqat ism) —</option>
+          </select>
+          <p class="text-[11px] text-slate-400 mt-1">Tanlangan xodim o‘qituvchi bo‘lib, faqat shu sinf o‘quvchilarini tahrirlay oladi.</p>
+        </div>
         <div>
           <label class="text-xs font-bold text-slate-600">Sinf rahbari F.I.Sh.</label>
           <input type="text" id="new-class-teacher" placeholder="Karimova Dilnoza" class="w-full mt-1 px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm font-semibold" />
+        </div>
+        <div>
+          <label class="text-xs font-bold text-slate-600">Rejadagi o‘quvchilar soni</label>
+          <input type="number" id="new-class-expected" value="30" min="1" max="60" class="w-full mt-1 px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm font-semibold" />
         </div>
         <div>
           <label class="text-xs font-bold text-slate-600">Sinf rahbari telefoni</label>
