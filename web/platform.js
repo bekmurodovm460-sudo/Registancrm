@@ -445,7 +445,7 @@ function renderTestsTab() {
           <span class="text-[11px] text-slate-500">Varaqni chop eting → o‘quvchi to‘ldiradi → botga rasmini yuboradi</span>
         </div>
         <div class="overflow-x-auto"><table class="w-full text-xs">
-          <thead><tr class="text-left text-slate-500 border-b"><th class="py-2">Kod</th><th>Nomi</th><th>Savol</th><th>Turi</th><th>Holat</th><th>Natija</th><th></th></tr></thead>
+          <thead><tr class="text-left text-slate-500 border-b"><th class="py-2">Kod</th><th>Nomi</th><th>Savol</th><th>Turi</th><th>Holat</th><th>Javoblar (bot)</th><th>Natija</th><th></th></tr></thead>
           <tbody>
           ${tests.map(x => `
             <tr class="border-b border-slate-100">
@@ -454,6 +454,9 @@ function renderTestsTab() {
               <td>${x.num_questions} × ${x.num_options}</td>
               <td>${x.kind === 'mock' ? '🧒 Mock' : '🏫 Maktab'}</td>
               <td>${x.active ? '<span class="text-emerald-700 font-black">● Faol</span>' : '<span class="text-slate-400 font-bold">Yopiq</span>'}</td>
+              <td>${canWrite()
+                ? `<button onclick="crmToggleKey('${esc(x.code)}')" class="px-2.5 py-1 rounded-lg font-bold ${x.answers_published ? 'bg-amber-100 text-amber-900' : 'bg-slate-100 text-slate-600'}">${x.answers_published ? '🔓 E’lon qilingan' : '🔒 Yashirin'}</button>`
+                : (x.answers_published ? '🔓' : '🔒')}</td>
               <td class="font-bold">${crm().submissions.filter(s => s.test_code === x.code).length}</td>
               <td class="text-right whitespace-nowrap">
                 <button onclick="crmPrintSheet('${esc(x.code)}')" class="px-2.5 py-1 rounded-lg bg-slate-900 text-white font-bold">🖨️ Varaq</button>
@@ -571,6 +574,17 @@ window.crmToggleTest = async code => {
   t.active = !t.active;
   renderTestsTab();
 };
+window.crmToggleKey = async code => {
+  const t = crm().tests.find(x => x.code === code);
+  const next = !t.answers_published;
+  if (next && !confirm(`${code} javoblari botda hammaga ochiladi (📚 Maktab imtihonlari javoblari → 🔑 Javoblar kaliti). Imtihon tugadimi?`)) return;
+  const { error } = await sb().from('crm_tests').update({ answers_published: next }).eq('code', code);
+  if (error) return showToast(error.message, '⚠️');
+  t.answers_published = next;
+  renderTestsTab();
+  showToast(next ? `${code} javoblari botda e’lon qilindi` : `${code} javoblari yashirildi`, next ? '🔓' : '🔒');
+};
+
 window.crmDeleteTest = async code => {
   if (!confirm(`${code} testini o‘chirasizmi? Natijalar saqlanib qoladi.`)) return;
   const { error } = await sb().from('crm_tests').delete().eq('code', code);
@@ -968,7 +982,9 @@ async function renderTelegramTab() {
       <div class="text-sm font-black text-slate-800 mb-2">⌨️ Bot buyruqlari</div>
       <div class="grid sm:grid-cols-2 gap-1.5 text-xs">
         ${[
-          ['/start', 'Bosh menyu'],
+          ['/start', 'Bosh menyu: 📚 Javoblar · 🧒 Kids Mock · 📊 Natijalar'],
+          ['/javoblar', 'E’lon qilingan imtihon javoblari kaliti'],
+          ['/top', 'Maktab → parallel bo‘yicha TOP-3 sovrindorlar'],
           ['/natija', 'Farzand balli va parallel TOP-3 o‘rni (ism yoki telefon)'],
           ['/karta', 'Yutuqli karta rasmi — telefon tasdiqlangan TOP-3 ota-onasiga'],
           ['/tekshir', 'Javoblar varaqasi rasmini tekshirish (OMR)'],

@@ -10,25 +10,34 @@ import { admin, getSecret, getSetting, tg, webhookSecret } from '../_shared/comm
 import { readSheet, rgbaToGray, gradeAnswers } from '../_shared/omr.js';
 import { cardPng, money, PRIZES, promoCode } from '../_shared/card.ts';
 
-const BTN_CHECK = '📝 Natijani tekshirish';
-const BTN_REG = '🧒 Kids Mock ro‘yxatdan o‘tish';
-const BTN_HELP = 'ℹ️ Yordam';
-const BTN_CANCEL = '❌ Bekor qilish';
-const BTN_RESULT = '🏆 Farzand natijasi';
-const BTN_CARD = '🏅 Yutuqli karta';
-const BTN_MINE = '📋 Mening arizalarim';
+// Asosiy bo'limlar
+const BTN_SEC1 = '📚 Maktab imtihonlari javoblari';
+const BTN_SEC2 = '🧒 Kids Mock’ga ro‘yxatdan o‘tish';
+const BTN_SEC3 = '📊 Natijalar ro‘yxati';
 const BTN_CONTACT = '📞 Aloqa';
+const BTN_HELP = 'ℹ️ Yordam';
+const BTN_HOME = '⬅️ Bosh menyu';
+const BTN_CANCEL = '❌ Bekor qilish';
+// 1-bo'lim
+const BTN_KEYS = '🔑 Javoblar kaliti';
+const BTN_CHECK = '📸 Varaqni tekshirish';
+// 2-bo'lim
+const BTN_REG = '📝 Ro‘yxatdan o‘tish';
+const BTN_MINE = '📋 Mening arizalarim';
+// 3-bo'lim
+const BTN_RESULT = '🔍 Farzandim natijasi';
+const BTN_TOP = '🏆 TOP-3 sovrindorlar';
+const BTN_CARD = '🏅 Yutuqli karta';
+// Eski menyu tugmalari (foydalanuvchida eski klaviatura qolgan bo'lsa)
+const OLD_CHECK = '📝 Natijani tekshirish';
+const OLD_REG = '🧒 Kids Mock ro‘yxatdan o‘tish';
+const OLD_RESULT = '🏆 Farzand natijasi';
 
-const MENU = {
-  keyboard: [
-    [{ text: BTN_CHECK }],
-    [{ text: BTN_RESULT }, { text: BTN_CARD }],
-    [{ text: BTN_REG }],
-    [{ text: BTN_MINE }, { text: BTN_CONTACT }],
-    [{ text: BTN_HELP }]
-  ],
-  resize_keyboard: true
-};
+const kb = (rows: string[][]) => ({ keyboard: rows.map(r => r.map(text => ({ text }))), resize_keyboard: true });
+const MENU = kb([[BTN_SEC1], [BTN_SEC2], [BTN_SEC3], [BTN_CONTACT, BTN_HELP]]);
+const SUB1 = kb([[BTN_KEYS, BTN_CHECK], [BTN_HOME]]);
+const SUB2 = kb([[BTN_REG], [BTN_MINE], [BTN_HOME]]);
+const SUB3 = kb([[BTN_RESULT], [BTN_TOP, BTN_CARD], [BTN_HOME]]);
 const CANCEL_KB = { keyboard: [[{ text: BTN_CANCEL }]], resize_keyboard: true };
 const DEFAULT_CENTER = '📍 <b>Registan LC</b> o‘quv markazi\n\nAloqa ma’lumotlari hali kiritilmagan. Admin CRM’dagi “🤖 Telegram Bot” bo‘limida ularni yozadi.';
 
@@ -375,6 +384,75 @@ async function answerReport(chatId: number) {
     `🔗 Edutizim o‘quvchilari: <b>${eduStudents}</b>`);
 }
 
+
+// ---------------------------------------------------------
+// 1-bo'lim: 🔑 Javoblar kaliti (faqat CRM'da e'lon qilingan testlar)
+// ---------------------------------------------------------
+async function startKeys(chatId: number) {
+  const { data: tests } = await admin.from('crm_tests').select('code,title,num_questions,kind')
+    .eq('answers_published', true).order('created_at', { ascending: false }).limit(20);
+  if (!tests?.length) {
+    await send(chatId, '🔑 Hozircha e’lon qilingan javoblar yo‘q. Imtihondan keyin javoblar shu yerda paydo bo‘ladi.', { reply_markup: SUB1 });
+    return;
+  }
+  await send(chatId, '🔑 Qaysi imtihon javoblarini ko‘rasiz?', {
+    reply_markup: { inline_keyboard: tests.map(t => [{ text: `${t.kind === 'mock' ? '🧒' : '🏫'} ${t.code} — ${t.title}`, callback_data: `k:${t.code}` }]) }
+  });
+}
+
+async function showKey(chatId: number, code: string) {
+  const { data: t } = await admin.from('crm_tests').select('*').eq('code', code).eq('answers_published', true).maybeSingle();
+  if (!t) return void send(chatId, 'Bu test javoblari hali e’lon qilinmagan.', { reply_markup: SUB1 });
+  const key = String(t.answer_key || '').toUpperCase();
+  const cells = [...key].map((a, i) => `${String(i + 1).padStart(2, ' ')}-${a}`);
+  const lines = [];
+  for (let i = 0; i < cells.length; i += 5) lines.push(cells.slice(i, i + 5).join('  '));
+  const split = Number(t.q1_count) ? `\n1-bo‘lim: 1–${t.q1_count} (${t.w1} ball) · 2-bo‘lim: ${Number(t.q1_count) + 1}–${t.num_questions} (${t.w2} ball)` : '';
+  await send(chatId,
+    `🔑 <b>${esc(t.title)}</b> (${esc(t.code)})\n${t.num_questions} ta savol${split}\n\n<pre>${esc(lines.join('\n'))}</pre>\n` +
+    `📸 O‘z varag‘ingizni tekshirish: “${BTN_CHECK}”`, { reply_markup: SUB1 });
+}
+
+// ---------------------------------------------------------
+// 3-bo'lim: 🏆 TOP-3 sovrindorlar (maktab -> parallel)
+// ---------------------------------------------------------
+async function startTop(chatId: number) {
+  const { data: schools } = await admin.from('crm_schools').select('id,data').order('id');
+  const list = (schools || []).map(s => ({ id: s.id as string, name: ((s.data as any)?.name || s.id) as string }));
+  if (!list.length) return void send(chatId, 'Maktablar hali kiritilmagan.', { reply_markup: SUB3 });
+  if (list.length === 1) return showGrades(chatId, list[0].id);
+  await send(chatId, '🏫 Qaysi maktab natijalari?', {
+    reply_markup: { inline_keyboard: list.map(s => [{ text: `🏫 ${s.name}`, callback_data: `ts:${s.id}` }]) }
+  });
+}
+
+async function showGrades(chatId: number, school: string) {
+  const { data: grades } = await admin.rpc('crm_school_grades', { p_school: school });
+  const { data: sc } = await admin.from('crm_schools').select('data').eq('id', school).maybeSingle();
+  const name = (sc?.data as any)?.name || school;
+  if (!grades?.length) return void send(chatId, `🏫 ${esc(name)}: hali o‘quvchilar yo‘q.`, { reply_markup: SUB3 });
+  const btns = (grades as any[]).map(g => ({ text: g.grade === 'x' ? 'Boshqa' : `${g.grade}-sinflar`, callback_data: `tg:${school}|${g.grade}` }));
+  const rows = [];
+  for (let i = 0; i < btns.length; i += 3) rows.push(btns.slice(i, i + 3));
+  rows.push([{ text: '📋 Barcha parallellar TOP-3', callback_data: `tg:${school}|all` }]);
+  await send(chatId, `🏫 <b>${esc(name)}</b> — qaysi parallel?`, { reply_markup: { inline_keyboard: rows } });
+}
+
+async function showTop(chatId: number, school: string, grade: string) {
+  const { data: rows } = await admin.rpc('crm_top_list', { p_school: school, p_grade: grade === 'all' ? null : grade, p_limit: 3 });
+  const { data: sc } = await admin.from('crm_schools').select('data').eq('id', school).maybeSingle();
+  const name = (sc?.data as any)?.name || school;
+  if (!rows?.length) return void send(chatId, 'Natijalar topilmadi.', { reply_markup: SUB3 });
+  const medal = (r: number) => (r === 1 ? '🥇' : r === 2 ? '🥈' : '🥉');
+  const groups: Record<string, any[]> = {};
+  (rows as any[]).forEach(r => { (groups[r.grade_key] ||= []).push(r); });
+  const body = Object.entries(groups).map(([g, list]) =>
+    `<b>${esc(g)}</b> (${list[0].total} o‘quvchi)\n` + list.map(r =>
+      `${medal(Number(r.rank))} ${esc(r.full_name)} — ${esc(r.class_name)} · <b>${r.score}</b> ball · ${money(PRIZES[Number(r.rank)].amount)}`).join('\n')
+  ).join('\n\n');
+  await send(chatId, `🏆 <b>${esc(name)} · TOP-3 sovrindorlar</b>\n\n${body}\n\n🔍 Farzandingiz o‘rnini bilish: “${BTN_RESULT}”\n🏅 Sovrindor kartasi: “${BTN_CARD}”`, { reply_markup: SUB3 });
+}
+
 // ---------------------------------------------------------
 // Update router
 // ---------------------------------------------------------
@@ -388,15 +466,22 @@ async function onMessage(m: any) {
     if (text === '/hisobot') await answerReport(chatId);
     return;
   }
-  if (text === '/start' || text === '/menu' || text === BTN_CANCEL || text === '/cancel') {
+  if (text === '/start' || text === '/menu' || text === BTN_CANCEL || text === BTN_HOME || text === '/cancel') {
     await setSession(chatId, null);
-    await send(chatId, '👋 <b>Registan LC</b> botiga xush kelibsiz!\n\nKerakli bo‘limni tanlang:', { reply_markup: MENU });
+    await send(chatId, '👋 <b>Registan LC</b> botiga xush kelibsiz!\n\n' +
+      `1️⃣ ${BTN_SEC1}\n2️⃣ ${BTN_SEC2}\n3️⃣ ${BTN_SEC3}\n\nKerakli bo‘limni tanlang 👇`, { reply_markup: MENU });
     return;
   }
   if (text === '/id') { await send(chatId, `Chat ID: <code>${chatId}</code>`); return; }
-  if (text === BTN_CHECK || text === '/tekshir') return startCheck(chatId);
-  if (text === BTN_REG || text === '/royxat') return startReg(chatId);
-  if (text === BTN_RESULT || text === '/natija') return startResult(chatId);
+  // Bo'limlar
+  if (text === BTN_SEC1) { await setSession(chatId, null); return void send(chatId, `📚 <b>Maktab imtihonlari javoblari</b>\n\n${BTN_KEYS} — imtihon to‘g‘ri javoblari\n${BTN_CHECK} — to‘ldirilgan varaq rasmini yuborib ballni bilish`, { reply_markup: SUB1 }); }
+  if (text === BTN_SEC2) { await setSession(chatId, null); return void send(chatId, `🧒 <b>Kids Mock</b>\n\n${BTN_REG} — farzandingizni imtihonga yozish (xona avtomatik beriladi)\n${BTN_MINE} — arizalaringiz holati`, { reply_markup: SUB2 }); }
+  if (text === BTN_SEC3) { await setSession(chatId, null); return void send(chatId, `📊 <b>Natijalar ro‘yxati</b>\n\n${BTN_RESULT} — ism yoki telefon bo‘yicha\n${BTN_TOP} — maktab va parallel bo‘yicha sovrindorlar\n${BTN_CARD} — sovrindorlar uchun karta rasmi`, { reply_markup: SUB3 }); }
+  if (text === BTN_KEYS || text === '/javoblar') return startKeys(chatId);
+  if (text === BTN_TOP || text === '/top') return startTop(chatId);
+  if (text === BTN_CHECK || text === OLD_CHECK || text === '/tekshir') return startCheck(chatId);
+  if (text === BTN_REG || text === OLD_REG || text === '/royxat') return startReg(chatId);
+  if (text === BTN_RESULT || text === OLD_RESULT || text === '/natija') return startResult(chatId);
   if (text === BTN_CARD || text === '/karta') return startCard(chatId);
   if (text === BTN_MINE || text === '/mening') { await setSession(chatId, null); return answerMine(chatId); }
   if (text === BTN_CONTACT || text === '/aloqa') { await setSession(chatId, null); return answerContact(chatId); }
@@ -404,6 +489,8 @@ async function onMessage(m: any) {
   if (text === BTN_HELP || text === '/yordam' || text === '/help') {
     await send(chatId,
       '📖 <b>Buyruqlar</b>\n\n' +
+      '/javoblar — maktab imtihonlari to‘g‘ri javoblari\n' +
+      '/top — maktab va parallel bo‘yicha TOP-3 sovrindorlar\n' +
       '/natija — farzandingiz balli va parallel TOP-3 o‘rni\n' +
       '/karta — yutuqli karta (TOP-3 sovrindorlar uchun, telefon tasdiqlanadi)\n' +
       '/tekshir — javoblar varaqasi rasmini yuborib natijani bilish\n' +
@@ -460,6 +547,12 @@ async function onCallback(q: any) {
   await tg(await token(), 'answerCallbackQuery', { callback_query_id: q.id }).catch(() => {});
   if (!chatId) return;
   if (data.startsWith('t:')) return pickTest(chatId, data.slice(2));
+  if (data.startsWith('k:')) return showKey(chatId, data.slice(2));
+  if (data.startsWith('ts:')) return showGrades(chatId, data.slice(3));
+  if (data.startsWith('tg:')) {
+    const [school, grade] = data.slice(3).split('|');
+    return showTop(chatId, school, grade || 'all');
+  }
   const s = await getSession(chatId);
   if (data.startsWith('g:') && s.step === 'reg_grade') {
     const n = Number(data.slice(2));
