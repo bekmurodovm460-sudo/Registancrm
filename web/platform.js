@@ -964,6 +964,32 @@ async function renderTelegramTab() {
       </div>
       <p class="text-[11px] text-slate-400 mt-2">Token serverda saqlanadi va brauzerga qaytmaydi. Chat ID ni bilish uchun botga yoki guruhga <code>/id</code> yozing.</p>` : ''}
     `)}
+    ${card(`
+      <div class="text-sm font-black text-slate-800 mb-2">⌨️ Bot buyruqlari</div>
+      <div class="grid sm:grid-cols-2 gap-1.5 text-xs">
+        ${[
+          ['/start', 'Bosh menyu'],
+          ['/natija', 'Farzand balli va parallel TOP-3 o‘rni (ism yoki telefon)'],
+          ['/karta', 'Yutuqli karta rasmi — telefon tasdiqlangan TOP-3 ota-onasiga'],
+          ['/tekshir', 'Javoblar varaqasi rasmini tekshirish (OMR)'],
+          ['/royxat', 'Kids Mock imtihoniga yozilish'],
+          ['/mening', 'Arizalar va tekshirilgan varaqlar tarixi'],
+          ['/aloqa', 'Markaz ma’lumoti (pastdagi matn)'],
+          ['/hisobot', 'Kunlik statistika — faqat admin chat/guruhda'],
+          ['/id', 'Chat ID ni ko‘rish (admin guruhini sozlash uchun)']
+        ].map(([c, d]) => `<div class="p-2 rounded-xl bg-slate-50 border border-slate-200"><code class="font-black text-sky-700">${c}</code> — ${d}</div>`).join('')}
+      </div>
+    `)}
+    ${card(`
+      <div class="text-sm font-black text-slate-800 mb-1">📞 /aloqa matni</div>
+      <p class="text-[11px] text-slate-500 mb-2">Ota-onalar /aloqa yoki “📞 Aloqa” tugmasini bosganda shu matn yuboriladi.</p>
+      <textarea id="tg-center-info" rows="6" ${isAdmin() ? '' : 'disabled'} placeholder="📍 Registan LC o‘quv markazi
+🏠 Manzil: Qarshi sh., ...
+📞 +998 ...
+🕘 Ish vaqti: Du–Sha 08:00–20:00
+✈️ Admin: @..." class="${input} w-full">${esc(state.centerInfo || '')}</textarea>
+      ${isAdmin() ? `<button onclick="crmSaveCenterInfo()" class="${btn('sky-600')} mt-2">💾 Saqlash</button>` : ''}
+    `)}
     ${winners.length && canWrite() ? card(`
       <div class="text-sm font-black text-slate-800 mb-2">🖼️ Sovrindor karta rasmini Telegramga yuborish</div>
       <div class="flex flex-wrap gap-2">
@@ -978,6 +1004,12 @@ async function renderTelegramTab() {
   crmTgStatus();
 }
 window.renderTelegramTab = renderTelegramTab;
+
+window.crmSaveCenterInfo = () => {
+  state.centerInfo = document.getElementById('tg-center-info').value.trim();
+  saveState();
+  showToast('/aloqa matni saqlandi — bot darhol shuni yuboradi', '📞');
+};
 
 window.crmTgStatus = async () => {
   const box = document.getElementById('tg-status');
