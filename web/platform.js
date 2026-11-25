@@ -189,7 +189,7 @@ function homeroomOf(cls) {
          (cls.teacherUserId ? staff.find(p => p.id === cls.teacherUserId) : null) || null;
 }
 function staffOptions(selectedId) {
-  return (crm().staff || []).filter(p => p.role !== 'pending' || isAdmin())
+  return (crm().staff || []).filter(p => p.id !== crm().KIOSK_ID && (p.role !== 'pending' || isAdmin()))
     .map(p => `<option value="${p.id}" ${p.id === selectedId ? 'selected' : ''}>${esc(staffLabel(p))}${p.class_name ? ` — hozir ${esc(p.class_name)}` : ''}</option>`).join('');
 }
 
@@ -864,9 +864,27 @@ window.crmEduRun = async action => {
 // =========================================================
 async function renderStaffTab() {
   const el = document.getElementById('tab-supabase');
-  const { data: profiles } = await sb().from('crm_profiles').select('*').order('created_at');
+  const { data: allProfiles } = await sb().from('crm_profiles').select('*').order('created_at');
+  const profiles = (allProfiles || []).filter(p => p.id !== crm().KIOSK_ID);
+  const { data: access } = await sb().rpc('crm_access_info');
+  const locked = access?.mode === 'locked';
   const classes = (state.classes || []).map(c => c.name);
   el.innerHTML = `<div class="max-w-4xl mx-auto space-y-5">
+    ${isAdmin() ? card(`
+      <div class="flex items-center justify-between gap-2 flex-wrap">
+        <h2 class="text-lg font-black text-slate-900">🔒 Sayt kirish paroli</h2>
+        <span class="px-3 py-1 rounded-full text-[11px] font-black ${locked ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}">${locked ? '🔐 Parol bilan yopiq' : '🌐 Ochiq — loginsiz kiriladi'}</span>
+      </div>
+      <p class="text-[11px] text-slate-500 mt-1 mb-3">${locked
+        ? 'Saytga kirishda faqat shu parol so‘raladi (email kerak emas). Parolni almashtirsangiz, boshqa qurilmalardagi umumiy seanslar yopiladi.'
+        : '⚠️ Hozir saytni ochgan har kim barcha ma’lumotlarni ko‘radi va o‘zgartira oladi. Parol o‘rnatsangiz, sayt darhol yopiladi.'}</p>
+      <div class="grid sm:grid-cols-3 gap-2 text-xs">
+        <input id="site-pass-1" type="password" autocomplete="new-password" placeholder="Yangi parol (kamida 6 belgi)" class="${input}">
+        <input id="site-pass-2" type="password" autocomplete="new-password" placeholder="Parolni takrorlang" class="${input}">
+        <button onclick="crmSetSitePassword()" class="${btn('[#F2642A]')}">${locked ? '🔁 Parolni almashtirish' : '🔐 Parol o‘rnatish va yopish'}</button>
+      </div>
+      ${locked ? `<button onclick="crmOpenSite()" class="mt-2 text-[11px] font-bold text-rose-600 underline">Parolni olib tashlash (saytni ochiq qilish)</button>` : ''}
+    `) : ''}
     ${card(`
       <h2 class="text-lg font-black text-slate-900">👥 Xodimlar va rollar</h2>
       <p class="text-[11px] text-slate-500 mb-3">Yangi xodim login sahifasida “ro‘yxatdan o‘tish” qiladi, so‘ng admin unga rol beradi.
@@ -893,6 +911,24 @@ async function renderStaffTab() {
     `)}
   </div>`;
 }
+window.crmSetSitePassword = async () => {
+  const a = document.getElementById('site-pass-1').value;
+  const b = document.getElementById('site-pass-2').value;
+  if (a.length < 6) return showToast('Parol kamida 6 belgi bo‘lsin', '⚠️');
+  if (a !== b) return showToast('Parollar bir xil emas', '⚠️');
+  const { error } = await sb().rpc('crm_set_site_password', { p_password: a });
+  if (error) return showToast(error.message, '⚠️');
+  showToast('Parol o‘rnatildi — sayt endi parol bilan ochiladi', '🔐');
+  renderStaffTab();
+};
+window.crmOpenSite = async () => {
+  if (!confirm('Parolni olib tashlab, saytni hammaga ochiq qilasizmi? Saytni ochgan har kim ma’lumotlarni ko‘radi va o‘zgartiradi.')) return;
+  const { error } = await sb().rpc('crm_open_site');
+  if (error) return showToast(error.message, '⚠️');
+  showToast('Sayt ochiq rejimga o‘tdi', '🌐');
+  renderStaffTab();
+};
+
 window.crmSetRole = async (id, patch) => {
   const { error } = await sb().from('crm_profiles').update(patch).eq('id', id);
   if (error) return showToast(error.message, '⚠️');

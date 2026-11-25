@@ -411,6 +411,51 @@ function authOverlay(html) {
   return el;
 }
 
+// ---------------------------------------------------------
+// Sayt kirish rejimi: ochiq (avtomatik) yoki yopiq (bitta umumiy parol)
+// ---------------------------------------------------------
+const KIOSK_ID = '00000000-0000-4000-a000-00000000c0de';
+crm.KIOSK_ID = KIOSK_ID;
+crm.isKiosk = () => crm.user?.id === KIOSK_ID;
+
+async function enterSite() {
+  authOverlay(`<div class="text-center text-sm font-bold text-slate-600">⏳ Ochilmoqda…</div>`);
+  const { data: info } = await sb.rpc('crm_access_info');
+  crm.accessMode = info?.mode || 'open';
+  crm.kioskEmail = info?.email;
+  if (crm.accessMode === 'open') {
+    const { data: cred } = await sb.rpc('crm_open_login');
+    if (cred?.email) {
+      const { error } = await sb.auth.signInWithPassword({ email: cred.email, password: cred.password });
+      if (!error) return; // onAuthStateChange -> boot
+    }
+  }
+  showSitePassword();
+}
+
+function showSitePassword(msg = '') {
+  authOverlay(`
+    <form id="crm-site-form" class="space-y-3">
+      <input id="crm-site-pass" type="password" required autocomplete="current-password" placeholder="Platforma paroli" class="w-full px-4 py-3 rounded-xl border border-slate-300 text-sm font-semibold text-center" />
+      <div id="crm-site-msg" class="text-xs font-bold text-rose-600 text-center">${escapeHtml(msg)}</div>
+      <button class="w-full py-3 rounded-xl bg-[#F2642A] hover:bg-orange-600 text-white font-black text-sm">🔐 Kirish</button>
+    </form>
+    <div class="flex justify-between text-xs font-bold">
+      <button id="crm-staff-login" class="text-indigo-700">Xodim hisobi (email) bilan kirish</button>
+      <a href="parent.html" class="text-slate-500">👨‍👩‍👧 Ota-onalar</a>
+    </div>
+  `);
+  setTimeout(() => document.getElementById('crm-site-pass')?.focus(), 50);
+  document.getElementById('crm-staff-login').onclick = () => showLogin();
+  document.getElementById('crm-site-form').onsubmit = async e => {
+    e.preventDefault();
+    const password = document.getElementById('crm-site-pass').value;
+    document.getElementById('crm-site-msg').textContent = '⏳';
+    const { error } = await sb.auth.signInWithPassword({ email: crm.kioskEmail || 'platforma@registan-crm.local', password });
+    if (error) showSitePassword('Parol noto‘g‘ri');
+  };
+}
+
 function showLogin(mode = 'login', msg = '') {
   const isSignup = mode === 'signup';
   authOverlay(`
@@ -423,10 +468,12 @@ function showLogin(mode = 'login', msg = '') {
     </form>
     <div class="flex justify-between text-xs font-bold">
       <button id="crm-auth-toggle" class="text-indigo-700">${isSignup ? 'Hisobim bor — kirish' : 'Yangi xodim — ro‘yxatdan o‘tish'}</button>
+      <button id="crm-auth-site" class="text-slate-500">← Umumiy parol</button>
       <a href="parent.html" class="text-slate-500">👨‍👩‍👧 Ota-onalar</a>
     </div>
   `);
   document.getElementById('crm-auth-toggle').onclick = () => showLogin(isSignup ? 'login' : 'signup');
+  document.getElementById('crm-auth-site').onclick = () => enterSite();
   document.getElementById('crm-auth-form').onsubmit = async e => {
     e.preventDefault();
     const email = document.getElementById('crm-auth-email').value.trim();
@@ -469,7 +516,7 @@ function decorateHeader() {
       class="text-[11px] font-black px-3 py-1.5 rounded-xl bg-white text-[#F2642A] border border-white/30 max-w-[200px]"></select>`);
   }
   if (badge && !document.getElementById('crm-user-chip')) {
-    const roleLabel = { admin: '👑 Admin', operator: '🎧 Operator', teacher: '👩‍🏫 O‘qituvchi' }[crm.role] || crm.role;
+    const roleLabel = crm.isKiosk() ? '🌐 Umumiy kirish' : ({ admin: '👑 Admin', operator: '🎧 Operator', teacher: '👩‍🏫 O‘qituvchi' }[crm.role] || crm.role);
     badge.insertAdjacentHTML('afterend', `
       <span id="crm-user-chip" class="text-[11px] font-bold px-3 py-1.5 rounded-xl bg-white/15 text-white border border-white/30" title="${escapeHtml(crm.user.email || '')}">${roleLabel} · ${escapeHtml(crm.profile?.full_name || crm.user.email || '')}</span>
       <button onclick="crmLogout()" class="px-3 py-2 rounded-xl bg-white/15 hover:bg-white/25 text-white border border-white/30 text-xs font-bold transition">🚪 Chiqish</button>
@@ -488,7 +535,7 @@ function decorateHeader() {
 let booted = false;
 async function boot(session) {
   if (booted) return;
-  if (!session) { showLogin(); return; }
+  if (!session) { await enterSite(); return; }
   crm.user = session.user;
   const { data: profile, error } = await sb.from('crm_profiles').select('*').eq('id', session.user.id).maybeSingle();
   if (error) { showLogin('login', 'Profil o‘qilmadi: ' + error.message); return; }
