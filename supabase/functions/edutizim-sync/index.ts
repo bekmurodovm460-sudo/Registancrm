@@ -4,8 +4,10 @@
 //   POST /student-list/students-pagin {page, limit}       -> data.{total, data[]}
 //   POST /group-pagin {page, limit}                       -> data.{total, data[]}
 // Tashkilot `Origin` (subdomen) orqali, filial `branch` sarlavhasi orqali aniqlanadi.
+//   GET  /statuses, POST /courses-pagin                    -> lid bosqichlari, kurslar
+//   POST /order {statusId, courseId, studentParams{firstName,lastName,phoneNumber}} -> yangi lid
 // Chaqirish: CRM xodimi JWT bilan yoki `x-cron-secret` (crm_secrets.cron_secret) bilan (avtomatik sinxron).
-import { admin, callerRole, cors, getSecret, json } from '../_shared/common.ts';
+import { admin, callerRole, cors, getSecret, getSetting, json } from '../_shared/common.ts';
 
 const DEFAULT_BASE = 'https://backend.edutizim.uz/moderator-web-api';
 const DEFAULT_SITE = 'https://registan.edutizim.uz';
@@ -75,6 +77,75 @@ const groupsOf = (s: any) => {
   return names.join(', ');
 };
 
+
+// ---------------------------------------------------------
+// CRM -> Edutizim: o'quvchini lid (order) sifatida yuborish
+// ---------------------------------------------------------
+const last9 = (p: string) => String(p || '').replace(/\D/g, '').slice(-9);
+
+function splitName(full: string) {
+  const parts = String(full || '').trim().split(/\s+/).filter(Boolean);
+  if (parts.length <= 1) return { firstName: parts[0] || '', lastName: '' };
+  // CRM formati: "Familiya Ism [Otasining ismi]"
+  return { lastName: parts[0], firstName: parts.slice(1).join(' ') };
+}
+
+async function eduMeta(base: string, headers: Record<string, string>) {
+  const st = await fetch(`${base}/statuses`, { headers }).then(r => r.json()).catch(() => ({}));
+  const cr = await fetch(`${base}/courses-pagin`, { method: 'POST', headers, body: JSON.stringify({ page: 1, limit: 100 }) }).then(r => r.json()).catch(() => ({}));
+  const statuses = (Array.isArray(st?.data) ? st.data : []).map((x: any) => ({ id: x._id, name: x.name, position: x.position ?? 0 }))
+    .sort((a: any, b: any) => a.position - b.position);
+  const courses = (Array.isArray(cr?.data?.data) ? cr.data.data : []).map((x: any) => ({ id: x._id, name: x.name }));
+  return { statuses, courses };
+}
+
+async function pushLeads(base: string, headers: Record<string, string>, body: any, userId: string | null) {
+  const list: any[] = Array.isArray(body.students) ? body.students.slice(0, 50) : [];
+  if (!list.length) return { ok: false, error: 'O‘quvchi tanlanmagan' };
+  const defaults = await getSetting<any>('eduLeadDefaults', {});
+  let statusId = body.statusId || defaults.statusId;
+  const courseId = body.courseId || defaults.courseId || undefined;
+  if (!statusId) {
+    const meta = await eduMeta(base, headers);
+    statusId = (meta.statuses.find((s: any) => s.position === 0) || meta.statuses.find((s: any) => s.position >= 0))?.id;
+  }
+  const results = [];
+  for (const st of list) {
+    const phone9 = last9(st.phone);
+    const name = String(st.fullName || '').trim();
+    const row: any = { crm_student_id: st.crmId || null, school_id: st.schoolId || null, full_name: name, phone: phone9 ? '+998' + phone9 : '', created_by: userId };
+    try {
+      if (!name) throw new Error('Ism yo‘q');
+      // Takroriy yuborishning oldini olish
+      const { data: prev } = await admin.from('crm_edu_pushes').select('id,created_at').eq('crm_student_id', st.crmId).eq('ok', true).limit(1);
+      if (st.crmId && prev?.length && !body.force) { results.push({ crmId: st.crmId, ok: true, skipped: 'already_pushed', message: 'Avval yuborilgan' }); continue; }
+      if (phone9) {
+        const { data: ex } = await admin.from('crm_edu_students').select('id,full_name').eq('phone_digits', phone9).limit(1);
+        if (ex?.length && !body.force) { results.push({ crmId: st.crmId, ok: true, skipped: 'exists', message: `Edutizimda bor: ${ex[0].full_name}` }); continue; }
+      }
+      const { firstName, lastName } = splitName(name);
+      const payload = {
+        statusId, courseId, referredByStudentId: null, customFields: [],
+        studentParams: { firstName, lastName, phoneNumber: phone9 ? '+998' + phone9 : '', customFields: [] }
+      };
+      const res = await fetch(`${base}/order`, { method: 'POST', headers, body: JSON.stringify(payload) });
+      const out = await res.json().catch(() => ({}));
+      if (!res.ok || (out?.code && out.code !== 0)) throw new Error(`${res.status} ${out?.message || out?.messages?.uz || ''}`.trim());
+      row.edu_order_id = out?.data?._id || null;
+      row.edu_student_id = out?.data?.studentId || out?.data?.student?._id || null;
+      row.ok = true;
+      row.message = 'Lid yaratildi';
+      results.push({ crmId: st.crmId, ok: true, orderId: row.edu_order_id, message: row.message });
+    } catch (e) {
+      row.ok = false;
+      row.message = String((e as Error).message || e).slice(0, 300);
+      results.push({ crmId: st.crmId, ok: false, message: row.message });
+    }
+    await admin.from('crm_edu_pushes').insert(row);
+  }
+  return { ok: true, results, statusId, courseId: courseId || null };
+}
+
 Deno.serve(async req => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors });
   const cronSecret = await getSecret('cron_secret');
@@ -94,6 +165,17 @@ Deno.serve(async req => {
     const auth = await login(base, site, phone, password);
     const branches = auth.branches.map((b: any) => ({ id: String(b._id), name: b.name }));
     if (body.action === 'test') return json({ ok: true, branches });
+    if (body.action === 'meta' || body.action === 'pushLead') {
+      if (role === 'cron') return json({ ok: false, error: 'Ruxsat yo‘q' }, 403);
+      const br = body.branchId ? branches.find(b => b.id === body.branchId) : branches[0];
+      if (!br) throw new Error('Filial topilmadi');
+      const headers = { ...baseHeaders(site), Authorization: `Bearer ${auth.token}`, branch: br.id };
+      if (body.action === 'meta') return json({ ok: true, branch: br, ...(await eduMeta(base, headers)), defaults: await getSetting('eduLeadDefaults', {}) });
+      let userId: string | null = null;
+      const jwt = (req.headers.get('Authorization') || '').replace(/^Bearer /, '');
+      if (jwt) { const { data: u } = await admin.auth.getUser(jwt); userId = u?.user?.id || null; }
+      return json(await pushLeads(base, headers, body, userId));
+    }
     if (!branches.length) throw new Error('Hisobga filial biriktirilmagan');
 
     const sRows: any[] = [];

@@ -90,8 +90,43 @@ async function startCheck(chatId: number) {
 async function pickTest(chatId: number, code: string) {
   const { data: test } = await admin.from('crm_tests').select('*').eq('code', code).eq('active', true).maybeSingle();
   if (!test) { await send(chatId, 'Test topilmadi yoki yopilgan.', { reply_markup: MENU }); return; }
+  // Maktab imtihoni: natija tanlangan maktab va sinfdagi o'quvchiga yoziladi
+  if (test.kind === 'school') {
+    const { data: schools } = await admin.from('crm_schools').select('id,data').order('id');
+    const list = (schools || []).map(x => ({ id: x.id as string, name: ((x.data as any)?.name || x.id) as string }));
+    await setSession(chatId, 'check_school', { test: code });
+    if (list.length === 1) return pickCheckSchool(chatId, list[0].id);
+    await send(chatId, `✅ <b>${esc(test.title)}</b>\n\n🏫 Maktabingizni tanlang:`, {
+      reply_markup: { inline_keyboard: list.map(x => [{ text: `🏫 ${x.name}`, callback_data: `cs:${x.id}` }]) }
+    });
+    return;
+  }
   await setSession(chatId, 'check_name', { test: code });
   await send(chatId, `✅ <b>${esc(test.title)}</b> tanlandi.\n\nO‘quvchining ism-familiyasini yozing:`, {
+    reply_markup: { keyboard: [[{ text: BTN_CANCEL }]], resize_keyboard: true }
+  });
+}
+
+async function pickCheckSchool(chatId: number, school: string) {
+  const s = await getSession(chatId);
+  if (!s.data.test) return startCheck(chatId);
+  const { data: classes } = await admin.from('crm_classes').select('name').eq('school_id', school);
+  const names = (classes || []).map(c => c.name as string).sort((a, b) => a.localeCompare(b, 'uz', { numeric: true }));
+  const { data: sc } = await admin.from('crm_schools').select('data').eq('id', school).maybeSingle();
+  const sname = (sc?.data as any)?.name || school;
+  if (!names.length) return void send(chatId, `🏫 ${esc(sname)}da hali sinflar yo‘q. Administratorga murojaat qiling.`, { reply_markup: SUB1 });
+  await setSession(chatId, 'check_class', { ...s.data, school, schoolName: sname });
+  const btns = names.map(n => ({ text: n, callback_data: `cc:${n}` }));
+  const rows = [];
+  for (let i = 0; i < btns.length; i += 4) rows.push(btns.slice(i, i + 4));
+  await send(chatId, `🏫 <b>${esc(sname)}</b>\n\n🗂 Sinfingizni tanlang:`, { reply_markup: { inline_keyboard: rows } });
+}
+
+async function pickCheckClass(chatId: number, cls: string) {
+  const s = await getSession(chatId);
+  if (s.step !== 'check_class' || !s.data.school) return startCheck(chatId);
+  await setSession(chatId, 'check_name', { ...s.data, cls });
+  await send(chatId, `🏫 ${esc(s.data.schoolName)} · 🗂 <b>${esc(cls)}</b>\n\nO‘quvchining <b>familiya va ismini</b> yozing (CRM’dagi kabi, masalan: Karimov Azizbek):`, {
     reply_markup: { keyboard: [[{ text: BTN_CANCEL }]], resize_keyboard: true }
   });
 }
@@ -125,7 +160,26 @@ async function handleSheetPhoto(chatId: number, s: Session, fileId: string) {
   }
 
   const g = gradeAnswers(res.answers!, test);
+
+  // Maktab imtihoni: tanlangan sinfdagi o'quvchini topib balini yangilash (topilmasa qo'shish)
+  let crmLine = '';
+  let rec: { student_id: number; matched: boolean; full_name: string } | null = null;
+  if (test.kind === 'school' && s.data.school && s.data.cls) {
+    const q1 = Number(test.q1_count) ? g.q1 : g.correct;
+    const q2 = Number(test.q1_count) ? g.q2 : 0;
+    const { data: r, error } = await admin.rpc('crm_bot_record_result', {
+      p_school: s.data.school, p_class: s.data.cls, p_name: s.data.name, p_q1: q1, p_q2: q2, p_score: g.score, p_test: test.code
+    });
+    rec = (r as any[])?.[0] || null;
+    crmLine = error
+      ? '\n⚠️ Natija CRM’ga yozilmadi, administratorga xabar bering.'
+      : `\n🗂 CRM: ${esc(s.data.schoolName)} · ${esc(s.data.cls)} · ${esc(rec?.full_name)} — ${rec?.matched ? 'ball yangilandi ✅' : 'sinfga yangi o‘quvchi sifatida qo‘shildi 🆕'}`;
+  }
+
   const { data: sub } = await admin.from('crm_omr_submissions').insert({
+    school_id: s.data.school || null,
+    class_name: s.data.cls || null,
+    student_id: rec?.student_id || null,
     test_code: test.code,
     source: 'telegram',
     chat_id: chatId,
@@ -166,10 +220,11 @@ async function handleSheetPhoto(chatId: number, s: Session, fileId: string) {
     `To‘g‘ri javoblar: <b>${g.correct} / ${g.total}</b> (${pct}%)\n` +
     (Number(test.q1_count) ? `1-bo‘lim: ${g.q1} · 2-bo‘lim: ${g.q2}\n` : '') +
     `🏆 Ball: <b>${g.score}</b>\n` +
-    (g.wrong.length ? `\n❌ Xatolar (savol: belgilangan → to‘g‘ri):\n${wrongList}${g.wrong.length > 40 ? '\n…' : ''}` : '\n🎉 Barcha javoblar to‘g‘ri!'),
-    { reply_markup: MENU });
+    crmLine +
+    (g.wrong.length ? `\n\n❌ Xatolar (savol: belgilangan → to‘g‘ri):\n${wrongList}${g.wrong.length > 40 ? '\n…' : ''}` : '\n\n🎉 Barcha javoblar to‘g‘ri!'),
+    { reply_markup: SUB1 });
   await setSession(chatId, null);
-  await notifyAdmin(`📝 OMR: <b>${esc(s.data.name)}</b> · ${esc(test.code)} · ${g.correct}/${g.total} · ${g.score} ball`);
+  await notifyAdmin(`📝 OMR: <b>${esc(s.data.name)}</b>${s.data.cls ? ` (${esc(s.data.schoolName)}, ${esc(s.data.cls)})` : ''} · ${esc(test.code)} · ${g.correct}/${g.total} · ${g.score} ball${rec && !rec.matched ? ' · 🆕 yangi o‘quvchi' : ''}`);
 }
 
 // ---------------------------------------------------------
@@ -548,6 +603,8 @@ async function onCallback(q: any) {
   if (!chatId) return;
   if (data.startsWith('t:')) return pickTest(chatId, data.slice(2));
   if (data.startsWith('k:')) return showKey(chatId, data.slice(2));
+  if (data.startsWith('cs:')) return pickCheckSchool(chatId, data.slice(3));
+  if (data.startsWith('cc:')) return pickCheckClass(chatId, data.slice(3));
   if (data.startsWith('ts:')) return showGrades(chatId, data.slice(3));
   if (data.startsWith('tg:')) {
     const [school, grade] = data.slice(3).split('|');
