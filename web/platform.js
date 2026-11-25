@@ -173,6 +173,36 @@ window.crmDeleteSchool = (id, students, classes) => {
   setTimeout(renderSchoolsTab, 600);
 };
 
+
+// =========================================================
+// ➡️ CRM -> EDUTIZIM (o'qishga kelgan o'quvchini bitta tugma bilan lid qilish)
+// =========================================================
+async function loadEduPushes() {
+  if (!canWrite()) return;
+  const { data } = await sb().from('crm_edu_pushes').select('crm_student_id,ok,message,created_at').eq('ok', true).order('created_at', { ascending: false }).limit(5000);
+  crm().eduPushed = {};
+  (data || []).forEach(r => { if (r.crm_student_id && !crm().eduPushed[r.crm_student_id]) crm().eduPushed[r.crm_student_id] = r; });
+}
+
+window.crmPushToEdu = async (id, force = false) => {
+  const st = state.students.find(x => x.id === id);
+  if (!st) return;
+  if (!force && !confirm(`${st.fullName} (${st.className}) Edutizimga yangi lid sifatida yuborilsinmi?\nTelefon: ${st.phone || '— (yo‘q)'}`)) return;
+  showToast('Edutizimga yuborilmoqda…', '⏳');
+  const r = await invoke('edutizim-sync', { action: 'pushLead', force, students: [{ crmId: st.id, fullName: st.fullName, phone: st.phone, schoolId: crm().schoolId }] });
+  if (!r.ok) return showToast('Edutizim: ' + (r.error || 'xato'), '⚠️');
+  const res = r.results?.[0] || {};
+  if (res.skipped && !force) {
+    if (confirm(`${res.message}.\nBaribir yangi lid yaratilsinmi?`)) return window.crmPushToEdu(id, true);
+    return;
+  }
+  if (!res.ok) return showToast('Edutizim xatosi: ' + res.message, '⚠️');
+  crm().eduPushed = crm().eduPushed || {};
+  crm().eduPushed[id] = { ok: true, created_at: new Date().toISOString(), message: res.message };
+  showToast(`${st.fullName} Edutizimga lid sifatida qo‘shildi ✅`, '➡️');
+  renderCurrentTab();
+};
+
 // =========================================================
 // 🗂️ SINF VA O'QUVCHI BOSHQARUVI (maktab → sinf → o'quvchi, sinf rahbari)
 // =========================================================
@@ -244,7 +274,7 @@ function enhanceClassInside() {
   if (!cls) return;
   if (['admin', 'operator'].includes(crm().role) && staffLoadedFor !== crm().schoolId + openedClassName) {
     staffLoadedFor = crm().schoolId + openedClassName;
-    loadStaff().then(() => { if (openedClassName === cls.name && currentTab === 'classes') window.renderClassesTab(); });
+    Promise.all([loadStaff(), loadEduPushes()]).then(() => { if (openedClassName === cls.name && currentTab === 'classes') window.renderClassesTab(); });
   }
   const own = crm().role === 'teacher' && crm().profile?.class_name === cls.name;
 
@@ -279,6 +309,12 @@ function enhanceClassInside() {
   // 3) O'quvchilar jadvaliga tahrirlash tugmasi
   el.querySelectorAll('button[onclick^="deleteStudentById("]').forEach(b => {
     const id = Number(b.getAttribute('onclick').match(/\d+/)[0]);
+    if (canWrite()) {
+      const done = crm().eduPushed?.[id];
+      b.insertAdjacentHTML('beforebegin', done
+        ? `<span title="Edutizimga yuborilgan" class="px-2 py-1 rounded-lg bg-emerald-50 text-emerald-700 font-black mr-1">✅ Edu</span>`
+        : `<button onclick="crmPushToEdu(${id})" title="O‘qishga keldi — Edutizimga lid qilib yuborish" class="px-2.5 py-1 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-black mr-1">➡️ Edu</button>`);
+    }
     if (canWrite() || own) b.insertAdjacentHTML('beforebegin', `<button onclick="crmEditStudent(${id})" class="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold mr-1">✏️</button>`);
     if (!isAdmin()) b.remove();
   });
@@ -357,6 +393,7 @@ window.crmEditStudent = id => {
           <select id="ed-class" ${lockClass ? 'disabled' : ''} class="${input} w-full mt-1">${classes.map(c => `<option ${c === st.className ? 'selected' : ''}>${esc(c)}</option>`).join('')}</select></label>
         <label class="font-bold block">Izoh<input id="ed-note" value="${esc(st.note || '')}" class="${input} w-full mt-1"></label>
         <div class="flex justify-end gap-2 pt-1">
+          ${canWrite() ? `<button onclick="document.getElementById('crm-st-modal').remove(); crmPushToEdu(${id})" class="mr-auto px-4 py-2 rounded-xl bg-indigo-600 text-white font-black">➡️ Edutizimga</button>` : ''}
           <button onclick="document.getElementById('crm-st-modal').remove()" class="px-4 py-2 rounded-xl bg-slate-100 font-bold">Bekor</button>
           <button onclick="crmSaveStudent(${id})" class="${btn('[#F2642A]')}">💾 Saqlash</button>
         </div>
@@ -769,6 +806,28 @@ window.crmExportRegs = () => {
 let eduRows = null;
 let eduSearch = '';
 let eduLog = [];
+let eduPushLog = [];
+
+window.crmLoadEduMeta = async () => {
+  const box = document.getElementById('edu-lead-meta');
+  box.innerHTML = '⏳ Edutizimdan bosqich va kurslar olinmoqda…';
+  const r = await invoke('edutizim-sync', { action: 'meta' });
+  if (!r.ok) { box.innerHTML = `<div class="text-rose-600 font-bold">⚠️ ${esc(r.error)}</div>`; return; }
+  const d = state.eduLeadDefaults || {};
+  const defStatus = d.statusId || (r.statuses.find(x => x.position === 0) || {}).id;
+  box.innerHTML = `
+    <label class="font-bold block">Lid bosqichi
+      <select id="edu-def-status" class="${input} w-full mt-1">${r.statuses.filter(x => x.position >= 0).map(x => `<option value="${esc(x.id)}" ${x.id === defStatus ? 'selected' : ''}>${esc(x.name)}</option>`).join('')}</select></label>
+    <label class="font-bold block">Kurs (ixtiyoriy)
+      <select id="edu-def-course" class="${input} w-full mt-1"><option value="">— tanlanmagan —</option>${r.courses.map(x => `<option value="${esc(x.id)}" ${x.id === d.courseId ? 'selected' : ''}>${esc(x.name)}</option>`).join('')}</select></label>
+    ${isAdmin() ? `<button onclick="crmSaveEduDefaults()" class="${btn('indigo-600')} w-full">💾 Saqlash</button>` : '<div class="text-slate-400">Saqlashni admin qiladi.</div>'}
+    <div class="text-[10px] text-slate-400">Filial: ${esc(r.branch?.name || '')}</div>`;
+};
+window.crmSaveEduDefaults = () => {
+  state.eduLeadDefaults = { statusId: document.getElementById('edu-def-status').value, courseId: document.getElementById('edu-def-course').value || null };
+  saveState();
+  showToast('Edutizim lid sozlamalari saqlandi', '➡️');
+};
 
 async function loadEdu() {
   eduRows = await (async () => {
@@ -783,6 +842,10 @@ async function loadEdu() {
   })();
   const { data } = await sb().from('crm_sync_log').select('*').eq('source', 'edutizim').order('created_at', { ascending: false }).limit(10);
   eduLog = data || [];
+  if (canWrite()) {
+    const { data: pl } = await sb().from('crm_edu_pushes').select('full_name,ok,message,created_at').order('created_at', { ascending: false }).limit(10);
+    eduPushLog = pl || [];
+  }
 }
 
 async function renderEdutizimTab() {
@@ -821,6 +884,15 @@ async function renderEdutizimTab() {
           </div>` : ''}
           <div id="edu-result" class="mt-3 text-xs"></div>
         `)}
+        ${canWrite() ? card(`
+          <h3 class="text-sm font-black text-slate-900 mb-1">➡️ CRM → Edutizim (lid)</h3>
+          <p class="text-[11px] text-slate-500 mb-2">O‘quvchi o‘qishga kelsa, sinf jadvalidagi <b>➡️ Edu</b> tugmasi uni Edutizimga yangi lid qilib qo‘shadi. Telefoni Edutizimda bor bo‘lsa, ogohlantiradi.</p>
+          <div id="edu-lead-meta" class="space-y-2 text-xs"><button onclick="crmLoadEduMeta()" class="${btn('slate-700')}">⚙️ Lid bosqichi va kursni sozlash</button></div>
+          <div class="mt-3 text-[11px] font-black text-slate-700">Oxirgi yuborishlar</div>
+          <div class="space-y-1 text-[11px] mt-1">
+            ${eduPushLog.map(l => `<div class="flex justify-between gap-2"><span class="${l.ok ? 'text-emerald-700' : 'text-rose-600'} font-bold">${l.ok ? '✓' : '✗'} ${esc(l.full_name)} — ${esc(l.message)}</span><span class="text-slate-400 whitespace-nowrap">${fmtDate(l.created_at)}</span></div>`).join('') || '<div class="text-slate-400">Hali yuborilmagan.</div>'}
+          </div>
+        `) : ''}
         ${card(`
           <h3 class="text-sm font-black text-slate-900 mb-2">🧾 Sinxronlash tarixi</h3>
           <div class="space-y-1.5 text-[11px]">
