@@ -52,5 +52,8 @@ export async function tg(token: string, method: string, body: Record<string, unk
     headers: isForm ? undefined : { 'Content-Type': 'application/json' },
     body: isForm ? body : JSON.stringify(body)
   });
-  return await res.json();
+  const out = await res.json().catch(() => ({ ok: false, description: `HTTP ${res.status}` }));
+  // Telegram rad etgan so'rovlarni logga yozamiz (aks holda bot "jim" qoladi va sababi ko'rinmaydi)
+  if (!out.ok) console.error(`tg ${method} failed:`, out.error_code ?? '', out.description ?? '');
+  return out;
 }
