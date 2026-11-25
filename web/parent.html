@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Ota-ona Portali</title>
+  <meta name="theme-color" content="#F2642A" />
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800;900&display=swap" rel="stylesheet">
+  <style>body{font-family:'Inter',sans-serif}</style>
+</head>
+<body class="min-h-screen bg-gradient-to-br from-[#F2642A] via-orange-500 to-amber-400 flex items-start sm:items-center justify-center p-4">
+  <div class="w-full max-w-lg bg-white rounded-3xl shadow-2xl p-6 space-y-4 mt-6 sm:mt-0">
+    <div class="text-center">
+      <div class="text-3xl">👨‍👩‍👧‍👦</div>
+      <h1 class="text-lg font-black text-slate-900">Registan LC · Ota-ona Portali</h1>
+      <p class="text-xs text-slate-500">Farzandingizning to‘liq ism-familiyasi yoki telefon raqami orqali natijani tekshiring.</p>
+    </div>
+    <form id="f" class="flex gap-2">
+      <input id="q" required minlength="4" placeholder="Masalan: Karimov Azizbek yoki +998 90 123 45 67" class="flex-1 px-4 py-3 rounded-xl border border-slate-300 text-sm font-semibold" />
+      <button class="px-4 py-3 rounded-xl bg-[#F2642A] text-white font-black text-sm">🔍</button>
+    </form>
+    <div id="out" class="space-y-2.5 text-sm"></div>
+    <div class="text-center text-[11px] text-slate-400">Natijalarni Telegram bot orqali ham tekshirishingiz mumkin.</div>
+  </div>
+
+  <script src="config.js"></script>
+  <script type="module">
+    import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/+esm';
+    const sb = createClient(window.CRM_CONFIG.SUPABASE_URL, window.CRM_CONFIG.SUPABASE_KEY, { auth: { persistSession: false } });
+    const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    const money = n => new Intl.NumberFormat('uz-UZ').format(n) + ' so‘m';
+    const PRIZES = { 1: ['🥇 1-o‘rin', 150000], 2: ['🥈 2-o‘rin', 100000], 3: ['🥉 3-o‘rin', 75000] };
+    const out = document.getElementById('out');
+    document.getElementById('f').onsubmit = async e => {
+      e.preventDefault();
+      const q = document.getElementById('q').value.trim();
+      out.innerHTML = '<div class="text-slate-500 font-bold">⏳ Qidirilmoqda…</div>';
+      const { data, error } = await sb.rpc('crm_parent_lookup', { p_query: q });
+      if (error) { out.innerHTML = `<div class="text-rose-600 font-bold">Xatolik: ${esc(error.message)}</div>`; return; }
+      if (!data.length) { out.innerHTML = '<div class="text-rose-600 font-bold">Mos o‘quvchi topilmadi. Ism-familiyani to‘liqroq yozing.</div>'; return; }
+      out.innerHTML = data.map(s => {
+        const p = PRIZES[s.rank];
+        return `<div class="p-4 rounded-2xl ${p ? 'bg-amber-50 border-amber-300' : 'bg-slate-50 border-slate-200'} border">
+          <div class="font-black text-slate-900">${esc(s.full_name)} <span class="text-indigo-700">(${esc(s.class_name)})</span></div>
+          <div class="text-slate-700 mt-1">Ball: <b>${esc(s.score)}</b> · ${esc(s.grade_key)} orasida <b>#${s.rank}</b> / ${s.total}</div>
+          ${p ? `<div class="mt-1 font-black text-amber-800">${p[0]} — ${money(p[1])} chegirma kartasi 🎉</div>` : ''}
+        </div>`;
+      }).join('');
+    };
+  </script>
+</body>
+</html>
