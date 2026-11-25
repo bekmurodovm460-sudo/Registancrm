@@ -2,6 +2,10 @@
 <html lang="uz">
 <head>
   <meta charset="UTF-8" />
+  <script>
+    // Telegram ichida ochilsa — parolsiz Mini App'ga o'tish (CRM paroli so'ralmaydi)
+    if (/tgWebApp(Data|Version|Platform)=/.test(location.hash + location.search)) location.replace('miniapp.html' + location.search + location.hash);
+  </script>
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Registan LC CRM Platforma</title>
   <meta name="theme-color" content="#F2642A" />
