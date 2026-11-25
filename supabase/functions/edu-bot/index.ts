@@ -20,6 +20,7 @@ const kb = (rows: string[][]) => ({ keyboard: rows.map(r => r.map(text => ({ tex
 const MENU = { ...kb([[B_IN, B_OUT], [B_FIND, B_DEBT], [B_LEAD, B_REPORT], [B_SYNC]]), is_persistent: true, input_field_placeholder: 'Amalni tanlang…' };
 const CANCEL_KB = kb([[B_CANCEL]]);
 const SKIP_KB = kb([[B_SKIP], [B_CANCEL]]);
+const BANNER = 'https://raw.githubusercontent.com/bekmurodovm460-sudo/Registancrm/refs/heads/claude/html-site-web-platform-pltyl0/brand/edu-bot-tavsif-1280x720.png';
 const ib = (text: string, data: string) => ({ text, callback_data: data });
 const esc = (s: unknown) => String(s ?? '').replace(/[<>&]/g, c => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;' }[c]!));
 const sum = (n: number) => String(Math.round(Number(n) || 0)).replace(/\B(?=(\d{3})+(?!\d))/g, ' ') + ' so‘m';
@@ -276,7 +277,12 @@ async function onMessage(m: any) {
   }
   if (cmd === '/start' || cmd === '/menu' || text === B_CANCEL || cmd === '/cancel') {
     await setSession(chatId, null);
-    if (cmd === '/start') return void send(chatId, `👋 Assalomu alaykum, <b>${esc(m.from?.first_name || '')}</b>!\n\n<b>Registan · Edutizim</b> boti:\n💰 Kirim / 💸 Chiqim — Edutizim kassasiga\n🔍 O‘quvchi — balans, guruh, to‘lov qabul qilish\n🔴 Qarzdorlar — eng katta qarzlar\n➕ Lid — yangi mijoz\n📊 Hisobot · 🔄 Sinxron\n\nPastdagi tugmalardan tanlang 👇`, { reply_markup: MENU });
+    if (cmd === '/start') {
+      const caption = `👋 Assalomu alaykum, <b>${esc(m.from?.first_name || '')}</b>!\n\n💼 <b>Registan Globus · Moliya</b>\n\n💰 <b>Kirim</b> — o‘quvchi to‘lovi, boshqa tushumlar\n💸 <b>Chiqim</b> — xarajatlar (kanstovar, arenda…)\n🔍 <b>O‘quvchi</b> — balans, guruh, to‘lov qabul qilish\n🔴 <b>Qarzdorlar</b> — eng katta qarzlar\n➕ <b>Lid</b> — Edutizim’ga yangi mijoz\n📊 <b>Hisobot</b> · 🔄 <b>Sinxron</b>\n\nPastdagi tugmalardan tanlang 👇`;
+      const r = await tg(await token(), 'sendPhoto', { chat_id: chatId, photo: BANNER, caption, parse_mode: 'HTML', reply_markup: MENU });
+      if (!r?.ok) await send(chatId, caption, { reply_markup: MENU });
+      return;
+    }
     return void send(chatId, text === B_CANCEL || cmd === '/cancel' ? '❌ Bekor qilindi.' : 'Tanlang 👇', { reply_markup: MENU });
   }
   if (cmd === '/id') return void send(chatId, `ID: <code>${m.from?.id}</code>`);
