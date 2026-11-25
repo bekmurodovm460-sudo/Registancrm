@@ -2,20 +2,35 @@
 // REGISTAN LC Telegram bot (webhook)
 //  • 📝 Natijani tekshirish — javoblar varaqasi rasmi (OMR) orqali
 //  • 🧒 Kids Mock'ga ro'yxatdan o'tish
+//  • /natija, /karta, /mening, /aloqa — ota-onalar uchun
+//  • /hisobot — kunlik statistika (faqat admin chat/guruhda)
 // =========================================================
 import jpeg from 'npm:jpeg-js@0.4.4';
 import { admin, getSecret, getSetting, tg, webhookSecret } from '../_shared/common.ts';
 import { readSheet, rgbaToGray, gradeAnswers } from '../_shared/omr.js';
+import { cardPng, money, PRIZES, promoCode } from '../_shared/card.ts';
 
 const BTN_CHECK = '📝 Natijani tekshirish';
 const BTN_REG = '🧒 Kids Mock ro‘yxatdan o‘tish';
 const BTN_HELP = 'ℹ️ Yordam';
 const BTN_CANCEL = '❌ Bekor qilish';
+const BTN_RESULT = '🏆 Farzand natijasi';
+const BTN_CARD = '🏅 Yutuqli karta';
+const BTN_MINE = '📋 Mening arizalarim';
+const BTN_CONTACT = '📞 Aloqa';
 
 const MENU = {
-  keyboard: [[{ text: BTN_CHECK }], [{ text: BTN_REG }], [{ text: BTN_HELP }]],
+  keyboard: [
+    [{ text: BTN_CHECK }],
+    [{ text: BTN_RESULT }, { text: BTN_CARD }],
+    [{ text: BTN_REG }],
+    [{ text: BTN_MINE }, { text: BTN_CONTACT }],
+    [{ text: BTN_HELP }]
+  ],
   resize_keyboard: true
 };
+const CANCEL_KB = { keyboard: [[{ text: BTN_CANCEL }]], resize_keyboard: true };
+const DEFAULT_CENTER = '📍 <b>Registan LC</b> o‘quv markazi\n\nAloqa ma’lumotlari hali kiritilmagan. Admin CRM’dagi “🤖 Telegram Bot” bo‘limida ularni yozadi.';
 
 let TOKEN = '';
 let tokenLoadedAt = 0;
@@ -215,31 +230,196 @@ async function finishReg(chatId: number, s: Session, session: string, username =
   await notifyAdmin(`🧒 Yangi Kids Mock arizasi: <b>${esc(d.name)}</b> · ${esc(d.grade)} · ${esc(d.phone)} · ${esc(room)}`);
 }
 
+
+// ---------------------------------------------------------
+// /natija — farzand natijasi (ism yoki telefon bo'yicha)
+// ---------------------------------------------------------
+type Lookup = { id: number; full_name: string; class_name: string; school_name: string; score: number; grade_key: string; rank: number; total: number };
+
+async function lookup(q: string): Promise<Lookup[]> {
+  const { data } = await admin.rpc('crm_parent_lookup', { p_query: q });
+  return (data as Lookup[]) || [];
+}
+
+function resultLine(r: Lookup) {
+  const p = PRIZES[r.rank];
+  return `👤 <b>${esc(r.full_name)}</b> — ${esc(r.class_name)}, ${esc(r.school_name)}\n` +
+    `   Ball: <b>${r.score}</b> · ${esc(r.grade_key)} orasida <b>#${r.rank}</b> / ${r.total}` +
+    (p ? `\n   ${r.rank === 1 ? '🥇' : r.rank === 2 ? '🥈' : '🥉'} <b>${p.tier}</b> — ${money(p.amount)} chegirma kartasi` : '');
+}
+
+async function startResult(chatId: number) {
+  await setSession(chatId, 'natija_q', {});
+  await send(chatId, '🏆 Farzandingizning <b>ism-familiyasini</b> (kamida 4 harf) yoki <b>telefon raqamini</b> yozing:', { reply_markup: CANCEL_KB });
+}
+
+async function answerResult(chatId: number, q: string) {
+  const digits = q.replace(/\D/g, '');
+  if (q.trim().length < 4 && digits.length < 9) return void send(chatId, 'Kamida 4 harf yoki to‘liq telefon raqamini yozing.');
+  const rows = await lookup(q);
+  await setSession(chatId, null);
+  if (!rows.length) {
+    await send(chatId, '😕 Mos o‘quvchi topilmadi. Ism-familiyani to‘liqroq yoki boshqa telefon raqamini yozib ko‘ring: /natija', { reply_markup: MENU });
+    return;
+  }
+  const top = rows.some(r => r.rank <= 3);
+  await send(chatId, `📊 Natijalar (${rows.length}):\n\n${rows.map(resultLine).join('\n\n')}` +
+    (top ? '\n\n🏅 Yutuqli kartani olish uchun: /karta' : ''), { reply_markup: MENU });
+}
+
+// ---------------------------------------------------------
+// /karta — tasdiqlangan telefon orqali yutuqli karta rasmi
+// ---------------------------------------------------------
+async function startCard(chatId: number) {
+  await setSession(chatId, 'karta_phone', {});
+  await send(chatId, '🏅 Yutuqli kartani olish uchun pastdagi tugma orqali <b>o‘z telefon raqamingizni</b> yuboring. Raqam CRM’dagi ota-ona raqami bilan solishtiriladi.', {
+    reply_markup: { keyboard: [[{ text: '📱 Raqamni yuborish', request_contact: true }], [{ text: BTN_CANCEL }]], resize_keyboard: true, one_time_keyboard: true }
+  });
+}
+
+async function sendPhotoBytes(chatId: number, png: Uint8Array, caption: string) {
+  const form = new FormData();
+  form.append('chat_id', String(chatId));
+  form.append('photo', new Blob([new Uint8Array(png)], { type: 'image/png' }), 'karta.png');
+  form.append('caption', caption);
+  form.append('parse_mode', 'HTML');
+  return tg(await token(), 'sendPhoto', form);
+}
+
+async function answerCard(chatId: number, m: any) {
+  const c = m.contact;
+  if (!c) return void send(chatId, '📱 Iltimos, pastdagi <b>“Raqamni yuborish”</b> tugmasini bosing.');
+  if (c.user_id && m.from?.id && c.user_id !== m.from.id) return void send(chatId, '⚠️ Faqat o‘zingizning raqamingizni yuboring (tugma orqali).');
+  const digits = String(c.phone_number || '').replace(/\D/g, '');
+  await setSession(chatId, null);
+  const rows = (await lookup(digits)).filter(r => String(r.full_name || '').length);
+  if (!rows.length) {
+    await send(chatId, '😕 Bu raqam CRM’dagi o‘quvchilar ota-onasi raqamlari orasida topilmadi. Maktab yoki markaz administratoriga murojaat qiling: /aloqa', { reply_markup: MENU });
+    return;
+  }
+  const winners = rows.filter(r => r.rank >= 1 && r.rank <= 3);
+  if (!winners.length) {
+    await send(chatId, `Farzandingiz hozircha parallel TOP-3 da emas:\n\n${rows.map(resultLine).join('\n\n')}\n\nKeyingi bosqichda albatta! 💪`, { reply_markup: MENU });
+    return;
+  }
+  await tg(await token(), 'sendChatAction', { chat_id: chatId, action: 'upload_photo' });
+  for (const w of winners) {
+    const png = await cardPng({ id: w.id, fullName: w.full_name, className: w.class_name, schoolName: w.school_name, gradeKey: w.grade_key, rank: w.rank });
+    const p = PRIZES[w.rank];
+    await sendPhotoBytes(chatId, png,
+      `🏆 <b>${esc(w.full_name)}</b> (${esc(w.class_name)}, ${esc(w.school_name)})\n${p.tier}\nKarta: <b>${money(p.amount)}</b>\nKod: <code>${promoCode(w.id)}</code>\n⏳ 2 oy davomida amal qiladi`);
+  }
+  await send(chatId, 'Kartani kassada ko‘rsating yoki promo-kodni ayting. 🎉', { reply_markup: MENU });
+  await notifyAdmin(`🏅 Karta olindi (bot): ${winners.map(w => esc(w.full_name)).join(', ')}`);
+}
+
+// ---------------------------------------------------------
+// /mening — shu Telegram hisobidan yuborilganlar
+// ---------------------------------------------------------
+async function answerMine(chatId: number) {
+  const [{ data: regs }, { data: subs }] = await Promise.all([
+    admin.from('crm_mock_registrations').select('id,full_name,grade,session,room,status,created_at').eq('chat_id', chatId).order('created_at', { ascending: false }).limit(10),
+    admin.from('crm_omr_submissions').select('student_name,test_code,correct,score,created_at').eq('chat_id', chatId).order('created_at', { ascending: false }).limit(10)
+  ]);
+  const d = (t: string) => new Date(t).toLocaleDateString('uz-UZ', { timeZone: 'Asia/Tashkent' });
+  const parts = [];
+  parts.push(regs?.length
+    ? '🧒 <b>Kids Mock arizalari:</b>\n' + regs.map(r => `• KM-${r.id} — ${esc(r.full_name)} (${esc(r.grade)})\n   ${esc(r.session)} · 🚪 ${esc(r.room)} · <b>${esc(r.status)}</b>`).join('\n')
+    : '🧒 Kids Mock arizalari yo‘q. Yozilish: ' + BTN_REG);
+  parts.push(subs?.length
+    ? '📝 <b>Tekshirilgan varaqlar:</b>\n' + subs.map(r => `• ${d(r.created_at)} — ${esc(r.student_name)} · ${esc(r.test_code)} · ${r.correct} ta to‘g‘ri · <b>${r.score}</b> ball`).join('\n')
+    : '📝 Tekshirilgan varaqlar yo‘q.');
+  await send(chatId, parts.join('\n\n'), { reply_markup: MENU });
+}
+
+// ---------------------------------------------------------
+// /aloqa — markaz ma'lumoti (CRM'da tahrirlanadi)
+// ---------------------------------------------------------
+async function answerContact(chatId: number) {
+  const info = await getSetting<string>('centerInfo', '');
+  await send(chatId, info ? esc(info) : DEFAULT_CENTER, { reply_markup: MENU, disable_web_page_preview: true });
+}
+
+// ---------------------------------------------------------
+// /hisobot — kunlik statistika (faqat admin chat/guruh)
+// ---------------------------------------------------------
+async function answerReport(chatId: number) {
+  const adminChat = await getSecret('telegram_admin_chat_id');
+  if (!adminChat || String(chatId) !== String(adminChat).trim()) {
+    await send(chatId, '⛔ /hisobot faqat admin chatida ishlaydi. Admin chat ID CRM’dagi “🤖 Telegram Bot” bo‘limida kiritiladi.');
+    return;
+  }
+  const now = new Date();
+  const tz = 5 * 3600_000; // Asia/Tashkent
+  const dayStart = new Date(Math.floor((now.getTime() + tz) / 86400_000) * 86400_000 - tz).toISOString();
+  const cnt = async (q: any) => (await q).count ?? 0;
+  const [regsToday, regsAll, subsToday, subsAllRows, students, schools, eduStudents, activeTests] = await Promise.all([
+    cnt(admin.from('crm_mock_registrations').select('id', { count: 'exact', head: true }).gte('created_at', dayStart)),
+    cnt(admin.from('crm_mock_registrations').select('id', { count: 'exact', head: true }).neq('status', 'Bekor')),
+    cnt(admin.from('crm_omr_submissions').select('id', { count: 'exact', head: true }).gte('created_at', dayStart)),
+    admin.from('crm_omr_submissions').select('score').gte('created_at', dayStart).limit(2000),
+    cnt(admin.from('crm_students').select('id', { count: 'exact', head: true })),
+    admin.from('crm_schools').select('id', { count: 'exact', head: true }),
+    cnt(admin.from('crm_edu_students').select('id', { count: 'exact', head: true })),
+    cnt(admin.from('crm_tests').select('code', { count: 'exact', head: true }).eq('active', true))
+  ]);
+  const scores = (subsAllRows.data || []).map((r: any) => Number(r.score) || 0);
+  const avg = scores.length ? (scores.reduce((a: number, b: number) => a + b, 0) / scores.length).toFixed(1) : '—';
+  const day = now.toLocaleDateString('uz-UZ', { timeZone: 'Asia/Tashkent' });
+  await send(chatId,
+    `📊 <b>Kunlik hisobot</b> · ${day}\n\n` +
+    `🧒 Kids Mock arizalari: bugun <b>${regsToday}</b> · jami faol <b>${regsAll}</b>\n` +
+    `📝 Tekshirilgan varaqlar: bugun <b>${subsToday}</b> · o‘rtacha ball <b>${avg}</b>\n` +
+    `📋 Faol testlar: <b>${activeTests}</b>\n` +
+    `🏫 Maktablar: <b>${schools.count ?? 0}</b> · o‘quvchilar: <b>${students}</b>\n` +
+    `🔗 Edutizim o‘quvchilari: <b>${eduStudents}</b>`);
+}
+
 // ---------------------------------------------------------
 // Update router
 // ---------------------------------------------------------
 async function onMessage(m: any) {
   const chatId = m.chat.id as number;
+  const raw = (m.text || '').trim();
+  // "/natija@BotName" -> "/natija"
+  const text = raw.startsWith('/') ? raw.split(/\s+/)[0].split('@')[0].toLowerCase() : raw;
   if (m.chat.type !== 'private') {
-    if ((m.text || '').startsWith('/id')) await send(chatId, `Chat ID: <code>${chatId}</code>`);
+    if (text === '/id') await send(chatId, `Chat ID: <code>${chatId}</code>`);
+    if (text === '/hisobot') await answerReport(chatId);
     return;
   }
-  const text = (m.text || '').trim();
   if (text === '/start' || text === '/menu' || text === BTN_CANCEL || text === '/cancel') {
     await setSession(chatId, null);
     await send(chatId, '👋 <b>Registan LC</b> botiga xush kelibsiz!\n\nKerakli bo‘limni tanlang:', { reply_markup: MENU });
     return;
   }
   if (text === '/id') { await send(chatId, `Chat ID: <code>${chatId}</code>`); return; }
-  if (text === BTN_CHECK) return startCheck(chatId);
-  if (text === BTN_REG) return startReg(chatId);
-  if (text === BTN_HELP) {
-    await send(chatId, '📝 <b>Natijani tekshirish</b>: testni tanlang, ismni yozing va to‘ldirilgan javoblar varaqasini rasmga olib yuboring. 4 ta qora burchak rasmga to‘liq tushishi kerak.\n\n🧒 <b>Kids Mock</b>: farzandingizni imtihonga yozing — xona avtomatik beriladi.', { reply_markup: MENU });
+  if (text === BTN_CHECK || text === '/tekshir') return startCheck(chatId);
+  if (text === BTN_REG || text === '/royxat') return startReg(chatId);
+  if (text === BTN_RESULT || text === '/natija') return startResult(chatId);
+  if (text === BTN_CARD || text === '/karta') return startCard(chatId);
+  if (text === BTN_MINE || text === '/mening') { await setSession(chatId, null); return answerMine(chatId); }
+  if (text === BTN_CONTACT || text === '/aloqa') { await setSession(chatId, null); return answerContact(chatId); }
+  if (text === '/hisobot') return answerReport(chatId);
+  if (text === BTN_HELP || text === '/yordam' || text === '/help') {
+    await send(chatId,
+      '📖 <b>Buyruqlar</b>\n\n' +
+      '/natija — farzandingiz balli va parallel TOP-3 o‘rni\n' +
+      '/karta — yutuqli karta (TOP-3 sovrindorlar uchun, telefon tasdiqlanadi)\n' +
+      '/tekshir — javoblar varaqasi rasmini yuborib natijani bilish\n' +
+      '/royxat — Kids Mock imtihoniga yozilish\n' +
+      '/mening — arizalaringiz va tekshirilgan varaqlar\n' +
+      '/aloqa — markaz manzili va telefoni\n' +
+      '/cancel — bekor qilish', { reply_markup: MENU });
     return;
   }
 
   const s = await getSession(chatId);
   switch (s.step) {
+    case 'natija_q':
+      return answerResult(chatId, raw);
+    case 'karta_phone':
+      return answerCard(chatId, m);
     case 'check_name':
       if (text.length < 3) return void send(chatId, 'Ism-familiyani to‘liq yozing.');
       await setSession(chatId, 'check_photo', { ...s.data, name: text.slice(0, 80) });
@@ -260,8 +440,8 @@ async function onMessage(m: any) {
       await setSession(chatId, 'reg_phone', { ...s.data, grade: text.slice(0, 30) });
       return askPhone(chatId);
     case 'reg_phone': {
-      const raw = m.contact?.phone_number || text;
-      const digits = String(raw).replace(/\D/g, '');
+      const rawPhone = m.contact?.phone_number || text;
+      const digits = String(rawPhone).replace(/\D/g, '');
       if (digits.length < 9) return void send(chatId, 'Telefon raqamini to‘g‘ri kiriting, masalan: +998 90 123 45 67');
       const phone = '+998' + digits.slice(-9);
       s.data.phone = phone;

@@ -78,3 +78,19 @@ Himoya ma’lumotlar bazasi darajasida (Row Level Security). Bot tokeni va eduti
 - Shu yerda parolni almashtirish yoki olib tashlash (saytni yana ochiq qilish) mumkin.
 - Shaxsiy xodim hisoblari (email + parol) “Xodim hisobi (email) bilan kirish” havolasi orqali ishlashda davom etadi.
 - Texnik: `supabase/migrations/007_site_password.sql` — `crm_access_info`, `crm_open_login`, `crm_set_site_password`, `crm_open_site`.
+
+## Telegram bot buyruqlari
+
+| Buyruq | Kim uchun | Nima qiladi |
+|---|---|---|
+| `/start` | hamma | bosh menyu |
+| `/natija` | ota-ona | ism (≥4 harf) yoki telefon bo‘yicha ball, maktab, parallel TOP-3 o‘rni |
+| `/karta` | ota-ona | “📱 Raqamni yuborish” orqali **o‘z** raqami tasdiqlanadi; farzand TOP-3 bo‘lsa yutuqli karta **rasmi** yuboriladi |
+| `/tekshir` | o‘quvchi | javoblar varaqasi rasmi orqali natija (OMR) |
+| `/royxat` | ota-ona | Kids Mock’ga yozilish |
+| `/mening` | ota-ona | shu Telegram hisobidagi arizalar va tekshirilgan varaqlar |
+| `/aloqa` | hamma | markaz ma’lumoti — CRM “🤖 Telegram Bot → 📞 /aloqa matni”da tahrirlanadi |
+| `/hisobot` | admin | kunlik statistika — faqat CRM’da kiritilgan admin chat/guruhda ishlaydi |
+| `/id` | admin | chat ID |
+
+Karta rasmi serverda (`supabase/functions/_shared/card.ts`, resvg-wasm + Inter shrifti) CRM’dagi dizayn bilan bir xil yasaladi.

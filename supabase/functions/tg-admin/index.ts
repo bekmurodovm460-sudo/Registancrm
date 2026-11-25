@@ -27,14 +27,29 @@ Deno.serve(async req => {
           allowed_updates: ['message', 'callback_query'],
           drop_pending_updates: true
         });
-        await tg(token, 'setMyCommands', {
-          commands: [
-            { command: 'start', description: 'Bosh menyu' },
-            { command: 'cancel', description: 'Bekor qilish' },
-            { command: 'id', description: 'Chat ID ni ko‘rish' }
-          ]
-        });
-        return json({ ok: r.ok, url, error: r.ok ? undefined : r.description });
+        const commands = [
+          { command: 'start', description: 'Bosh menyu' },
+          { command: 'natija', description: 'Farzand natijasi va TOP-3 o‘rni' },
+          { command: 'karta', description: 'Yutuqli karta (TOP-3)' },
+          { command: 'tekshir', description: 'Javoblar varaqasini tekshirish' },
+          { command: 'royxat', description: 'Kids Mock’ga yozilish' },
+          { command: 'mening', description: 'Mening arizalarim' },
+          { command: 'aloqa', description: 'Markaz bilan aloqa' },
+          { command: 'yordam', description: 'Yordam' },
+          { command: 'cancel', description: 'Bekor qilish' }
+        ];
+        const cmd = await tg(token, 'setMyCommands', { commands });
+        // Admin chatida qo'shimcha /hisobot va /id
+        const adminChat = await getSecret('telegram_admin_chat_id');
+        let adminCmd: any = null;
+        if (adminChat) {
+          adminCmd = await tg(token, 'setMyCommands', {
+            commands: [{ command: 'hisobot', description: 'Kunlik statistika' }, { command: 'id', description: 'Chat ID' }, ...commands],
+            scope: { type: 'chat', chat_id: Number(adminChat) || adminChat }
+          });
+        }
+        if (!r.ok || !cmd.ok) return json({ ok: false, url, error: r.description || cmd.description });
+        return json({ ok: true, url, commands: cmd.ok, adminCommands: adminCmd ? adminCmd.ok : null });
       }
       case 'sendPhoto': {
         const chatId = String(body.chatId || '').trim() || await getSecret('telegram_admin_chat_id');
