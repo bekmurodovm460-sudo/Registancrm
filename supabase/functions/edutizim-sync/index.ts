@@ -183,6 +183,32 @@ async function kassaPay(base: string, headers: Record<string, string>, b: any) {
   if (!ok) return { ok: false, error: `${res.status} ${out?.message || out?.messages?.uz || ''}`.trim() };
   return { ok: true, id: out?.data?._id || null };
 }
+// Kassa tarixi: POST /cashbox/payments-pagin {page, limit, cashboxId, dateFrom, dateTo, type?}
+async function kassaTx(base: string, headers: Record<string, string>, b: any) {
+  const filter: Record<string, unknown> = { cashboxId: b.cashboxId, dateFrom: b.dateFrom, dateTo: b.dateTo, type: b.type || undefined };
+  const items: any[] = [];
+  let total: number | null = null;
+  let rawSample = '';
+  for (let page = 1; page <= 60; page++) {
+    const res = await fetch(`${base}/cashbox/payments-pagin`, { method: 'POST', headers, body: JSON.stringify({ page, limit: 100, ...filter }) });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) return { ok: false, error: `${res.status} ${body?.message || ''}`.trim() };
+    if (page === 1 && b.raw) rawSample = JSON.stringify(body).slice(0, 2500);
+    const d = body?.data;
+    const list: any[] = Array.isArray(d) ? d : Array.isArray(d?.data) ? d.data : [];
+    if (typeof d?.total === 'number') total = d.total;
+    items.push(...list);
+    if (list.length < 100 || (total !== null && items.length >= total)) break;
+  }
+  const tx = items.map((x: any) => ({
+    id: x._id, amount: Number(x.amount) || 0, type: x.type || x.paymentTransaction?.type || '',
+    category: x.paymentTransaction?.name || x.paymentTransactionName || '—', categoryId: x.paymentTransaction?._id || x.paymentTransactionId || null,
+    method: x.paymentMethod?.name || '', date: x.actualDate || x.createdAt, comment: x.comment || '',
+    cancelled: !!(x.isCancelled || x.cancelled || x.state === 'cancelled'), state: x.state || ''
+  }));
+  return { ok: true, total: total ?? tx.length, count: tx.length, tx, ...(b.raw ? { raw: rawSample } : {}) };
+}
+
 async function kassaCancel(base: string, headers: Record<string, string>, b: any) {
   if (!b.transactionId) return { ok: false, error: 'transactionId kerak' };
   const res = await fetch(`${base}/cashbox/transaction/cancel`, { method: 'POST', headers, body: JSON.stringify({ transactionId: b.transactionId }) });
@@ -212,7 +238,7 @@ Deno.serve(async req => {
     const branches = auth.branches.map((b: any) => ({ id: String(b._id), name: b.name }));
     if (body.action === 'test') return json({ ok: true, branches });
     // 'cron' roli = ichki chaqiruv (pg_cron yoki Telegram bot admin bo'limi, x-cron-secret bilan)
-    if (['meta', 'pushLead', 'kassaMeta', 'kassaPay', 'kassaCancel'].includes(body.action)) {
+    if (['meta', 'pushLead', 'kassaMeta', 'kassaPay', 'kassaCancel', 'kassaTx'].includes(body.action)) {
       const br = body.branchId ? branches.find(b => b.id === body.branchId) : branches[0];
       if (!br) throw new Error('Filial topilmadi');
       const headers = { ...baseHeaders(site), Authorization: `Bearer ${auth.token}`, branch: br.id };
@@ -222,6 +248,7 @@ Deno.serve(async req => {
         if (role !== 'cron' && role !== 'admin') return json({ ok: false, error: 'Faqat admin' }, 403);
         return json(await kassaPay(base, headers, body));
       }
+      if (body.action === 'kassaTx') return json(await kassaTx(base, headers, body));
       if (body.action === 'kassaCancel') {
         if (role !== 'cron' && role !== 'admin') return json({ ok: false, error: 'Faqat admin' }, 403);
         return json(await kassaCancel(base, headers, body));
