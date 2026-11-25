@@ -56,3 +56,10 @@ Himoya ma’lumotlar bazasi darajasida (Row Level Security). Bot tokeni va eduti
 - Baza: `supabase/migrations/*.sql` tartib bilan qo‘llanadi.
 - Funksiyalar: `supabase functions deploy telegram-bot --no-verify-jwt`, `supabase functions deploy tg-admin`, `supabase functions deploy edutizim-sync`.
 - `web/omr.js` o‘zgarsa, `supabase/functions/_shared/omr.js` ga ham nusxa ko‘chiring.
+
+## Ko‘p maktab
+
+- **🏫 Maktablar** bo‘limida admin maktab qo‘shadi, tahrirlaydi va bo‘sh maktabni o‘chiradi. Ular orasida yuqoridagi tanlagich yoki “✅ Tanlash” tugmasi bilan o‘tiladi.
+- Sinflar, o‘quvchilar, ball tizimi va parallel TOP-3 (150k/100k/75k) **har bir maktab ichida alohida**. Kids Mock, kassa, testlar va bot umumiy.
+- O‘qituvchiga “👥 Xodimlar” bo‘limida maktab va sinf biriktiriladi; u faqat o‘sha maktabni ko‘radi va faqat o‘z sinfini tahrirlaydi.
+- “711 bazani tiklash” faqat 12-Maktab uchun ishlaydi.

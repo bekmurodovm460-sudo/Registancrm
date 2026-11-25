@@ -43,6 +43,7 @@
         const p = PRIZES[s.rank];
         return `<div class="p-4 rounded-2xl ${p ? 'bg-amber-50 border-amber-300' : 'bg-slate-50 border-slate-200'} border">
           <div class="font-black text-slate-900">${esc(s.full_name)} <span class="text-indigo-700">(${esc(s.class_name)})</span></div>
+          <div class="text-[11px] text-slate-500">🏫 ${esc(s.school_name || '')}</div>
           <div class="text-slate-700 mt-1">Ball: <b>${esc(s.score)}</b> · ${esc(s.grade_key)} orasida <b>#${s.rank}</b> / ${s.total}</div>
           ${p ? `<div class="mt-1 font-black text-amber-800">${p[0]} — ${money(p[1])} chegirma kartasi 🎉</div>` : ''}
         </div>`;

@@ -14,6 +14,8 @@ const crm = window.crm = {
   user: null,
   profile: null,
   role: null,
+  schoolId: null,
+  schoolName: '',
   tests: [],
   submissions: [],
   registrations: [],
@@ -25,9 +27,13 @@ const crm = window.crm = {
 // ---------------------------------------------------------
 const SETTINGS_KEYS = ['schoolRules', 'mockRules', 'gformsConfig', 'kidsMockFormConfig', 'gdriveConfig', 'mockSessions', 'mockRooms'];
 
+// Sinf va o'quvchilar faol maktab bo'yicha (scoped) yuklanadi; har bir yozuvga schoolId qo'yiladi
+const stampSchool = o => { if (!o.schoolId) o.schoolId = crm.schoolId; return o; };
+
 const COLLECTIONS = [
-  arrayCollection('classes', 'crm_classes', 'name', o => String(o.name), o => ({ name: String(o.name), data: o })),
-  arrayCollection('students', 'crm_students', 'id', o => String(o.id), o => ({ id: Number(o.id), data: o })),
+  { ...arrayCollection('schools', 'crm_schools', 'id', o => String(o.id), o => ({ id: String(o.id), data: o })), adminOnly: true },
+  { ...arrayCollection('classes', 'crm_classes', 'name', o => String(o.name), o => ({ name: String(o.name), data: stampSchool(o) })), scoped: true, conflict: 'school_id,name' },
+  { ...arrayCollection('students', 'crm_students', 'id', o => String(o.id), o => ({ id: Number(o.id), data: stampSchool(o) })), scoped: true },
   arrayCollection('mockStudents', 'crm_mock_students', 'id', o => String(o.id), o => ({ id: Number(o.id), data: o })),
   arrayCollection('payments', 'crm_payments', 'id', o => String(o.id), o => ({ id: Number(o.id), data: o })),
   {
@@ -50,13 +56,28 @@ const COLLECTIONS = [
   },
   {
     name: 'settings', table: 'crm_settings', pk: 'key', adminOnly: true,
+    // Maktab ball tizimi har bir maktab uchun alohida: kalit `schoolRules@<maktab>`
     items() {
       const m = new Map();
-      SETTINGS_KEYS.forEach(k => { if (state[k] !== undefined) m.set(k, { key: k, value: state[k] }); });
+      SETTINGS_KEYS.forEach(k => {
+        if (state[k] === undefined) return;
+        const key = k === 'schoolRules' ? `schoolRules@${crm.schoolId}` : k;
+        m.set(key, { key, value: state[k] });
+      });
       return m;
     },
-    applyRows(rows) { rows.forEach(r => { if (SETTINGS_KEYS.includes(r.key)) state[r.key] = r.value; }); },
-    applyOne(row, deleted) { if (!deleted && SETTINGS_KEYS.includes(row.key)) state[row.key] = row.value; },
+    applyRows(rows) {
+      const byKey = Object.fromEntries(rows.map(r => [r.key, r.value]));
+      SETTINGS_KEYS.filter(k => k !== 'schoolRules').forEach(k => { if (byKey[k] !== undefined) state[k] = byKey[k]; });
+      const own = byKey[`schoolRules@${crm.schoolId}`];
+      const legacy = crm.schoolId === '12-maktab' ? byKey.schoolRules : undefined;
+      state.schoolRules = own || legacy || { q1: 40, w1: 1.5, q2: 40, w2: 1 };
+    },
+    applyOne(row, deleted) {
+      if (deleted) return;
+      if (row.key === `schoolRules@${crm.schoolId}`) state.schoolRules = row.value;
+      else if (SETTINGS_KEYS.includes(row.key) && row.key !== 'schoolRules') state[row.key] = row.value;
+    },
     keyOfRow: r => String(r.key)
   }
 ];
@@ -104,11 +125,12 @@ function setStatus(kind, text) {
 // ---------------------------------------------------------
 // Yuklash
 // ---------------------------------------------------------
-async function fetchAll(table, order) {
+async function fetchAll(table, order, schoolId) {
   const out = [];
   const size = 1000;
   for (let from = 0; ; from += size) {
     let q = sb.from(table).select('*').range(from, from + size - 1);
+    if (schoolId) q = q.eq('school_id', schoolId);
     if (order) q = q.order(order, { ascending: true });
     const { data, error } = await q;
     if (error) throw error;
@@ -118,17 +140,74 @@ async function fetchAll(table, order) {
   return out;
 }
 
+async function loadCollection(c) {
+  const rows = await fetchAll(c.table, c.pk, c.scoped ? crm.schoolId : null);
+  c.applyRows(rows);
+  const snap = snapshot.get(c.name);
+  snap.clear();
+  // snapshot ilova formatidan qayta hisoblanadi (bir xil serializatsiya uchun)
+  c.items().forEach((row, k) => snap.set(k, rowJson(row)));
+}
+
+const SCHOOL_KEY = 'crm_active_school';
+function pickSchool() {
+  const schools = state.schools || [];
+  const ids = schools.map(x => String(x.id));
+  if (crm.role === 'teacher') return crm.profile?.school_id || '12-maktab';
+  let saved = null;
+  try { saved = localStorage.getItem(SCHOOL_KEY); } catch (e) { /* */ }
+  if (saved && ids.includes(saved)) return saved;
+  return ids.includes('12-maktab') ? '12-maktab' : (ids[0] || '12-maktab');
+}
+
+function setActiveSchool(id) {
+  crm.schoolId = id;
+  const sc = (state.schools || []).find(x => String(x.id) === id);
+  crm.schoolName = sc?.name || id;
+  try { localStorage.setItem(SCHOOL_KEY, id); } catch (e) { /* */ }
+  applySchoolLabels();
+}
+
+function applySchoolLabels() {
+  const t = document.getElementById('crm-school-title');
+  if (t) t.textContent = `Registan LC · ${crm.schoolName} CRM`;
+  document.querySelectorAll('.crm-school-name').forEach(el => { el.textContent = crm.schoolName; });
+  const sel = document.getElementById('crm-school-select');
+  if (sel) {
+    sel.innerHTML = (state.schools || []).map(x => `<option value="${escapeHtml(x.id)}" ${x.id === crm.schoolId ? 'selected' : ''}>🏫 ${escapeHtml(x.name || x.id)}</option>`).join('');
+    sel.disabled = crm.role === 'teacher';
+  }
+  document.title = `${crm.schoolName} · Registan LC CRM`;
+}
+crm.applySchoolLabels = applySchoolLabels;
+
 async function loadAll() {
+  const schoolsCol = COLLECTIONS.find(c => c.name === 'schools');
+  await loadCollection(schoolsCol);
+  setActiveSchool(pickSchool());
   for (const c of COLLECTIONS) {
-    const rows = await fetchAll(c.table, c.pk);
-    c.applyRows(rows);
-    const snap = snapshot.get(c.name);
-    snap.clear();
-    // snapshot ilova formatidan qayta hisoblanadi (bir xil serializatsiya uchun)
-    c.items().forEach((row, k) => snap.set(k, rowJson(row)));
+    if (c !== schoolsCol) await loadCollection(c);
   }
   await loadPlatformData();
 }
+
+// Faol maktabni almashtirish: kutilayotgan saqlashni tugatib, sinf/o'quvchilarni qayta yuklaymiz
+crm.switchSchool = async id => {
+  if (id === crm.schoolId) return;
+  clearTimeout(syncTimer);
+  if (dirty || syncing) {
+    if (!syncing) await runSync();
+    for (let i = 0; i < 100 && (syncing || dirty); i++) await new Promise(r => setTimeout(r, 100));
+  }
+  setActiveSchool(id);
+  setStatus('saving', '⏳ Maktab yuklanmoqda…');
+  for (const c of COLLECTIONS) if (c.scoped || c.name === 'settings') await loadCollection(c);
+  openedClassName = null;
+  loadState();
+  renderCurrentTab();
+  setStatus('ok');
+  showToast(`${crm.schoolName} tanlandi`, '🏫');
+};
 
 async function loadPlatformData() {
   const [tests, subs, regs] = await Promise.all([
@@ -179,13 +258,15 @@ async function runSync() {
     const deletes = [...snap.keys()].filter(k => !cur.has(k));
     try {
       for (const part of chunk(upserts, 500)) {
-        const { error } = await sb.from(c.table).upsert(part.map(p => p[1]), { onConflict: c.pk });
+        const { error } = await sb.from(c.table).upsert(part.map(p => p[1]), { onConflict: c.conflict || c.pk });
         if (error) throw error;
         part.forEach(([k, , j]) => snap.set(k, j));
       }
       for (const part of chunk(deletes, 300)) {
         const keys = c.pk === 'id' ? part.map(Number) : part;
-        const { error, count } = await sb.from(c.table).delete({ count: 'exact' }).in(c.pk, keys);
+        let del = sb.from(c.table).delete({ count: 'exact' }).in(c.pk, keys);
+        if (c.scoped) del = del.eq('school_id', crm.schoolId);
+        const { error, count } = await del;
         if (error) throw error;
         if (count !== null && count < part.length) {
           const e = new Error('Ruxsat yo‘q'); e.code = '42501'; throw e;
@@ -206,13 +287,7 @@ async function runSync() {
   if (denied.length) {
     // Ruxsat yo'q o'zgarishlarni bekor qilib, serverdagi holatni qaytaramiz
     for (const c of denied) {
-      try {
-        const rows = await fetchAll(c.table, c.pk);
-        c.applyRows(rows);
-        const snap = snapshot.get(c.name);
-        snap.clear();
-        c.items().forEach((row, k) => snap.set(k, rowJson(row)));
-      } catch (e) { /* keyingi urinishda */ }
+      try { await loadCollection(c); } catch (e) { /* keyingi urinishda */ }
     }
     showToast('Bu amal uchun ruxsatingiz yo‘q — o‘zgarish bekor qilindi', '⛔');
     scheduleRender(true);
@@ -261,6 +336,7 @@ function subscribeRealtime() {
       const deleted = payload.eventType === 'DELETE';
       const row = deleted ? payload.old : payload.new;
       if (!row) return;
+      if (c.scoped && row.school_id && row.school_id !== crm.schoolId) return; // boshqa maktab
       const k = c.keyOfRow(row);
       const snap = snapshot.get(c.name);
       if (deleted) {
@@ -272,6 +348,7 @@ function subscribeRealtime() {
         snap.set(k, j);
       }
       c.applyOne(row, deleted);
+      if (c.name === 'schools') applySchoolLabels();
       scheduleRender();
     });
   });
@@ -387,6 +464,10 @@ window.crmLogout = async () => { await sb.auth.signOut(); location.reload(); };
 
 function decorateHeader() {
   const badge = document.getElementById('cloud-status-badge');
+  if (badge && !document.getElementById('crm-school-select')) {
+    badge.insertAdjacentHTML('beforebegin', `<select id="crm-school-select" onchange="crm.switchSchool(this.value)" title="Faol maktab"
+      class="text-[11px] font-black px-3 py-1.5 rounded-xl bg-white text-[#F2642A] border border-white/30 max-w-[200px]"></select>`);
+  }
   if (badge && !document.getElementById('crm-user-chip')) {
     const roleLabel = { admin: '👑 Admin', operator: '🎧 Operator', teacher: '👩‍🏫 O‘qituvchi' }[crm.role] || crm.role;
     badge.insertAdjacentHTML('afterend', `
@@ -428,7 +509,7 @@ async function boot(session) {
   await reserveIdBlock();
 
   // Bo'sh baza: admin uchun standart 711 o'quvchini yuklash
-  if (!state.classes.length && !state.students.length && crm.role === 'admin') {
+  if (!state.classes.length && !state.students.length && crm.role === 'admin' && crm.schoolId === '12-maktab') {
     const def = generateDefault711Data();
     state.classes = def.classes;
     state.students = def.students;
@@ -438,6 +519,7 @@ async function boot(session) {
 
   document.getElementById('crm-auth')?.remove();
   decorateHeader();
+  applySchoolLabels();
   loadState();
   switchTab('dashboard');
   subscribeRealtime();
