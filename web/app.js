@@ -53,6 +53,11 @@
       sbConfig: { url: '', key: '' }
     };
 
+    // Faol maktab nomi (db.js belgilaydi)
+    function schoolName() {
+      return (window.crm && window.crm.schoolName) || '12-Maktab';
+    }
+
     function escapeHtml(str) {
       return String(str ?? '')
         .replace(/&/g, '&amp;')
@@ -365,7 +370,7 @@
           <div class="bg-white rounded-2xl p-4 border border-slate-200 shadow-sm">
             <div class="text-[11px] font-bold text-slate-500">O‘rtacha Ball</div>
             <div class="text-2xl font-black text-indigo-700 mt-1">${avgScore}</div>
-            <div class="text-[11px] text-slate-500 mt-1">12-maktab ko‘rsatkichi</div>
+            <div class="text-[11px] text-slate-500 mt-1">${escapeHtml(schoolName())} ko‘rsatkichi</div>
           </div>
           <div onclick="switchTab('calls')" class="cursor-pointer bg-white rounded-2xl p-4 border border-slate-200 shadow-sm hover:border-sky-300 transition">
             <div class="text-[11px] font-bold text-slate-500">Telefonli Lidlar</div>
@@ -1634,7 +1639,7 @@
       container.innerHTML = `
         <div class="max-w-2xl mx-auto bg-white rounded-3xl p-6 shadow-sm border border-slate-200 space-y-4">
           <h2 class="text-xl font-black text-slate-900">📂 Google Drive / Apps Script Zaxira</h2>
-          <p class="text-xs text-slate-500">Barcha 711 o‘quvchi va sinf TOP-3 natijalarini Google Sheets / Drive ga zaxiralash.</p>
+          <p class="text-xs text-slate-500">Barcha o‘quvchilar va sinf TOP-3 natijalarini Google Sheets / Drive ga zaxiralash.</p>
           <input id="gd-url-inp" value="${escapeHtml(state.gdriveConfig.scriptUrl || '')}" placeholder="https://script.google.com/macros/s/.../exec" class="w-full px-4 py-2.5 rounded-xl border border-slate-300 text-xs font-mono" />
           <button onclick="state.gdriveConfig.scriptUrl=document.getElementById('gd-url-inp').value.trim(); saveState(); showToast('Google Drive manzili saqlandi!')" class="px-5 py-2.5 rounded-xl bg-emerald-600 text-white text-xs font-black">💾 Saqlash</button>
         </div>
@@ -2056,7 +2061,7 @@
     // =========================================================
     function openSchoolRulesModal() {
       document.getElementById('rules-target').value = 'school';
-      document.getElementById('rules-modal-title').textContent = '⚖️ 12-Maktab Ball Tizimi Sozlamalari';
+      document.getElementById('rules-modal-title').textContent = `⚖️ ${schoolName()} Ball Tizimi Sozlamalari`;
       document.getElementById('rule-q1').value = state.schoolRules.q1;
       document.getElementById('rule-w1').value = state.schoolRules.w1;
       document.getElementById('rule-q2').value = state.schoolRules.q2;
@@ -2159,6 +2164,11 @@
     }
 
     function resetToDefault711() {
+      // Standart 711 baza faqat 12-maktabga tegishli (ID'lari 1..711)
+      if (window.crm && window.crm.schoolId && window.crm.schoolId !== '12-maktab') {
+        showToast('Standart 711 baza faqat 12-Maktab uchun. Bu maktabga sinf va o‘quvchilarni qo‘lda yoki Excel orqali qo‘shing.', '⚠️');
+        return;
+      }
       const def = generateDefault711Data();
       state.classes = def.classes;
       state.students = def.students;
@@ -2191,8 +2201,8 @@
         });
         const ws = XLSX.utils.json_to_sheet(rows);
         const wb = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(wb, ws, '12-Maktab_Parallel_TOP3');
-        XLSX.writeFile(wb, `Registon_12Maktab_ParallelTOP3_${new Date().toISOString().slice(0, 10)}.xlsx`);
+        XLSX.utils.book_append_sheet(wb, ws, `${schoolName()}_TOP3`.replace(/[^\w\-]+/g, '_').slice(0, 30));
+        XLSX.writeFile(wb, `Registon_${schoolName().replace(/[^\w\-]+/g, '_')}_ParallelTOP3_${new Date().toISOString().slice(0, 10)}.xlsx`);
         showToast('Excel fayl muvaffaqiyatli yuklandi!');
       } catch (e) {
         showToast('Excel yuklashda xatolik: ' + e.message, '⚠️');

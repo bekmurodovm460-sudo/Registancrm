@@ -40,6 +40,7 @@ async function secretStatus() {
 // Router kengaytmasi
 // ---------------------------------------------------------
 const NEW_TABS = {
+  schools: () => renderSchoolsTab(),
   tests: () => renderTestsTab(),
   regs: () => renderRegsTab(),
   edutizim: () => renderEdutizimTab(),
@@ -50,6 +51,124 @@ const origRender = window.renderCurrentTab;
 window.renderCurrentTab = function () {
   if (NEW_TABS[currentTab]) { NEW_TABS[currentTab](); updateHeaderStats(); return; }
   origRender();
+};
+
+
+// =========================================================
+// 🏫 MAKTABLAR
+// =========================================================
+let editingSchool = null;
+
+function slugify(s) {
+  return String(s || '').toLowerCase()
+    .replace(/[ʻʼ‘’'`]/g, '').replace(/[^a-z0-9а-яё]+/gi, '-').replace(/^-+|-+$/g, '').slice(0, 40);
+}
+
+async function renderSchoolsTab() {
+  const el = document.getElementById('tab-schools');
+  const { data: stats } = await sb().rpc('crm_school_stats');
+  const st = Object.fromEntries((stats || []).map(r => [r.school_id, r]));
+  const schools = state.schools || [];
+  const e = editingSchool || { id: '', name: '', city: '', director: '', phone: '', address: '' };
+  el.innerHTML = `
+  <div class="grid lg:grid-cols-3 gap-5">
+    ${card(`
+      <h2 class="text-lg font-black text-slate-900">${editingSchool ? '✏️ Maktabni tahrirlash' : '➕ Yangi maktab qo‘shish'}</h2>
+      <p class="text-[11px] text-slate-500 mb-3">Har bir maktabning sinflari, o‘quvchilari, ball tizimi va TOP-3 reytingi alohida yuritiladi.</p>
+      ${isAdmin() ? `
+      <div class="space-y-2.5 text-xs">
+        <label class="font-bold block">Maktab nomi<input id="sc-name" value="${esc(e.name)}" placeholder="Masalan: 5-Maktab" class="${input} w-full mt-1"></label>
+        <div class="grid grid-cols-2 gap-2">
+          <label class="font-bold">Shahar / tuman<input id="sc-city" value="${esc(e.city || '')}" placeholder="Qarshi" class="${input} w-full mt-1"></label>
+          <label class="font-bold">Telefon<input id="sc-phone" value="${esc(e.phone || '')}" placeholder="+998 …" class="${input} w-full mt-1"></label>
+        </div>
+        <label class="font-bold block">Direktor<input id="sc-director" value="${esc(e.director || '')}" class="${input} w-full mt-1"></label>
+        <label class="font-bold block">Manzil<input id="sc-address" value="${esc(e.address || '')}" class="${input} w-full mt-1"></label>
+        <div class="flex gap-2 pt-1">
+          <button onclick="crmSaveSchool()" class="${btn('[#F2642A]')}">💾 Saqlash</button>
+          ${editingSchool ? `<button onclick="crmEditSchool(null)" class="${btn('slate-400')}">Bekor</button>` : ''}
+        </div>
+      </div>` : '<div class="text-xs text-slate-500">Maktab qo‘shish va tahrirlash faqat admin uchun.</div>'}
+    `)}
+    <div class="lg:col-span-2">
+      ${card(`
+        <div class="flex items-center justify-between gap-2 flex-wrap mb-3">
+          <h2 class="text-lg font-black text-slate-900">🏫 Maktablar (${schools.length})</h2>
+          <span class="text-[11px] text-slate-500">Faol maktab: <b class="text-[#F2642A]">${esc(crm().schoolName)}</b> — yuqoridagi tanlagich orqali ham almashtiriladi</span>
+        </div>
+        <div class="grid sm:grid-cols-2 gap-3">
+          ${schools.map(x => {
+            const s2 = st[x.id] || { students: 0, classes: 0 };
+            const active = x.id === crm().schoolId;
+            return `
+            <div class="p-4 rounded-2xl border ${active ? 'border-[#F2642A] bg-orange-50' : 'border-slate-200 bg-slate-50'} space-y-2">
+              <div class="flex items-start justify-between gap-2">
+                <div>
+                  <div class="font-black text-slate-900 text-sm">🏫 ${esc(x.name || x.id)} ${active ? '<span class="text-[10px] px-2 py-0.5 rounded-full bg-[#F2642A] text-white align-middle">FAOL</span>' : ''}</div>
+                  <div class="text-[11px] text-slate-500">${esc([x.city, x.address].filter(Boolean).join(', '))}</div>
+                  ${x.director || x.phone ? `<div class="text-[11px] text-slate-500">${esc(x.director || '')} ${esc(x.phone || '')}</div>` : ''}
+                </div>
+              </div>
+              <div class="flex gap-2 text-[11px] font-black">
+                <span class="px-2.5 py-1 rounded-lg bg-white border border-slate-200">🎓 ${s2.students} o‘quvchi</span>
+                <span class="px-2.5 py-1 rounded-lg bg-white border border-slate-200">🗂️ ${s2.classes} sinf</span>
+              </div>
+              <div class="flex gap-1.5 flex-wrap">
+                ${active ? `<button onclick="switchTab('classes')" class="px-3 py-1.5 rounded-lg bg-slate-900 text-white text-[11px] font-black">🗂️ Sinflarni ochish</button>`
+                         : (crm().role !== 'teacher' ? `<button onclick="crmUseSchool('${esc(x.id)}')" class="px-3 py-1.5 rounded-lg bg-[#F2642A] text-white text-[11px] font-black">✅ Tanlash</button>` : '')}
+                ${isAdmin() ? `<button onclick="crmEditSchool('${esc(x.id)}')" class="px-3 py-1.5 rounded-lg bg-white border border-slate-200 text-[11px] font-bold">✏️ Tahrirlash</button>` : ''}
+                ${isAdmin() && x.id !== '12-maktab' ? `<button onclick="crmDeleteSchool('${esc(x.id)}', ${Number(s2.students)}, ${Number(s2.classes)})" class="px-3 py-1.5 rounded-lg bg-rose-50 text-rose-700 text-[11px] font-bold">🗑 O‘chirish</button>` : ''}
+              </div>
+            </div>`;
+          }).join('')}
+        </div>
+        <p class="text-[11px] text-slate-500 mt-3">💡 Yangi maktabni tanlagach: <b>🗂️ Sinflari → ➕ Yangi sinf qo‘shish</b>, so‘ng sinf ichida <b>➕ O‘quvchini qo‘shish</b> yoki <b>📥 HTML/Excel import</b>.</p>
+      `)}
+    </div>
+  </div>`;
+}
+
+window.crmEditSchool = id => {
+  editingSchool = id ? { ...(state.schools || []).find(x => x.id === id) } : null;
+  renderSchoolsTab();
+};
+
+window.crmUseSchool = async id => { await crm().switchSchool(id); switchTab('classes'); };
+
+window.crmSaveSchool = () => {
+  const v = id => document.getElementById(id).value.trim();
+  const name = v('sc-name');
+  if (!name) return showToast('Maktab nomini kiriting', '⚠️');
+  state.schools = state.schools || [];
+  if (editingSchool) {
+    const x = state.schools.find(s => s.id === editingSchool.id);
+    Object.assign(x, { name, shortName: name, city: v('sc-city'), director: v('sc-director'), phone: v('sc-phone'), address: v('sc-address') });
+  } else {
+    let id = slugify(name) || 'maktab';
+    let n = 2;
+    while (state.schools.some(s => s.id === id)) id = `${slugify(name)}-${n++}`;
+    if (state.schools.some(s => (s.name || '').toLowerCase() === name.toLowerCase())) return showToast('Bu nomli maktab allaqachon bor', '⚠️');
+    state.schools.push({ id, name, shortName: name, city: v('sc-city'), director: v('sc-director'), phone: v('sc-phone'), address: v('sc-address'), createdAt: new Date().toISOString() });
+  }
+  editingSchool = null;
+  saveState();
+  crm().applySchoolLabels();
+  if (crm().schoolId && state.schools.some(s => s.id === crm().schoolId)) {
+    crm().schoolName = state.schools.find(s => s.id === crm().schoolId).name;
+    crm().applySchoolLabels();
+  }
+  showToast(`🏫 ${name} saqlandi`);
+  setTimeout(renderSchoolsTab, 600);
+};
+
+window.crmDeleteSchool = (id, students, classes) => {
+  if (students || classes) return showToast(`Avval maktabdagi ${classes} sinf va ${students} o‘quvchini o‘chiring yoki ko‘chiring`, '⚠️');
+  if (id === crm().schoolId) return showToast('Faol maktabni o‘chirib bo‘lmaydi — avval boshqa maktabni tanlang', '⚠️');
+  if (!confirm('Maktabni o‘chirasizmi?')) return;
+  state.schools = (state.schools || []).filter(s => s.id !== id);
+  saveState();
+  crm().applySchoolLabels();
+  setTimeout(renderSchoolsTab, 600);
 };
 
 // =========================================================
@@ -534,17 +653,18 @@ async function renderStaffTab() {
         <b>Admin</b> — hammasi · <b>Operator</b> — o‘quvchi/qo‘ng‘iroq/kassa/test (o‘chirishsiz) · <b>O‘qituvchi</b> — ko‘rish va faqat o‘z sinfi ballarini tahrirlash.</p>
       ${isAdmin() ? `
       <div class="overflow-x-auto"><table class="w-full text-xs">
-        <thead><tr class="text-left text-slate-500 border-b"><th class="py-2">F.I.Sh.</th><th>Email</th><th>Rol</th><th>Sinf (o‘qituvchi)</th><th>Qo‘shilgan</th><th></th></tr></thead>
+        <thead><tr class="text-left text-slate-500 border-b"><th class="py-2">F.I.Sh.</th><th>Email</th><th>Rol</th><th>Maktab</th><th>Sinf (o‘qituvchi)</th><th>Qo‘shilgan</th><th></th></tr></thead>
         <tbody>${(profiles || []).map(p => `
           <tr class="border-b border-slate-100 ${p.role === 'pending' ? 'bg-amber-50' : ''}">
             <td class="py-2 font-black">${esc(p.full_name)}</td>
             <td class="font-mono text-[11px]">${esc(p.email)}</td>
             <td><select ${p.id === crm().user.id ? 'disabled' : ''} onchange="crmSetRole('${p.id}',{role:this.value})" class="${input} py-1">
               ${['pending', 'operator', 'teacher', 'admin'].map(r => `<option value="${r}" ${r === p.role ? 'selected' : ''}>${{ pending: '⏳ Kutilmoqda', operator: '🎧 Operator', teacher: '👩‍🏫 O‘qituvchi', admin: '👑 Admin' }[r]}</option>`).join('')}</select></td>
-            <td><select onchange="crmSetRole('${p.id}',{class_name:this.value||null})" class="${input} py-1"><option value="">—</option>${classes.map(c => `<option ${c === p.class_name ? 'selected' : ''}>${esc(c)}</option>`).join('')}</select></td>
+            <td><select onchange="crmSetRole('${p.id}',{school_id:this.value||null})" class="${input} py-1"><option value="">—</option>${(state.schools || []).map(sc => `<option value="${esc(sc.id)}" ${sc.id === p.school_id ? 'selected' : ''}>${esc(sc.name)}</option>`).join('')}</select></td>
+            <td><input list="crm-class-list" value="${esc(p.class_name || '')}" placeholder="5-A" onchange="crmSetRole('${p.id}',{class_name:this.value.trim()||null})" class="${input} py-1 w-24"></td>
             <td class="text-slate-400">${fmtDate(p.created_at)}</td>
             <td>${p.id !== crm().user.id ? `<button onclick="crmDelProfile('${p.id}')" class="px-2 py-1 rounded-lg bg-rose-50 text-rose-700 font-bold">🗑</button>` : ''}</td>
-          </tr>`).join('')}</tbody></table></div>` : `<div class="text-xs">Sizning rolingiz: <b>${esc(crm().role)}</b>. Rollarni faqat admin boshqaradi.</div>`}
+          </tr>`).join('')}</tbody></table><datalist id="crm-class-list">${classes.map(c => `<option value="${esc(c)}">`).join('')}</datalist></div>` : `<div class="text-xs">Sizning rolingiz: <b>${esc(crm().role)}</b>. Rollarni faqat admin boshqaradi.</div>`}
     `)}
     ${card(`
       <h3 class="text-sm font-black text-slate-900 mb-1">☁️ Bulutli baza</h3>

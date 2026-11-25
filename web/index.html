@@ -48,7 +48,7 @@
         </div>
         <div>
           <div class="flex items-center gap-2 flex-wrap">
-            <h1 class="font-black text-base sm:text-xl tracking-tight">Registan LC · 12-Maktab CRM</h1>
+            <h1 id="crm-school-title" class="font-black text-base sm:text-xl tracking-tight">Registan LC · 12-Maktab CRM</h1>
             <span id="header-count-badge" class="text-[10px] font-bold uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-white/20 text-white border border-white/40">711 O‘quvchi · Har bir paralleldan TOP-3</span>
           </div>
           <p class="text-xs text-orange-100">you belong here! · Har bir parallel (2–9-sinflar) birlashtirilib TOP-3 o‘rin (150k / 100k / 75k) · Kids Mock · Kassa</p>
@@ -85,9 +85,10 @@
     <div class="max-w-[1600px] mx-auto px-4 sm:px-6 pb-2.5 overflow-x-auto tab-scroll">
       <nav class="flex items-center gap-1.5 min-w-max">
         <button onclick="switchTab('dashboard')" id="nav-dashboard" class="nav-btn px-3.5 py-2 rounded-xl text-xs font-extrabold transition bg-[#F2642A] text-white shadow">📊 Dashboard</button>
-        <button onclick="switchTab('classes')" id="nav-classes" class="nav-btn px-3.5 py-2 rounded-xl text-xs font-extrabold transition bg-white/15 text-white hover:bg-white/25">🗂️ 12-Maktab Sinflari</button>
+        <button onclick="switchTab('classes')" id="nav-classes" class="nav-btn px-3.5 py-2 rounded-xl text-xs font-extrabold transition bg-white/15 text-white hover:bg-white/25">🗂️ <span class="crm-school-name">12-Maktab</span> Sinflari</button>
         <button onclick="switchTab('students')" id="nav-students" class="nav-btn px-3.5 py-2 rounded-xl text-xs font-extrabold transition bg-white/15 text-white hover:bg-white/25">🎓 O‘quvchilar Bazasi</button>
         <button onclick="switchTab('kidsmock')" id="nav-kidsmock" class="nav-btn px-3.5 py-2 rounded-xl text-xs font-extrabold transition bg-white/15 text-white hover:bg-white/25 border border-orange-200/40">🏆 KIDS MOCK (Alohida)</button>
+        <button onclick="switchTab('schools')" id="nav-schools" class="nav-btn px-3.5 py-2 rounded-xl text-xs font-extrabold transition bg-white/15 text-white hover:bg-white/25 border border-sky-200/60">🏫 Maktablar</button>
         <button onclick="switchTab('tests')" id="nav-tests" class="nav-btn px-3.5 py-2 rounded-xl text-xs font-extrabold transition bg-white/15 text-white hover:bg-white/25 border border-sky-200/60">📝 Testlar & OMR</button>
         <button onclick="switchTab('regs')" id="nav-regs" class="nav-btn px-3.5 py-2 rounded-xl text-xs font-extrabold transition bg-white/15 text-white hover:bg-white/25 border border-sky-200/60">🧒 Bot arizalari</button>
         <button onclick="switchTab('edutizim')" id="nav-edutizim" class="nav-btn px-3.5 py-2 rounded-xl text-xs font-extrabold transition bg-white/15 text-white hover:bg-white/25 border border-sky-200/60">🔗 Edutizim</button>
@@ -108,6 +109,7 @@
   <!-- ASOSIY KONTENT -->
   <main class="flex-1 max-w-[1600px] w-full mx-auto px-4 sm:px-6 py-5 space-y-5">
     <section id="tab-dashboard" class="tab-panel space-y-5"></section>
+    <section id="tab-schools" class="tab-panel hidden space-y-5"></section>
     <section id="tab-tests" class="tab-panel hidden space-y-5"></section>
     <section id="tab-regs" class="tab-panel hidden space-y-5"></section>
     <section id="tab-edutizim" class="tab-panel hidden space-y-5"></section>
@@ -181,7 +183,7 @@
   <div id="add-class-modal" class="fixed inset-0 bg-slate-950/70 backdrop-blur-sm z-50 hidden items-center justify-center p-4">
     <div class="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-200 space-y-4">
       <div class="flex items-center justify-between">
-        <h3 class="font-black text-lg text-slate-900">➕ 12-Maktabga Yangi Sinf Qo‘shish</h3>
+        <h3 class="font-black text-lg text-slate-900">➕ <span class="crm-school-name">12-Maktab</span>ga Yangi Sinf Qo‘shish</h3>
         <button onclick="closeAddClassModal()" class="w-8 h-8 rounded-full bg-slate-100 font-bold text-slate-600">✕</button>
       </div>
       <div class="space-y-3">
@@ -215,7 +217,7 @@
       <p class="text-xs text-slate-600">Qaysi ma’lumotlarni tozalamoqchisiz? Tanlang:</p>
       <div class="space-y-2.5">
         <button onclick="clearDatabaseAction('students_only')" class="w-full p-3.5 rounded-2xl bg-amber-50 hover:bg-amber-100 border border-amber-300 text-left text-xs">
-          <div class="font-black text-amber-950">🎓 Faqat 12-maktab o‘quvchilarini tozalash</div>
+          <div class="font-black text-amber-950">🎓 Faqat <span class="crm-school-name">12-maktab</span> o‘quvchilarini tozalash</div>
           <div class="text-[11px] text-amber-800 mt-0.5">Sinflar ro‘yxati saqlanadi, o‘quvchilar 0 ta bo‘ladi.</div>
         </button>
         <button onclick="clearDatabaseAction('all_clean')" class="w-full p-3.5 rounded-2xl bg-rose-50 hover:bg-rose-100 border border-rose-300 text-left text-xs">
