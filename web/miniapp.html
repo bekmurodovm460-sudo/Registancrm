@@ -73,7 +73,7 @@
           </div>
         </div>
         <div>
-          <span class="block text-xs font-extrabold muted mb-2">Daraja</span>
+          <span class="block text-xs font-extrabold muted mb-2">1-fan darajasi</span>
           <div id="m-level" class="grid grid-cols-2 gap-2">
             <button type="button" class="chip" data-l="Oson">🟢 Oson</button>
             <button type="button" class="chip" data-l="Qiyin">🔴 Qiyin</button>
@@ -85,6 +85,13 @@
             <button type="button" class="chip" data-s2="Ingliz tili">🇬🇧 Ingliz tili</button>
             <button type="button" class="chip" data-s2="Rus tili">🇷🇺 Rus tili</button>
             <button type="button" class="chip" data-s2="Matematika">📐 Matematika</button>
+          </div>
+        </div>
+        <div>
+          <span class="block text-xs font-extrabold muted mb-2">2-fan darajasi</span>
+          <div id="m-level2" class="grid grid-cols-2 gap-2">
+            <button type="button" class="chip" data-l2="Oson">🟢 Oson</button>
+            <button type="button" class="chip" data-l2="Qiyin">🔴 Qiyin</button>
           </div>
         </div>
         <label><span>Farzandingizning o‘qituvchisi <span class="font-semibold">(ixtiyoriy)</span></span>
@@ -143,15 +150,24 @@
 
     <!-- ============ 👮 NAZORATCHILAR (maktab testlari) ============ -->
     <section id="v-proctor" class="space-y-4 hidden">
-      <div class="card p-5 space-y-4">
+      <div id="p-lock" class="card p-5 space-y-3 text-center">
+        <div class="text-4xl">🏫</div>
+        <div class="text-lg font-black">Maktab testlari</div>
+        <div class="text-sm muted">Bu bo‘lim nazoratchi va ustozlar uchun: maktab → sinf → harf → o‘quvchi → natija (ballarni kiritish yoki varaq yuklash). Natija CRM’dagi o‘quvchiga yoziladi.</div>
+        <div class="text-xs muted">Kirish uchun raqamingiz CRM → 👥 Xodimlar → 👮 Nazoratchilar ro‘yxatida bo‘lishi kerak.</div>
+        <button id="p-join2" type="button" class="btn">📱 Raqamimni tasdiqlash</button>
+        <div id="p-join-msg" class="text-sm font-bold"></div>
+      </div>
+      <div id="p-form" class="card p-5 space-y-4 hidden">
         <div>
-          <div class="text-lg font-black">👮 Maktab testi natijasi</div>
+          <div class="text-lg font-black">🏫 Maktab testi natijasi</div>
           <div id="p-who" class="text-xs muted mt-1"></div>
         </div>
         <label><span>1. Maktab</span><select id="p-school" class="inp"></select></label>
         <div><span class="block text-xs font-extrabold muted mb-2">2. Sinf</span><div id="p-grades" class="grid grid-cols-4 gap-2"></div></div>
         <div><span class="block text-xs font-extrabold muted mb-2">3. Sinf harfi</span><div id="p-letters" class="grid grid-cols-4 gap-2"><div class="col-span-4 muted text-sm">Avval sinfni tanlang</div></div></div>
         <div id="p-test" class="text-xs font-bold hidden" style="color:var(--brand-2)"></div>
+        <div id="p-files" class="flex flex-wrap gap-2"></div>
         <label><span>4. O‘quvchining familiya va ismi</span><input id="p-name" class="inp" placeholder="Masalan: Karimov Azizbek" /></label>
         <label><span>5. O‘quvchi telefoni (ixtiyoriy)</span><input id="p-sphone" class="inp" inputmode="tel" placeholder="+998 __ ___ __ __" /></label>
         <label><span>6. Ota-ona telefoni (ixtiyoriy)</span><input id="p-pphone" class="inp" inputmode="tel" placeholder="+998 __ ___ __ __" /></label>
@@ -180,11 +196,11 @@
   </main>
 
   <!-- Pastki menyu -->
-  <nav id="nav" class="fixed bottom-0 inset-x-0 card rounded-none border-x-0 border-b-0 grid grid-cols-3 text-center py-2 pb-[max(8px,env(safe-area-inset-bottom))]">
+  <nav id="nav" class="fixed bottom-0 inset-x-0 card rounded-none border-x-0 border-b-0 grid grid-cols-4 text-center py-2 pb-[max(8px,env(safe-area-inset-bottom))]">
     <button data-tab="mock" class="tab on py-1"><div class="text-xl">🧒</div><div class="text-[11px] font-extrabold">Kids Mock</div></button>
     <button data-tab="check" class="tab py-1"><div class="text-xl">📸</div><div class="text-[11px] font-extrabold">Tekshirish</div></button>
     <button data-tab="keys" class="tab py-1"><div class="text-xl">🔑</div><div class="text-[11px] font-extrabold">Javoblar</div></button>
-    <button data-tab="proctor" class="tab py-1 hidden"><div class="text-xl">👮</div><div class="text-[11px] font-extrabold">Nazorat</div></button>
+    <button data-tab="proctor" class="tab py-1"><div class="text-xl">🏫</div><div class="text-[11px] font-extrabold">Maktab</div></button>
   </nav>
 
   <script src="config.js"></script>
@@ -201,6 +217,7 @@
     let subject1 = '';
     let level = '';
     let subject2 = '';
+    let level2 = '';
     let cls = '';
 
     // ---------- Telegram muhiti ----------
@@ -261,6 +278,11 @@
       haptic(); subject2 = b.dataset.s2;
       $('m-subject2').querySelectorAll('[data-s2]').forEach(x => x.classList.toggle('on', x === b));
     };
+    $('m-level2').onclick = e => {
+      const b = e.target.closest('[data-l2]'); if (!b) return;
+      haptic(); level2 = b.dataset.l2;
+      $('m-level2').querySelectorAll('[data-l2]').forEach(x => x.classList.toggle('on', x === b));
+    };
     $('m-level').onclick = e => {
       const b = e.target.closest('[data-l]'); if (!b) return;
       haptic(); level = b.dataset.l;
@@ -280,7 +302,7 @@
       return `<div class="p-3 rounded-2xl" style="background:var(--soft)">
         <div class="flex items-center justify-between gap-2"><b>${esc(r.full_name)}</b><span class="${color}">${esc(r.status)}</span></div>
         <div class="text-xs muted mt-1">${esc(r.grade)} · ${esc(r.session)}</div>
-        <div class="text-xs mt-1">📚 ${esc(r.subject1 || 'Matematika')} (${esc(r.level || 'Oson')}) + ${esc(r.subject2 || 'Ingliz tili')}</div>
+        <div class="text-xs mt-1">📚 ${esc(r.subject1 || 'Matematika')} (${esc(r.level || 'Oson')}) + ${esc(r.subject2 || 'Ingliz tili')} (${esc(r.level2 || 'Oson')})</div>
         ${r.teacher ? `<div class="text-xs mt-1">👩‍🏫 ${esc(r.teacher)}</div>` : ''}
         <div class="text-xs mt-1">🚪 Xona: <b>${esc(r.room)}</b> · 🔖 KM-${r.id}</div></div>`;
     }
@@ -298,9 +320,10 @@
       if (!subject1) return ($('m-err').textContent = '1-fanni tanlang: Matematika yoki Rus tili', haptic('err'));
       if (!level) return ($('m-err').textContent = 'Darajani tanlang: Oson yoki Qiyin', haptic('err'));
       if (!subject2) return ($('m-err').textContent = '2-fanni tanlang', haptic('err'));
+      if (!level2) return ($('m-err').textContent = '2-fan darajasini tanlang: Oson yoki Qiyin', haptic('err'));
       if (phone.replace(/\D/g, '').length < 9) return ($('m-err').textContent = 'Telefon raqamini to‘g‘ri kiriting', haptic('err'));
       $('m-submit').disabled = true; $('m-submit').textContent = '⏳ Yuborilmoqda…';
-      const r = await api('register', { name, grade, phone, subject1, level, subject2, teacher: $('m-teacher').value.trim(), session: $('m-session').value });
+      const r = await api('register', { name, grade, phone, subject1, level, subject2, level2, teacher: $('m-teacher').value.trim(), session: $('m-session').value });
       $('m-submit').disabled = false; $('m-submit').textContent = '✅ Ro‘yxatdan o‘tish';
       if (!r.ok) return ($('m-err').textContent = r.error, haptic('err'));
       haptic('ok');
@@ -309,7 +332,7 @@
       $('m-done').innerHTML = `<div class="text-center space-y-2">
         <div class="text-4xl">${r.duplicate ? 'ℹ️' : '🎉'}</div>
         <div class="font-black text-lg">${r.duplicate ? 'Bu farzand allaqachon yozilgan' : 'Ro‘yxatdan o‘tdingiz!'}</div>
-        <div class="text-sm">📚 ${esc(reg.subject1 || subject1)} (${esc(reg.level || level)}) + ${esc(reg.subject2 || subject2)}</div>
+        <div class="text-sm">📚 ${esc(reg.subject1 || subject1)} (${esc(reg.level || level)}) + ${esc(reg.subject2 || subject2)} (${esc(reg.level2 || level2)})</div>
         <div class="text-sm">🚪 Xona: <b>${esc(reg.room)}</b> · 🔖 Ariza: <b>KM-${reg.id}</b></div>
         <div class="text-xs muted">Imtihon kuni shu raqamni ko‘rsating.</div></div>`;
       if (!r.duplicate) {
@@ -322,15 +345,18 @@
     };
 
     // ---------- VARAQ TEKSHIRISH ----------
-    // Variant: MAT-OSON (2-fan Ingliz tili) yoki MAT-OSON-RUS / RUS-QIYIN-MAT (2-fan boshqa)
-    const variantOf = (s1, lv, s2) => `${s1 === 'Rus tili' ? 'RUS' : 'MAT'}-${lv === 'Qiyin' ? 'QIYIN' : 'OSON'}` + ({ 'Rus tili': '-RUS', 'Matematika': '-MAT' }[s2] || '');
+    // Variant: 1-fan-daraja+2-fan-daraja, masalan MAT-OSON+ENG-QIYIN; bo'lmasa MAT-OSON (faqat 1-fan bo'yicha)
+    const SC = s => ({ 'Rus tili': 'RUS', 'Matematika': 'MAT', 'Ingliz tili': 'ENG' }[s] || 'ENG');
+    const LC = l => (l === 'Qiyin' ? 'QIYIN' : 'OSON');
+    const baseVariant = (s1, l1) => `${s1 === 'Rus tili' ? 'RUS' : 'MAT'}-${LC(l1)}`;
+    const variantOf = (s1, l1, s2, l2) => `${baseVariant(s1, l1)}+${SC(s2)}-${LC(l2)}`;
     const curReg = () => { const v = $('c-test').value; return v.startsWith('reg:') ? (data.registrations || []).find(r => String(r.id) === v.slice(4)) : null; };
     const curTest = () => {
       const reg = curReg();
       if (reg) {
         // Aniq variant (2-fan bilan) ustun, bo'lmasa 1-fan+daraja varianti (serverdagi kabi)
-        const exact = (data.mockTests || []).filter(t => t.variant === variantOf(reg.subject1, reg.level, reg.subject2));
-        const list = exact.length ? exact : (data.mockTests || []).filter(t => t.variant === variantOf(reg.subject1, reg.level));
+        const exact = (data.mockTests || []).filter(t => t.variant === variantOf(reg.subject1, reg.level, reg.subject2, reg.level2));
+        const list = exact.length ? exact : (data.mockTests || []).filter(t => t.variant === baseVariant(reg.subject1, reg.level));
         const t = list.find(x => !x.session || x.session === reg.session) || list[0];
         return t ? { ...t, kind: 'mock', reg } : null;
       }
@@ -339,7 +365,7 @@
     function fillTests() {
       const regs = (data.mockTests || []).length ? (data.registrations || []).filter(r => r.status !== 'Bekor') : [];
       const opts = [
-        ...regs.map(r => `<option value="reg:${r.id}">🧒 Kids Mock — ${esc(r.full_name)} (${esc(r.subject1 || 'Matematika')} · ${esc(r.level || 'Oson')} + ${esc(r.subject2 || 'Ingliz tili')})</option>`),
+        ...regs.map(r => `<option value="reg:${r.id}">🧒 Kids Mock — ${esc(r.full_name)} (${esc(r.subject1 || 'Matematika')} · ${esc(r.level || 'Oson')} + ${esc(r.subject2 || 'Ingliz tili')} · ${esc(r.level2 || 'Oson')})</option>`),
         ...(data.tests || []).map(t => `<option value="${esc(t.code)}">${esc(t.title)}</option>`)
       ];
       $('c-test').innerHTML = opts.join('') || '<option value="">Faol test yo‘q</option>';
@@ -441,8 +467,8 @@
 
     // ---------- 👮 NAZORATCHILAR ----------
     function showProctor(p, open) {
-      document.querySelector('[data-tab="proctor"]').classList.remove('hidden');
-      $('nav').classList.replace('grid-cols-3', 'grid-cols-4');
+      $('p-lock').classList.add('hidden');
+      $('p-form').classList.remove('hidden');
       $('p-join').classList.add('hidden');
       $('p-who').textContent = `${p.role === 'ustoz' ? '👩‍🏫 Ustoz' : '👮 Nazoratchi'}: ${p.name}`;
       const schools = (data.schools || []).filter(x => !p.school || x.id === p.school);
@@ -451,20 +477,22 @@
       if (open) document.querySelector('[data-tab="proctor"]').click();
     }
     // Parolsiz: Telegram raqamini ulashadi -> bot CRM ro'yxati bilan solishtiradi -> tab ochiladi
-    $('p-join').onclick = () => {
+    function pJoin(btn, msg) {
       if (!tg?.requestContact) return;
       tg.requestContact(async ok => {
         if (!ok) return;
-        $('p-join').textContent = '⏳ Tekshirilmoqda…';
+        msg('⏳ Tekshirilmoqda…');
         for (let i = 0; i < 5; i++) {
           await new Promise(r => setTimeout(r, 1500));
           const r = await api('init');
           if (r.ok && r.proctor) { data = r; haptic('ok'); return showProctor(r.proctor, true); }
         }
         haptic('err');
-        $('p-join').textContent = '⛔ Bu raqam CRM’dagi nazoratchilar ro‘yxatida yo‘q';
+        msg('⛔ Bu raqam CRM’dagi nazoratchilar ro‘yxatida yo‘q. Administratorga murojaat qiling.');
       });
-    };
+    }
+    $('p-join').onclick = () => pJoin($('p-join'), t => ($('p-join').textContent = t));
+    $('p-join2').onclick = () => pJoin($('p-join2'), t => ($('p-join-msg').textContent = t));
     let pGrade = '', pCls = '', pTest = null;
     const chipGrid = (el, items, attr, label = x => x) => {
       el.innerHTML = items.map(x => `<button type="button" class="chip" data-${attr}="${esc(x)}">${esc(label(x))}</button>`).join('') || '<div class="col-span-4 muted text-sm">Topilmadi</div>';
@@ -491,6 +519,8 @@
       $('p-test').classList.remove('hidden');
       $('p-test').textContent = pTest ? `📝 Test: ${pTest.title} (${pTest.num_questions} savol)` : `⚠️ ${pGrade}-sinf uchun faol test yo‘q`;
       pScoreLabels();
+      // Testning asl fayllari (savollar kitobchasi)
+      $('p-files').innerHTML = (pTest?.files || []).map((f, i) => `<button type="button" class="chip" data-pf="${i}">📄 ${esc(f.name)}</button>`).join('');
     };
     $('p-letters').onclick = e => {
       const b = e.target.closest('[data-pc]'); if (!b) return;
@@ -519,6 +549,15 @@
         : `Jami ball: <b style="color:var(--brand)">${sc}</b>`;
       return sc;
     }
+    $('p-files').onclick = async e => {
+      const b = e.target.closest('[data-pf]'); if (!b || !pTest) return;
+      haptic();
+      const old = b.textContent; b.textContent = '⏳ Ochilmoqda…';
+      const r = await api('pFile', { school: $('p-school').value, code: pTest.code, idx: Number(b.dataset.pf) });
+      b.textContent = old;
+      if (!r.ok) return ($('p-err').textContent = r.error, haptic('err'));
+      if (tg?.openLink) tg.openLink(r.url); else window.open(r.url, '_blank');
+    };
     $('p-q1').oninput = pScore;
     $('p-q2').oninput = pScore;
     $('p-mode').onclick = e => {
@@ -630,7 +669,7 @@
       fillTests();
       if ((r.schools || []).length) loadClasses();
       renderKeyList();
-      if (r.proctor) showProctor(r.proctor, location.hash === '#nazorat');
+      if (r.proctor) showProctor(r.proctor, location.hash === '#nazorat' || location.hash === '#maktab');
       if (location.hash === '#check') document.querySelector('[data-tab="check"]').click();
       if (location.hash === '#keys') document.querySelector('[data-tab="keys"]').click();
     })();

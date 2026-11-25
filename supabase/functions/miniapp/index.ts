@@ -36,11 +36,14 @@ async function notifyAdmin(token: string, text: string) {
   if (chat) await tg(token, 'sendMessage', { chat_id: chat, text, parse_mode: 'HTML' }).catch(() => {});
 }
 
-// Variant: MAT-OSON (2-fan Ingliz tili) yoki MAT-OSON-RUS / RUS-QIYIN-MAT (2-fan boshqa)
-const variantOf = (subject1?: string, level?: string, subject2?: string) =>
-  `${subject1 === 'Rus tili' ? 'RUS' : 'MAT'}-${level === 'Qiyin' ? 'QIYIN' : 'OSON'}` + (({ 'Rus tili': '-RUS', 'Matematika': '-MAT' } as Record<string, string>)[subject2 || ''] || '');
+// Variant: 1-fan-daraja+2-fan-daraja (MAT-OSON+ENG-QIYIN); bo'lmasa faqat 1-fan bo'yicha (MAT-OSON)
+const SC: Record<string, string> = { 'Rus tili': 'RUS', 'Matematika': 'MAT', 'Ingliz tili': 'ENG' };
+const LC = (l?: string) => (l === 'Qiyin' ? 'QIYIN' : 'OSON');
+const baseVariant = (subject1?: string, level?: string) => `${subject1 === 'Rus tili' ? 'RUS' : 'MAT'}-${LC(level)}`;
+const variantOf = (subject1?: string, level?: string, subject2?: string, level2?: string) =>
+  `${baseVariant(subject1, level)}+${SC[subject2 || ''] || 'ENG'}-${LC(level2)}`;
 const SUBJECT2 = ['Ingliz tili', 'Rus tili', 'Matematika'];
-const REG_COLS = 'id,full_name,grade,phone,session,room,status,created_at,subject1,level,subject2,teacher';
+const REG_COLS = 'id,full_name,grade,phone,session,room,status,created_at,subject1,level,subject2,level2,teacher';
 
 type Room = { name: string; capacity: number };
 async function pickRoom(session: string): Promise<string> {
@@ -126,16 +129,18 @@ Deno.serve(async req => {
         const subject2 = SUBJECT2.includes(body.subject2) ? String(body.subject2) : '';
         if (!subject2) return json({ ok: false, error: '2-fanni tanlang' });
         if (subject2 === subject1) return json({ ok: false, error: '2-fan 1-fandan farqli bo‘lsin' });
+        const level2 = body.level2 === 'Qiyin' ? 'Qiyin' : body.level2 === 'Oson' ? 'Oson' : '';
+        if (!level2) return json({ ok: false, error: '2-fan darajasini tanlang (Oson yoki Qiyin)' });
         const teacher = String(body.teacher || '').trim().replace(/\s+/g, ' ').slice(0, 80) || null;
         const phone = '+998' + digits.slice(-9);
         const { data: dup } = await admin.from('crm_mock_registrations').select('id,room,session').eq('session', session).eq('phone', phone).ilike('full_name', name).maybeSingle();
         if (dup) return json({ ok: true, duplicate: true, registration: dup });
         const room = await pickRoom(session);
         const { data: reg, error } = await admin.from('crm_mock_registrations').insert({
-          chat_id: chatId, tg_username: user.username || null, full_name: name, grade, phone, session, room, subject1, level, subject2, teacher
+          chat_id: chatId, tg_username: user.username || null, full_name: name, grade, phone, session, room, subject1, level, subject2, level2, teacher
         }).select(REG_COLS).single();
         if (error) throw error;
-        await notifyAdmin(token, `🧒 Yangi Kids Mock arizasi (Mini App): <b>${esc(name)}</b> · ${esc(grade)} · ${esc(subject1)} (${esc(level)}) + ${esc(subject2)}${teacher ? ` · 👩‍🏫 ${esc(teacher)}` : ''} · ${esc(phone)} · ${esc(room)}`);
+        await notifyAdmin(token, `🧒 Yangi Kids Mock arizasi (Mini App): <b>${esc(name)}</b> · ${esc(grade)} · ${esc(subject1)} (${esc(level)}) + ${esc(subject2)} (${esc(level2)})${teacher ? ` · 👩‍🏫 ${esc(teacher)}` : ''} · ${esc(phone)} · ${esc(room)}`);
         return json({ ok: true, registration: reg });
       }
 
@@ -153,12 +158,12 @@ Deno.serve(async req => {
           const { data: r } = await admin.from('crm_mock_registrations').select('*').eq('id', Number(body.regId)).eq('chat_id', chatId).maybeSingle();
           if (!r) return json({ ok: false, error: 'Ariza topilmadi' });
           reg = r;
-          const { data: ts } = await admin.from('crm_tests').select('*').eq('active', true).in('variant', [variantOf(r.subject1, r.level, r.subject2), variantOf(r.subject1, r.level)]).order('created_at', { ascending: false });
+          const { data: ts } = await admin.from('crm_tests').select('*').eq('active', true).in('variant', [variantOf(r.subject1, r.level, r.subject2, r.level2), baseVariant(r.subject1, r.level)]).order('created_at', { ascending: false });
           // Aniq variant (2-fan bilan) ustun, bo'lmasa 1-fan+daraja varianti
-          const exact = variantOf(r.subject1, r.level, r.subject2);
+          const exact = variantOf(r.subject1, r.level, r.subject2, r.level2);
           const pool = (ts || []).filter((t: any) => t.variant === exact).length ? (ts || []).filter((t: any) => t.variant === exact) : (ts || []);
           test = pool.find((t: any) => !t.session || t.session === r.session) || pool[0];
-          if (!test) return json({ ok: false, error: `${r.subject1 || 'Matematika'} · ${r.level || 'Oson'} + ${r.subject2 || 'Ingliz tili'} varianti uchun faol test hali kiritilmagan` });
+          if (!test) return json({ ok: false, error: `${r.subject1 || 'Matematika'} · ${r.level || 'Oson'} + ${r.subject2 || 'Ingliz tili'} (${r.level2 || 'Oson'}) varianti uchun faol test hali kiritilmagan` });
           body.name = r.full_name;
         } else {
           const { data: t } = await admin.from('crm_tests').select('*').eq('code', String(body.code || '')).eq('active', true).maybeSingle();
@@ -200,7 +205,7 @@ Deno.serve(async req => {
           await admin.from('crm_mock_students').upsert({ id: mockId, data: {
             id: mockId, fullName: name, room: reg?.room || 'Mini App', session: test.session || reg?.session || '', q1, q2, score: g.score,
             source: 'miniapp-omr', testCode: test.code,
-            ...(reg ? { regId: reg.id, subject1: reg.subject1 || 'Matematika', level: reg.level || 'Oson', subject2: reg.subject2 || 'Ingliz tili', teacher: reg.teacher || '', phone: reg.phone } : {})
+            ...(reg ? { regId: reg.id, subject1: reg.subject1 || 'Matematika', level: reg.level || 'Oson', subject2: reg.subject2 || 'Ingliz tili', level2: reg.level2 || 'Oson', teacher: reg.teacher || '', phone: reg.phone } : {})
           } });
           await admin.from('crm_omr_submissions').update({ mock_student_id: mockId }).eq('id', sub.id);
         }
@@ -212,7 +217,7 @@ Deno.serve(async req => {
           result: {
             total: g.total, correct: g.correct, q1: g.q1, q2: g.q2, score: g.score,
             q1Count: Number(test.q1_count) || 0, w1: Number(test.w1), w2: Number(test.w2),
-            title: test.title, subject1: reg?.subject1 || null, subject2: reg?.subject2 || null,
+            title: test.title, subject1: reg?.subject1 || null, subject2: reg?.subject2 || null, level2: reg?.level2 || null,
             wrong: g.wrong.map(w => ({ q: w.q, given: w.given, right: showKey ? w.right : null })),
             crm: rec ? { matched: rec.matched, fullName: rec.full_name, school: schoolName, cls: body.cls } : null
           }
@@ -223,6 +228,7 @@ Deno.serve(async req => {
       // ================= 👮 NAZORATCHILAR =================
       case 'pGrades':
       case 'pLetters':
+      case 'pFile':
       case 'pCheck': {
         const p = await getProctor();
         if (!p) return json({ ok: false, error: 'Nazoratchilar bo‘limiga ruxsat yo‘q. Botda “👮 Nazoratchilar” orqali raqamingizni tasdiqlang.' }, 403);
@@ -236,9 +242,21 @@ Deno.serve(async req => {
           const grade = String(body.grade || '');
           const [{ data: letters }, { data: tests }] = await Promise.all([
             admin.rpc('crm_school_letters', { p_school: school, p_grade: grade }),
-            admin.from('crm_tests').select('code,title,num_questions,num_options,q1_count,w1,w2').eq('active', true).eq('kind', 'school').contains('grades', [Number(grade)]).order('created_at', { ascending: false }).limit(1)
+            admin.from('crm_tests').select('code,title,num_questions,num_options,q1_count,w1,w2,files').eq('active', true).eq('kind', 'school').contains('grades', [Number(grade)]).order('created_at', { ascending: false }).limit(1)
           ]);
-          return json({ ok: true, classes: ((letters as any[]) || []).map(l => l.class_name), test: (tests || [])[0] || null });
+          const t = (tests || [])[0] as any;
+          // Fayl yo'li mijozga yuborilmaydi — faqat nomlari; yuklab olish pFile orqali
+          const test = t ? { ...t, files: (t.files || []).map((f: any) => ({ name: f.name, size: f.size })) } : null;
+          return json({ ok: true, classes: ((letters as any[]) || []).map(l => l.class_name), test });
+        }
+        if (body.action === 'pFile') {
+          // Testning asl fayli (savollar kitobchasi): 30 daqiqalik vaqtinchalik havola
+          const { data: t } = await admin.from('crm_tests').select('code,files,kind,active').eq('code', String(body.code || '')).maybeSingle();
+          const f = t && t.kind === 'school' && t.active ? (t.files || [])[Number(body.idx)] : null;
+          if (!f) return json({ ok: false, error: 'Fayl topilmadi' });
+          const { data: u, error } = await admin.storage.from('crm-tests').createSignedUrl(f.path, 1800, { download: f.name });
+          if (error || !u) return json({ ok: false, error: 'Havola yaratilmadi' });
+          return json({ ok: true, url: u.signedUrl, name: f.name });
         }
         // pCheck
         const cls = String(body.cls || '');

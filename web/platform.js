@@ -45,6 +45,7 @@ const NEW_TABS = {
   regs: () => renderRegsTab(),
   edutizim: () => renderEdutizimTab(),
   supabase: () => renderStaffTab(),
+  proctors: () => renderProctorsTab(),
   telegram: () => renderTelegramTab()
 };
 const origRender = window.renderCurrentTab;
@@ -493,7 +494,7 @@ function renderTestsTab() {
           <span class="text-[11px] text-slate-500">Varaqni chop eting → o‘quvchi to‘ldiradi → botga rasmini yuboradi</span>
         </div>
         <div class="overflow-x-auto"><table class="w-full text-xs">
-          <thead><tr class="text-left text-slate-500 border-b"><th class="py-2">Kod</th><th>Nomi</th><th>Savol</th><th>Turi</th><th>Holat</th><th>Javoblar (bot)</th><th>Natija</th><th></th></tr></thead>
+          <thead><tr class="text-left text-slate-500 border-b"><th class="py-2">Kod</th><th>Nomi</th><th>Savol</th><th>Turi</th><th>Holat</th><th>Asl test</th><th>Javoblar (bot)</th><th>Natija</th><th></th></tr></thead>
           <tbody>
           ${tests.map(x => `
             <tr class="border-b border-slate-100">
@@ -502,6 +503,13 @@ function renderTestsTab() {
               <td>${x.num_questions} × ${x.num_options}</td>
               <td>${x.kind === 'mock' ? '🧒 Mock' : '🏫 Maktab'}${x.grades?.length ? `<div class="text-[10px] font-black text-sky-700">${x.grades.join(', ')}-sinflar</div>` : ''}${x.variant ? `<div class="text-[10px] font-black text-orange-700">${esc((MOCK_VARIANTS.find(m => m[0] === x.variant)?.[1] || x.variant).replace(/^[^A-Za-zА-я]+/, ''))}</div>` : ''}</td>
               <td>${x.active ? '<span class="text-emerald-700 font-black">● Faol</span>' : '<span class="text-slate-400 font-bold">Yopiq</span>'}</td>
+              <td class="min-w-[130px]">
+                ${(x.files || []).map((f, i) => `<div class="flex items-center gap-1 mb-1">
+                  <button onclick="crmOpenTestFile('${esc(x.code)}', ${i})" class="text-left text-sky-700 font-bold underline truncate max-w-[120px]" title="${esc(f.name)}">📄 ${esc(f.name)}</button>
+                  ${canWrite() ? `<button onclick="crmDeleteTestFile('${esc(x.code)}', ${i})" class="text-rose-500 font-black" title="O‘chirish">✕</button>` : ''}</div>`).join('')}
+                ${canWrite() ? `<label class="inline-block px-2 py-1 rounded-lg bg-sky-50 text-sky-800 font-bold cursor-pointer">📎 Yuklash
+                  <input type="file" multiple accept=".pdf,.doc,.docx,image/*" class="hidden" onchange="crmUploadTestFile('${esc(x.code)}', this)"></label>` : ''}
+              </td>
               <td>${canWrite()
                 ? `<button onclick="crmToggleKey('${esc(x.code)}')" class="px-2.5 py-1 rounded-lg font-bold ${x.answers_published ? 'bg-amber-100 text-amber-900' : 'bg-slate-100 text-slate-600'}">${x.answers_published ? '🔓 E’lon qilingan' : '🔒 Yashirin'}</button>`
                 : (x.answers_published ? '🔓' : '🔒')}</td>
@@ -512,7 +520,7 @@ function renderTestsTab() {
                 <button onclick="crmToggleTest('${esc(x.code)}')" class="px-2.5 py-1 rounded-lg bg-slate-100 font-bold">${x.active ? '⏸' : '▶️'}</button>` : ''}
                 ${isAdmin() ? `<button onclick="crmDeleteTest('${esc(x.code)}')" class="px-2.5 py-1 rounded-lg bg-rose-50 text-rose-700 font-bold">🗑</button>` : ''}
               </td>
-            </tr>`).join('') || '<tr><td colspan="7" class="py-6 text-center text-slate-400 font-bold">Hali test yo‘q — chapdagi forma orqali qo‘shing.</td></tr>'}
+            </tr>`).join('') || '<tr><td colspan="9" class="py-6 text-center text-slate-400 font-bold">Hali test yo‘q — chapdagi forma orqali qo‘shing.</td></tr>'}
           </tbody></table></div>
       `)}
 
@@ -593,7 +601,19 @@ window.crmTestKindChange = () => {
   document.getElementById('t-variant-box').classList.toggle('hidden', document.getElementById('t-kind').value !== 'mock');
   document.getElementById('t-grades-box').classList.toggle('hidden', document.getElementById('t-kind').value !== 'school');
 };
-const MOCK_VARIANTS = [['MAT-OSON', '📐 Matematika · Oson + Ingliz tili'], ['MAT-QIYIN', '📐 Matematika · Qiyin + Ingliz tili'], ['MAT-OSON-RUS', '📐 Matematika · Oson + Rus tili'], ['MAT-QIYIN-RUS', '📐 Matematika · Qiyin + Rus tili'], ['RUS-OSON', '🇷🇺 Rus tili · Oson + Ingliz tili'], ['RUS-QIYIN', '🇷🇺 Rus tili · Qiyin + Ingliz tili'], ['RUS-OSON-MAT', '🇷🇺 Rus tili · Oson + Matematika'], ['RUS-QIYIN-MAT', '🇷🇺 Rus tili · Qiyin + Matematika']];
+// Kids Mock variantlari: 1-fan-daraja+2-fan-daraja (masalan MAT-OSON+ENG-QIYIN).
+// "Faqat 1-fan bo'yicha" (MAT-OSON) — 2-fan va darajasidan qat'i nazar shu kalit ishlatiladi.
+const MOCK_VARIANTS = (() => {
+  const S1 = [['MAT', '📐 Matematika'], ['RUS', '🇷🇺 Rus tili']];
+  const S2 = { MAT: [['ENG', 'Ingliz tili'], ['RUS', 'Rus tili']], RUS: [['ENG', 'Ingliz tili'], ['MAT', 'Matematika']] };
+  const L = [['OSON', 'Oson'], ['QIYIN', 'Qiyin']];
+  const out = [];
+  S1.forEach(([c1, n1]) => L.forEach(([l1, ln1]) => {
+    out.push([`${c1}-${l1}`, `${n1} · ${ln1} (2-fan har qanday)`]);
+    S2[c1].forEach(([c2, n2]) => L.forEach(([l2, ln2]) => out.push([`${c1}-${l1}+${c2}-${l2}`, `${n1} · ${ln1} + ${n2} · ${ln2}`])));
+  }));
+  return out;
+})();
 
 window.crmKidsMockPreset = () => {
   const set = (id, v) => { const el = document.getElementById(id); el.value = v; el.dispatchEvent(new Event('input')); };
@@ -645,6 +665,53 @@ window.crmToggleTest = async code => {
   t.active = !t.active;
   renderTestsTab();
 };
+// ---------- Testning asl fayllari (savollar kitobchasi) ----------
+const TEST_BUCKET = 'crm-tests';
+window.crmUploadTestFile = async (code, input) => {
+  const t = crm().tests.find(x => x.code === code);
+  const files = [...(input.files || [])];
+  if (!t || !files.length) return;
+  const big = files.find(f => f.size > 25 * 1024 * 1024);
+  if (big) return showToast(`${big.name}: 25 MB dan katta`, '⚠️');
+  showToast(`⏳ ${files.length} ta fayl yuklanmoqda…`, '📎');
+  const added = [];
+  for (const f of files) {
+    const safe = f.name.normalize('NFKD').replace(/[^\w.\-]+/g, '_').slice(-80) || 'fayl';
+    const path = `${code}/${Date.now()}-${safe}`;
+    const { error } = await sb().storage.from(TEST_BUCKET).upload(path, f, { contentType: f.type || undefined, upsert: false });
+    if (error) { showToast(`${f.name}: ${error.message}`, '⚠️'); continue; }
+    added.push({ path, name: f.name, size: f.size, type: f.type, at: new Date().toISOString() });
+  }
+  input.value = '';
+  if (!added.length) return;
+  const next = [...(t.files || []), ...added];
+  const { error } = await sb().from('crm_tests').update({ files: next }).eq('code', code);
+  if (error) return showToast(error.message, '⚠️');
+  t.files = next;
+  renderTestsTab();
+  showToast(`${added.length} ta fayl ${code} testiga biriktirildi`, '📄');
+};
+window.crmOpenTestFile = async (code, i) => {
+  const f = (crm().tests.find(x => x.code === code)?.files || [])[i];
+  if (!f) return;
+  const w = window.open('', '_blank');
+  const { data, error } = await sb().storage.from(TEST_BUCKET).createSignedUrl(f.path, 600);
+  if (error || !data?.signedUrl) { w?.close(); return showToast(error?.message || 'Fayl topilmadi', '⚠️'); }
+  if (w) w.location = data.signedUrl; else window.location.href = data.signedUrl;
+};
+window.crmDeleteTestFile = async (code, i) => {
+  const t = crm().tests.find(x => x.code === code);
+  const f = (t?.files || [])[i];
+  if (!f || !confirm(`“${f.name}” faylini o‘chirasizmi?`)) return;
+  await sb().storage.from(TEST_BUCKET).remove([f.path]);
+  const next = t.files.filter((_, k) => k !== i);
+  const { error } = await sb().from('crm_tests').update({ files: next }).eq('code', code);
+  if (error) return showToast(error.message, '⚠️');
+  t.files = next;
+  renderTestsTab();
+  showToast('Fayl o‘chirildi', '🗑');
+};
+
 window.crmToggleKey = async code => {
   const t = crm().tests.find(x => x.code === code);
   const next = !t.answers_published;
@@ -782,7 +849,7 @@ function renderRegsTab() {
                 <td class="py-2 font-mono text-slate-400">KM-${r.id}</td>
                 <td class="font-black">${esc(r.full_name)}${r.tg_username ? `<div class="text-[10px] text-sky-600">@${esc(r.tg_username)}</div>` : ''}</td>
                 <td>${esc(r.grade)}</td>
-                <td class="whitespace-nowrap">${r.subject1 ? `${r.subject1 === 'Rus tili' ? '🇷🇺' : '📐'} ${esc(r.subject1)} · <b class="${r.level === 'Qiyin' ? 'text-rose-700' : 'text-emerald-700'}">${esc(r.level || '')}</b><div class="text-[10px] text-slate-500">+ ${esc(r.subject2 || 'Ingliz tili')}</div>` : '<span class="text-slate-400">—</span>'}</td>
+                <td class="whitespace-nowrap">${r.subject1 ? `${r.subject1 === 'Rus tili' ? '🇷🇺' : '📐'} ${esc(r.subject1)} · <b class="${r.level === 'Qiyin' ? 'text-rose-700' : 'text-emerald-700'}">${esc(r.level || '')}</b><div class="text-[10px] text-slate-500">+ ${esc(r.subject2 || 'Ingliz tili')} · <b class="${r.level2 === 'Qiyin' ? 'text-rose-700' : 'text-emerald-700'}">${esc(r.level2 || 'Oson')}</b></div>` : '<span class="text-slate-400">—</span>'}</td>
                 <td class="text-[11px]">${esc(r.teacher || '—')}</td>
                 <td class="font-mono">${esc(r.phone)}</td>
                 <td class="text-[11px]">${esc(r.session)}</td>
@@ -816,7 +883,7 @@ window.crmRegUpdate = async (id, patch) => {
 window.crmRegToMock = id => {
   const r = crm().registrations.find(x => x.id === id);
   if (state.mockStudents.some(m => m.regId === id)) return showToast('Bu ariza allaqachon Kids Mock ro‘yxatida', 'ℹ️');
-  state.mockStudents.push({ id: crmNextId(), fullName: r.full_name, room: r.room, session: r.session || mockExamSession, q1: 0, q2: 0, score: 0, phone: r.phone, regId: id, subject1: r.subject1 || 'Matematika', level: r.level || 'Oson', subject2: r.subject2 || 'Ingliz tili', teacher: r.teacher || '', source: 'telegram-reg' });
+  state.mockStudents.push({ id: crmNextId(), fullName: r.full_name, room: r.room, session: r.session || mockExamSession, q1: 0, q2: 0, score: 0, phone: r.phone, regId: id, subject1: r.subject1 || 'Matematika', level: r.level || 'Oson', subject2: r.subject2 || 'Ingliz tili', level2: r.level2 || 'Oson', teacher: r.teacher || '', source: 'telegram-reg' });
   saveState();
   showToast(`${r.full_name} Kids Mock ro‘yxatiga qo‘shildi`);
 };
@@ -830,7 +897,7 @@ window.crmSaveRegSettings = () => {
   showToast('Bot sozlamalari saqlandi');
 };
 window.crmExportRegs = () => {
-  const rows = crm().registrations.map(r => ({ 'Ariza': `KM-${r.id}`, 'F.I.Sh.': r.full_name, Sinf: r.grade, '1-fan': r.subject1 || '', Daraja: r.level || '', '2-fan': r.subject2 || 'Ingliz tili', 'O‘qituvchi': r.teacher || '', Telefon: r.phone, Sessiya: r.session, Xona: r.room, Holat: r.status, Telegram: r.tg_username ? '@' + r.tg_username : '', Vaqt: fmtDate(r.created_at) }));
+  const rows = crm().registrations.map(r => ({ 'Ariza': `KM-${r.id}`, 'F.I.Sh.': r.full_name, Sinf: r.grade, '1-fan': r.subject1 || '', Daraja: r.level || '', '2-fan': r.subject2 || 'Ingliz tili', '2-fan darajasi': r.level2 || '', 'O‘qituvchi': r.teacher || '', Telefon: r.phone, Sessiya: r.session, Xona: r.room, Holat: r.status, Telegram: r.tg_username ? '@' + r.tg_username : '', Vaqt: fmtDate(r.created_at) }));
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), 'Kids Mock arizalar');
   XLSX.writeFile(wb, 'KidsMock_arizalar.xlsx');
@@ -988,8 +1055,6 @@ async function renderStaffTab() {
   const el = document.getElementById('tab-supabase');
   const { data: allProfiles } = await sb().from('crm_profiles').select('*').order('created_at');
   const profiles = (allProfiles || []).filter(p => p.id !== crm().KIOSK_ID);
-  const { data: proctors } = canWrite() ? await sb().from('crm_proctors').select('*').order('created_at') : { data: [] };
-  const schoolName = id => ((state.schools || []).find(x => x.id === id) || {}).name || id;
   const { data: access } = await sb().rpc('crm_access_info');
   const locked = access?.mode === 'locked';
   const classes = (state.classes || []).map(c => c.name);
@@ -1010,29 +1075,11 @@ async function renderStaffTab() {
       ${locked ? `<button onclick="crmOpenSite()" class="mt-2 text-[11px] font-bold text-rose-600 underline">Parolni olib tashlash (saytni ochiq qilish)</button>` : ''}
     `) : ''}
     ${canWrite() ? card(`
-      <h2 class="text-lg font-black text-slate-900">👮 Nazoratchilar va ustozlar</h2>
-      <p class="text-[11px] text-slate-500 mb-3">Faqat shu ro‘yxatdagilar botdagi <b>“👮 Nazoratchilar”</b> bo‘limi va Mini App’dagi <b>“Nazorat”</b> tabi orqali maktab testi natijalarini yuboradi. Ular botda bir marta “📱 Raqamni yuborish” bilan kiradi — raqam shu yerdagi bilan mos kelishi kerak.</p>
-      ${isAdmin() ? `
-      <div class="grid sm:grid-cols-5 gap-2 text-xs mb-3">
-        <input id="pr-name" placeholder="F.I.Sh." class="${input} sm:col-span-2">
-        <input id="pr-phone" placeholder="+998 90 123 45 67" class="${input}">
-        <select id="pr-role" class="${input}"><option value="nazoratchi">👮 Nazoratchi</option><option value="ustoz">👩‍🏫 Ustoz</option></select>
-        <select id="pr-school" class="${input}"><option value="">Barcha maktablar</option>${(state.schools || []).map(x => `<option value="${esc(x.id)}">${esc(x.name)}</option>`).join('')}</select>
-        <button onclick="crmAddProctor()" class="${btn('[#F2642A]')} sm:col-span-5">➕ Qo‘shish</button>
-      </div>` : ''}
-      <div class="overflow-x-auto"><table class="w-full text-xs">
-        <thead><tr class="text-left text-slate-500 border-b"><th class="py-2">F.I.Sh.</th><th>Telefon</th><th>Rol</th><th>Maktab</th><th>Telegram</th><th>Holat</th><th></th></tr></thead>
-        <tbody>${(proctors || []).map(p => `
-          <tr class="border-b border-slate-100 ${p.active ? '' : 'opacity-50'}">
-            <td class="py-2 font-black">${esc(p.full_name)}</td>
-            <td class="font-mono">${esc(p.phone)}</td>
-            <td>${p.role === 'ustoz' ? '👩‍🏫 Ustoz' : '👮 Nazoratchi'}</td>
-            <td>${p.school_id ? esc(schoolName(p.school_id)) : '<span class="text-slate-400">Barchasi</span>'}</td>
-            <td>${p.tg_user_id ? `<span class="text-emerald-700 font-bold">✅ ${p.tg_username ? '@' + esc(p.tg_username) : 'bog‘langan'}</span>` : '<span class="text-amber-700 font-bold">⏳ hali kirmagan</span>'}</td>
-            <td>${isAdmin() ? `<button onclick="crmToggleProctor(${p.id}, ${!p.active})" class="px-2 py-1 rounded-lg ${p.active ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'} font-bold">${p.active ? 'Faol' : 'O‘chiq'}</button>` : (p.active ? 'Faol' : 'O‘chiq')}</td>
-            <td>${isAdmin() ? `<button onclick="crmDeleteProctor(${p.id})" class="px-2 py-1 rounded-lg bg-rose-50 text-rose-700 font-bold">🗑</button>` : ''}</td>
-          </tr>`).join('') || '<tr><td colspan="7" class="py-5 text-center text-slate-400 font-bold">Hali nazoratchi qo‘shilmagan.</td></tr>'}</tbody>
-      </table></div>
+      <div class="flex items-center justify-between gap-2 flex-wrap">
+        <div><h2 class="text-lg font-black text-slate-900">👮 Nazoratchilar va ustozlar</h2>
+        <p class="text-[11px] text-slate-500">Maktab testi natijalarini yuboradiganlar ro‘yxati alohida bo‘limda.</p></div>
+        <button onclick="switchTab('proctors')" class="${btn('[#F2642A]')}">👮 Nazoratchilar bo‘limiga o‘tish</button>
+      </div>
     `) : ''}
     ${card(`
       <h2 class="text-lg font-black text-slate-900">👥 Xodimlar va rollar</h2>
@@ -1078,6 +1125,75 @@ window.crmOpenSite = async () => {
   renderStaffTab();
 };
 
+// =========================================================
+// 👮 NAZORATCHILAR (maktab testlari natijasini yuboradiganlar)
+// =========================================================
+async function renderProctorsTab() {
+  const el = document.getElementById('tab-proctors');
+  if (!el) return;
+  if (!canWrite()) { el.innerHTML = card('<div class="text-center text-slate-500 font-bold py-6">Bu bo‘lim faqat admin va operatorlar uchun.</div>'); return; }
+  const [{ data: proctors }, { data: subs }] = await Promise.all([
+    sb().from('crm_proctors').select('*').order('created_at'),
+    sb().from('crm_omr_submissions').select('id,proctor_id,student_name,class_name,school_id,test_code,correct,score,source,created_at').not('proctor_id', 'is', null).order('created_at', { ascending: false }).limit(100)
+  ]);
+  const schoolName = id => ((state.schools || []).find(x => x.id === id) || {}).name || id;
+  const byP = {};
+  (subs || []).forEach(x => { byP[x.proctor_id] = (byP[x.proctor_id] || 0) + 1; });
+  const pName = id => (proctors || []).find(p => p.id === id)?.full_name || '—';
+  const schoolOpts = sel => `<option value="">Barcha maktablar</option>${(state.schools || []).map(x => `<option value="${esc(x.id)}" ${x.id === sel ? 'selected' : ''}>${esc(x.name)}</option>`).join('')}`;
+  el.innerHTML = `<div class="max-w-5xl mx-auto space-y-5">
+    ${card(`
+      <h2 class="text-lg font-black text-slate-900">👮 Nazoratchilar va ustozlar (${(proctors || []).length})</h2>
+      <p class="text-[11px] text-slate-500 mb-3">Faqat shu ro‘yxatdagilar botdagi <b>“👮 Nazoratchilar”</b> bo‘limi va Mini App’dagi <b>“🏫 Maktab”</b> tabi orqali maktab testi natijalarini kiritadi (ballar yoki varaq rasmi).
+        Ular Telegram’da bir marta <b>“📱 Raqamni yuborish”</b> tugmasini bosadi — parol kerak emas, raqam shu yerdagi bilan mos kelishi kifoya.</p>
+      ${isAdmin() ? `
+      <div class="grid sm:grid-cols-6 gap-2 text-xs mb-4 p-3 rounded-2xl bg-orange-50 border border-orange-100">
+        <input id="pr-name" placeholder="F.I.Sh." class="${input} sm:col-span-2">
+        <input id="pr-phone" placeholder="+998 90 123 45 67" inputmode="tel" class="${input}">
+        <select id="pr-role" class="${input}"><option value="nazoratchi">👮 Nazoratchi</option><option value="ustoz">👩‍🏫 Ustoz</option></select>
+        <select id="pr-school" class="${input}">${schoolOpts('')}</select>
+        <button onclick="crmAddProctor()" class="${btn('[#F2642A]')}">➕ Qo‘shish</button>
+      </div>` : ''}
+      <div class="overflow-x-auto"><table class="w-full text-xs">
+        <thead><tr class="text-left text-slate-500 border-b"><th class="py-2">F.I.Sh.</th><th>Telefon</th><th>Rol</th><th>Maktab</th><th>Telegram</th><th>Natijalar</th><th>Holat</th><th></th></tr></thead>
+        <tbody>${(proctors || []).map(p => `
+          <tr class="border-b border-slate-100 ${p.active ? '' : 'opacity-50'}">
+            <td class="py-2 font-black">${esc(p.full_name)}</td>
+            <td class="font-mono">${esc(p.phone)}</td>
+            <td>${isAdmin() ? `<select onchange="crmUpdateProctor(${p.id}, {role: this.value})" class="${input} py-1"><option value="nazoratchi" ${p.role !== 'ustoz' ? 'selected' : ''}>👮 Nazoratchi</option><option value="ustoz" ${p.role === 'ustoz' ? 'selected' : ''}>👩‍🏫 Ustoz</option></select>` : (p.role === 'ustoz' ? '👩‍🏫 Ustoz' : '👮 Nazoratchi')}</td>
+            <td>${isAdmin() ? `<select onchange="crmUpdateProctor(${p.id}, {school_id: this.value || null})" class="${input} py-1">${schoolOpts(p.school_id)}</select>` : (p.school_id ? esc(schoolName(p.school_id)) : 'Barchasi')}</td>
+            <td>${p.tg_user_id ? `<span class="text-emerald-700 font-bold">✅ ${p.tg_username ? '@' + esc(p.tg_username) : 'bog‘langan'}</span>` : '<span class="text-amber-700 font-bold">⏳ hali kirmagan</span>'}</td>
+            <td class="font-black">${byP[p.id] || 0}</td>
+            <td>${isAdmin() ? `<button onclick="crmToggleProctor(${p.id}, ${!p.active})" class="px-2 py-1 rounded-lg ${p.active ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'} font-bold">${p.active ? 'Faol' : 'O‘chiq'}</button>` : (p.active ? 'Faol' : 'O‘chiq')}</td>
+            <td>${isAdmin() ? `<button onclick="crmDeleteProctor(${p.id})" class="px-2 py-1 rounded-lg bg-rose-50 text-rose-700 font-bold">🗑</button>` : ''}</td>
+          </tr>`).join('') || '<tr><td colspan="8" class="py-6 text-center text-slate-400 font-bold">Hali nazoratchi qo‘shilmagan. Yuqoridagi forma orqali qo‘shing.</td></tr>'}</tbody>
+      </table></div>
+    `)}
+    ${card(`
+      <h2 class="text-lg font-black text-slate-900 mb-3">📝 Nazoratchilar kiritgan oxirgi natijalar</h2>
+      <div class="overflow-x-auto max-h-[520px]"><table class="w-full text-xs">
+        <thead class="sticky top-0 bg-white"><tr class="text-left text-slate-500 border-b"><th class="py-2">Vaqt</th><th>Nazoratchi</th><th>O‘quvchi</th><th>Sinf</th><th>Test</th><th>To‘g‘ri</th><th>Ball</th><th>Usul</th></tr></thead>
+        <tbody>${(subs || []).map(x => `
+          <tr class="border-b border-slate-100">
+            <td class="py-2 whitespace-nowrap text-slate-500">${fmtDate(x.created_at)}</td>
+            <td class="font-bold">${esc(pName(x.proctor_id))}</td>
+            <td class="font-black">${esc(x.student_name)}</td>
+            <td>${esc(x.class_name || '')}<div class="text-[10px] text-slate-400">${esc(schoolName(x.school_id || ''))}</div></td>
+            <td class="font-mono">${esc(x.test_code)}</td>
+            <td>${x.correct ?? ''}</td>
+            <td class="font-black text-[#F2642A]">${x.score ?? ''}</td>
+            <td>${/manual/.test(x.source || '') ? '✍️ Qo‘lda' : '📸 Varaq'}</td>
+          </tr>`).join('') || '<tr><td colspan="8" class="py-6 text-center text-slate-400 font-bold">Hali natija kiritilmagan.</td></tr>'}</tbody>
+      </table></div>
+    `)}
+  </div>`;
+}
+window.crmUpdateProctor = async (id, patch) => {
+  const { error } = await sb().from('crm_proctors').update(patch).eq('id', id);
+  if (error) return showToast(error.message, '⚠️');
+  showToast('Nazoratchi ma’lumoti yangilandi', '👮');
+};
+
 window.crmAddProctor = async () => {
   const name = document.getElementById('pr-name').value.trim();
   const digits = document.getElementById('pr-phone').value.replace(/\D/g, '');
@@ -1085,22 +1201,22 @@ window.crmAddProctor = async () => {
   if (digits.length < 9) return showToast('Telefon raqamini to‘liq kiriting', '⚠️');
   const { error } = await sb().from('crm_proctors').insert({
     full_name: name, phone: '+998' + digits.slice(-9),
-    role: document.getElementById('pr-role').value, school_id: document.getElementById('pr-school').value || null
+    role: document.getElementById('pr-role').value, school_id: document.getElementById('pr-school').value || null, active: true
   });
   if (error) return showToast(/duplicate|unique/i.test(error.message) ? 'Bu raqam allaqachon ro‘yxatda' : error.message, '⚠️');
   showToast(`${name} nazoratchilar ro‘yxatiga qo‘shildi`, '👮');
-  renderStaffTab();
+  renderProctorsTab();
 };
 window.crmToggleProctor = async (id, active) => {
   const { error } = await sb().from('crm_proctors').update({ active }).eq('id', id);
   if (error) return showToast(error.message, '⚠️');
-  renderStaffTab();
+  renderProctorsTab();
 };
 window.crmDeleteProctor = async id => {
   if (!confirm('Nazoratchini ro‘yxatdan o‘chirasizmi?')) return;
   const { error } = await sb().from('crm_proctors').delete().eq('id', id);
   if (error) return showToast(error.message, '⚠️');
-  renderStaffTab();
+  renderProctorsTab();
 };
 
 window.crmSetRole = async (id, patch) => {
