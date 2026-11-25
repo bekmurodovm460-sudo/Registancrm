@@ -74,8 +74,10 @@ const esc = (s: unknown) => String(s ?? '').replace(/[<>&]/g, c => ({ '<': '&lt;
 // Kids Mock varianti: 1-fan (Matematika / Rus tili) + daraja (Oson / Qiyin)
 const SUBJECTS: Record<string, string> = { MAT: 'Matematika', RUS: 'Rus tili' };
 const LEVELS: Record<string, string> = { OSON: 'Oson', QIYIN: 'Qiyin' };
-const variantOf = (subject1?: string, level?: string) =>
-  `${subject1 === 'Rus tili' ? 'RUS' : 'MAT'}-${level === 'Qiyin' ? 'QIYIN' : 'OSON'}`;
+const SUBJECTS2: Record<string, string> = { ENG: 'Ingliz tili', RUS: 'Rus tili', MAT: 'Matematika' };
+// Variant: MAT-OSON (2-fan Ingliz tili) yoki MAT-OSON-RUS / RUS-QIYIN-MAT (2-fan boshqa)
+const variantOf = (subject1?: string, level?: string, subject2?: string) =>
+  `${subject1 === 'Rus tili' ? 'RUS' : 'MAT'}-${level === 'Qiyin' ? 'QIYIN' : 'OSON'}` + (({ 'Rus tili': '-RUS', 'Matematika': '-MAT' } as Record<string, string>)[subject2 || ''] || '');
 
 async function notifyAdmin(text: string) {
   const chat = await getSecret('telegram_admin_chat_id');
@@ -88,13 +90,13 @@ async function notifyAdmin(text: string) {
 async function startCheck(chatId: number) {
   const [{ data: tests }, { data: regs }] = await Promise.all([
     admin.from('crm_tests').select('code,title,num_questions,variant,kind').eq('active', true).order('created_at', { ascending: false }).limit(30),
-    admin.from('crm_mock_registrations').select('id,full_name,subject1,level').eq('chat_id', chatId).neq('status', 'Bekor').order('created_at', { ascending: false }).limit(5)
+    admin.from('crm_mock_registrations').select('id,full_name,subject1,level,subject2').eq('chat_id', chatId).neq('status', 'Bekor').order('created_at', { ascending: false }).limit(5)
   ]);
   // Maktab testlari faqat nazoratchilar bo'limida
   const plain = (tests || []).filter(t => !t.variant && t.kind !== 'school');
   const hasMock = (tests || []).some(t => t.variant);
   const rows: any[] = [];
-  if (hasMock) (regs || []).forEach(r => rows.push([{ text: `🧒 Kids Mock — ${r.full_name} (${r.subject1 || 'Matematika'} · ${r.level || 'Oson'})`, callback_data: `km:${r.id}` }]));
+  if (hasMock) (regs || []).forEach(r => rows.push([{ text: `🧒 Kids Mock — ${r.full_name} (${r.subject1 || 'Matematika'} · ${r.level || 'Oson'} + ${r.subject2 || 'Ingliz tili'})`, callback_data: `km:${r.id}` }]));
   plain.forEach(t => rows.push([{ text: `${t.code} — ${t.title} (${t.num_questions} savol)`, callback_data: `t:${t.code}` }]));
   if (!rows.length) {
     await send(chatId, 'Hozircha faol test yo‘q. Keyinroq urinib ko‘ring.', { reply_markup: MENU });
@@ -110,12 +112,14 @@ async function startCheck(chatId: number) {
 async function pickMockReg(chatId: number, regId: number) {
   const { data: reg } = await admin.from('crm_mock_registrations').select('*').eq('id', regId).eq('chat_id', chatId).maybeSingle();
   if (!reg) return void send(chatId, 'Ariza topilmadi.', { reply_markup: SUB1 });
-  const variant = variantOf(reg.subject1, reg.level);
-  const { data: tests } = await admin.from('crm_tests').select('*').eq('active', true).eq('variant', variant).order('created_at', { ascending: false });
-  const test = (tests || []).find(t => !t.session || t.session === reg.session) || (tests || [])[0];
-  if (!test) return void send(chatId, `⚠️ ${esc(reg.subject1 || 'Matematika')} · ${esc(reg.level || 'Oson')} varianti uchun faol test hali kiritilmagan. Administratorga murojaat qiling.`, { reply_markup: SUB1 });
-  await setSession(chatId, 'check_photo', { test: test.code, name: reg.full_name, regId: reg.id, room: reg.room, subject1: reg.subject1, level: reg.level });
-  await send(chatId, `🧒 <b>${esc(reg.full_name)}</b>\n${esc(reg.subject1 || 'Matematika')} (${esc(reg.level || 'Oson')}) + Ingliz tili · ${test.num_questions} savol\n\n📸 Endi to‘ldirilgan <b>javoblar varaqasi</b> rasmini yuboring.`, {
+  const exact = variantOf(reg.subject1, reg.level, reg.subject2);
+  const { data: all } = await admin.from('crm_tests').select('*').eq('active', true).in('variant', [exact, variantOf(reg.subject1, reg.level)]).order('created_at', { ascending: false });
+  // Aniq variant (2-fan bilan) ustun, bo'lmasa 1-fan+daraja varianti
+  const tests = (all || []).filter(t => t.variant === exact).length ? (all || []).filter(t => t.variant === exact) : (all || []);
+  const test = tests.find(t => !t.session || t.session === reg.session) || tests[0];
+  if (!test) return void send(chatId, `⚠️ ${esc(reg.subject1 || 'Matematika')} · ${esc(reg.level || 'Oson')} + ${esc(reg.subject2 || 'Ingliz tili')} varianti uchun faol test hali kiritilmagan. Administratorga murojaat qiling.`, { reply_markup: SUB1 });
+  await setSession(chatId, 'check_photo', { test: test.code, name: reg.full_name, regId: reg.id, room: reg.room, subject1: reg.subject1, level: reg.level, subject2: reg.subject2, teacher: reg.teacher });
+  await send(chatId, `🧒 <b>${esc(reg.full_name)}</b>\n${esc(reg.subject1 || 'Matematika')} (${esc(reg.level || 'Oson')}) + ${esc(reg.subject2 || 'Ingliz tili')} · ${test.num_questions} savol\n\n📸 Endi to‘ldirilgan <b>javoblar varaqasi</b> rasmini yuboring.`, {
     reply_markup: { keyboard: [[{ text: BTN_CANCEL }]], resize_keyboard: true }
   });
 }
@@ -244,7 +248,7 @@ async function handleSheetPhoto(chatId: number, s: Session, fileId: string) {
         score: g.score,
         source: 'telegram-omr',
         testCode: test.code,
-        ...(s.data.regId ? { regId: s.data.regId, subject1: s.data.subject1 || 'Matematika', level: s.data.level || 'Oson' } : {})
+        ...(s.data.regId ? { regId: s.data.regId, subject1: s.data.subject1 || 'Matematika', level: s.data.level || 'Oson', subject2: s.data.subject2 || 'Ingliz tili', teacher: s.data.teacher || '' } : {})
       }
     });
     await admin.from('crm_omr_submissions').update({ mock_student_id: mockId }).eq('id', sub.id);
@@ -299,7 +303,7 @@ async function askGrade(chatId: number) {
 }
 
 async function askSubject(chatId: number) {
-  await send(chatId, '📚 Kids Mock’da <b>1-fan</b> qaysi bo‘ladi? (2-fan — Ingliz tili)', {
+  await send(chatId, '📚 Kids Mock’da <b>1-fan</b> qaysi bo‘ladi?', {
     reply_markup: { inline_keyboard: [[{ text: '📐 Matematika', callback_data: 'sb:MAT' }, { text: '🇷🇺 Rus tili', callback_data: 'sb:RUS' }]] }
   });
 }
@@ -308,6 +312,16 @@ async function askLevel(chatId: number, subject: string) {
   await send(chatId, `📚 1-fan: <b>${esc(subject)}</b>\nQaysi daraja?`, {
     reply_markup: { inline_keyboard: [[{ text: '🟢 Oson', callback_data: 'lv:OSON' }, { text: '🔴 Qiyin', callback_data: 'lv:QIYIN' }]] }
   });
+}
+
+async function askSubject2(chatId: number, subject1: string) {
+  const btns = Object.entries(SUBJECTS2).filter(([, v]) => v !== subject1)
+    .map(([k, v]) => ({ text: `${k === 'ENG' ? '🇬🇧' : k === 'RUS' ? '🇷🇺' : '📐'} ${v}`, callback_data: `sb2:${k}` }));
+  await send(chatId, `📚 1-fan: <b>${esc(subject1)}</b>\n<b>2-fan</b> qaysi bo‘ladi?`, { reply_markup: { inline_keyboard: [btns] } });
+}
+
+async function askTeacher(chatId: number) {
+  await send(chatId, '👩‍🏫 Farzandingizning <b>o‘qituvchisi</b> kim? (familiya va ismini yozing yoki o‘tkazib yuboring)', { reply_markup: SKIP_KB });
 }
 
 async function askPhone(chatId: number) {
@@ -336,13 +350,13 @@ async function finishReg(chatId: number, s: Session, session: string, username =
   const room = await pickRoom(session);
   const { data: reg } = await admin.from('crm_mock_registrations').insert({
     chat_id: chatId, tg_username: username || d.username || null, full_name: d.name, grade: d.grade, phone: d.phone, session, room,
-    subject1: d.subject1 || 'Matematika', level: d.level || 'Oson'
+    subject1: d.subject1 || 'Matematika', level: d.level || 'Oson', subject2: d.subject2 || 'Ingliz tili', teacher: d.teacher || null
   }).select('id').single();
   await setSession(chatId, null);
   await send(chatId,
-    `✅ Ro‘yxatdan o‘tdingiz!\n\n👤 ${esc(d.name)}\n🏫 ${esc(d.grade)}\n📚 ${esc(d.subject1 || 'Matematika')} (${esc(d.level || 'Oson')}) + Ingliz tili\n📱 ${esc(d.phone)}\n🗓 ${esc(session)}\n🚪 Xona: <b>${esc(room)}</b>\n🔖 Ariza raqami: <b>KM-${reg?.id ?? ''}</b>\n\nImtihon kuni shu xabarni ko‘rsating. Natijani shu bot orqali tekshirasiz.`,
+    `✅ Ro‘yxatdan o‘tdingiz!\n\n👤 ${esc(d.name)}\n🏫 ${esc(d.grade)}\n📚 ${esc(d.subject1 || 'Matematika')} (${esc(d.level || 'Oson')}) + ${esc(d.subject2 || 'Ingliz tili')}${d.teacher ? `\n👩‍🏫 ${esc(d.teacher)}` : ''}\n📱 ${esc(d.phone)}\n🗓 ${esc(session)}\n🚪 Xona: <b>${esc(room)}</b>\n🔖 Ariza raqami: <b>KM-${reg?.id ?? ''}</b>\n\nImtihon kuni shu xabarni ko‘rsating. Natijani shu bot orqali tekshirasiz.`,
     { reply_markup: MENU });
-  await notifyAdmin(`🧒 Yangi Kids Mock arizasi: <b>${esc(d.name)}</b> · ${esc(d.grade)} · ${esc(d.subject1 || 'Matematika')} (${esc(d.level || 'Oson')}) · ${esc(d.phone)} · ${esc(room)}`);
+  await notifyAdmin(`🧒 Yangi Kids Mock arizasi: <b>${esc(d.name)}</b> · ${esc(d.grade)} · ${esc(d.subject1 || 'Matematika')} (${esc(d.level || 'Oson')}) + ${esc(d.subject2 || 'Ingliz tili')}${d.teacher ? ` · 👩‍🏫 ${esc(d.teacher)}` : ''} · ${esc(d.phone)} · ${esc(room)}`);
 }
 
 
@@ -433,13 +447,13 @@ async function answerCard(chatId: number, m: any) {
 // ---------------------------------------------------------
 async function answerMine(chatId: number) {
   const [{ data: regs }, { data: subs }] = await Promise.all([
-    admin.from('crm_mock_registrations').select('id,full_name,grade,session,room,status,created_at,subject1,level').eq('chat_id', chatId).order('created_at', { ascending: false }).limit(10),
+    admin.from('crm_mock_registrations').select('id,full_name,grade,session,room,status,created_at,subject1,level,subject2').eq('chat_id', chatId).order('created_at', { ascending: false }).limit(10),
     admin.from('crm_omr_submissions').select('student_name,test_code,correct,score,created_at').eq('chat_id', chatId).order('created_at', { ascending: false }).limit(10)
   ]);
   const d = (t: string) => new Date(t).toLocaleDateString('uz-UZ', { timeZone: 'Asia/Tashkent' });
   const parts = [];
   parts.push(regs?.length
-    ? '🧒 <b>Kids Mock arizalari:</b>\n' + regs.map(r => `• KM-${r.id} — ${esc(r.full_name)} (${esc(r.grade)}) · ${esc(r.subject1 || 'Matematika')} ${esc(r.level || '')}\n   ${esc(r.session)} · 🚪 ${esc(r.room)} · <b>${esc(r.status)}</b>`).join('\n')
+    ? '🧒 <b>Kids Mock arizalari:</b>\n' + regs.map(r => `• KM-${r.id} — ${esc(r.full_name)} (${esc(r.grade)}) · ${esc(r.subject1 || 'Matematika')} ${esc(r.level || '')} + ${esc(r.subject2 || 'Ingliz tili')}\n   ${esc(r.session)} · 🚪 ${esc(r.room)} · <b>${esc(r.status)}</b>`).join('\n')
     : '🧒 Kids Mock arizalari yo‘q. Yozilish: ' + BTN_REG);
   parts.push(subs?.length
     ? '📝 <b>Tekshirilgan varaqlar:</b>\n' + subs.map(r => `• ${d(r.created_at)} — ${esc(r.student_name)} · ${esc(r.test_code)} · ${r.correct} ta to‘g‘ri · <b>${r.score}</b> ball`).join('\n')
@@ -761,6 +775,14 @@ async function onMessage(m: any) {
       return askSubject(chatId);
     case 'reg_level':
       return askLevel(chatId, s.data.subject1 || 'Matematika');
+    case 'reg_subject2':
+      return askSubject2(chatId, s.data.subject1 || 'Matematika');
+    case 'reg_teacher': {
+      const teacher = text === BTN_SKIP ? '' : text.replace(/\s+/g, ' ').slice(0, 80);
+      if (text !== BTN_SKIP && teacher.length < 3) return void send(chatId, 'O‘qituvchining familiya va ismini yozing yoki “O‘tkazib yuborish”.');
+      await setSession(chatId, 'reg_phone', { ...s.data, teacher });
+      return askPhone(chatId);
+    }
     case 'reg_phone': {
       const rawPhone = m.contact?.phone_number || text;
       const digits = String(rawPhone).replace(/\D/g, '');
@@ -811,8 +833,15 @@ async function onCallback(q: any) {
     return askLevel(chatId, subject1);
   }
   if (data.startsWith('lv:') && s.step === 'reg_level') {
-    await setSession(chatId, 'reg_phone', { ...s.data, level: LEVELS[data.slice(3)] || 'Oson' });
-    return askPhone(chatId);
+    await setSession(chatId, 'reg_subject2', { ...s.data, level: LEVELS[data.slice(3)] || 'Oson' });
+    return askSubject2(chatId, s.data.subject1 || 'Matematika');
+  }
+  if (data.startsWith('sb2:') && s.step === 'reg_subject2') {
+    const subject2 = SUBJECTS2[data.slice(4)];
+    if (!subject2 || subject2 === s.data.subject1) return askSubject2(chatId, s.data.subject1 || 'Matematika');
+    await setSession(chatId, 'reg_teacher', { ...s.data, subject2 });
+    await send(chatId, `📚 2-fan: <b>${esc(subject2)}</b>`);
+    return askTeacher(chatId);
   }
   if (data.startsWith('km:')) return pickMockReg(chatId, Number(data.slice(3)));
   // Nazoratchilar
