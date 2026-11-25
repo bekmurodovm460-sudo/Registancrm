@@ -6,7 +6,7 @@
 //  • /hisobot — kunlik statistika (faqat admin chat/guruhda)
 // =========================================================
 import jpeg from 'npm:jpeg-js@0.4.4';
-import { admin, getSecret, getSetting, tg, webhookSecret } from '../_shared/common.ts';
+import { admin, getSecret, getSetting, SUPABASE_URL, tg, webhookSecret } from '../_shared/common.ts';
 import { readSheet, rgbaToGray, gradeAnswers } from '../_shared/omr.js';
 import { cardPng, money, PRIZES, promoCode } from '../_shared/card.ts';
 import * as XLSX from 'npm:xlsx@0.18.5';
@@ -90,7 +90,7 @@ async function getSession(chatId: number): Promise<Session> {
   return { step: data?.step ?? null, data: (data?.data as Record<string, any>) || {} };
 }
 async function setSession(chatId: number, step: string | null, data: Record<string, any> = {}) {
-  await admin.from('crm_bot_sessions').upsert({ chat_id: chatId, step, data, updated_at: new Date().toISOString() });
+  await admin.from('crm_bot_sessions').upsert({ chat_id: chatId, step, data, updated_at: new Date().toISOString(), blocked_at: null });
 }
 
 async function send(chatId: number, text: string, extra: Record<string, unknown> = {}) {
@@ -392,8 +392,10 @@ async function finishReg(chatId: number, s: Session, session: string, username =
     subject1: d.subject1 || 'Matematika', level: d.level || 'Oson', subject2: d.subject2 || 'Ingliz tili', level2: d.level2 || 'Oson', teacher: d.teacher || null
   }).select('id').single();
   await setSession(chatId, null);
+  const sch = (await cachedSetting<Record<string, any>>('mockSchedule', {}))?.[session];
+  const when = sch?.date ? `\n⏰ ${esc(sch.date.split('-').reverse().join('.'))}, soat ${esc(sch.time || '09:00')}${sch.place ? `\n📍 ${esc(sch.place)}` : ''}` : '';
   await send(chatId,
-    `✅ Ro‘yxatdan o‘tdingiz!\n\n👤 ${esc(d.name)}\n🏫 ${esc(d.grade)}\n📚 ${esc(d.subject1 || 'Matematika')} (${esc(d.level || 'Oson')}) + ${esc(d.subject2 || 'Ingliz tili')} (${esc(d.level2 || 'Oson')})${d.teacher ? `\n👩‍🏫 ${esc(d.teacher)}` : ''}\n📱 ${esc(d.phone)}\n🗓 ${esc(session)}\n🚪 Xona: <b>${esc(room)}</b>\n🔖 Ariza raqami: <b>KM-${reg?.id ?? ''}</b>\n\nImtihon kuni shu xabarni ko‘rsating. Natijani shu bot orqali tekshirasiz.`,
+    `✅ Ro‘yxatdan o‘tdingiz!\n\n👤 ${esc(d.name)}\n🏫 ${esc(d.grade)}\n📚 ${esc(d.subject1 || 'Matematika')} (${esc(d.level || 'Oson')}) + ${esc(d.subject2 || 'Ingliz tili')} (${esc(d.level2 || 'Oson')})${d.teacher ? `\n👩‍🏫 ${esc(d.teacher)}` : ''}\n📱 ${esc(d.phone)}\n🗓 ${esc(session)}\n🚪 Xona: <b>${esc(room)}</b>${when}\n🔖 Ariza raqami: <b>KM-${reg?.id ?? ''}</b>\n\nImtihondan 1 kun va 2 soat oldin eslatma yuboramiz. Imtihon kuni shu xabarni ko‘rsating.`,
     { reply_markup: MENU });
   await notifyAdmin(`🧒 Yangi Kids Mock arizasi: <b>${esc(d.name)}</b> · ${esc(d.grade)} · ${esc(d.subject1 || 'Matematika')} (${esc(d.level || 'Oson')}) + ${esc(d.subject2 || 'Ingliz tili')} (${esc(d.level2 || 'Oson')})${d.teacher ? ` · 👩‍🏫 ${esc(d.teacher)}` : ''} · ${esc(d.phone)} · ${esc(room)}`);
 }
@@ -862,6 +864,342 @@ async function ebImportMock(chatId: number) {
   await notifyAdmin(`📥 EvalBee (bot) · Kids Mock: ${matched} bog‘landi, ${extra} arizasiz, ${skipped.length} o‘tkazildi`);
 }
 
+// =========================================================
+// 🛠 ADMIN: Edutizim boshqaruvi (faqat bot adminlari)
+//   ➕ Lid · 🔍 O'quvchi · 💰 Kirim / 💸 Chiqim (kassa) · 📊 Hisobot · 🔄 Sinxron
+// Bot adminlari: CRM → 🤖 Telegram Bot → "Bot adminlari" (Telegram ID) yoki admin chat ID.
+// =========================================================
+async function isBotAdmin(userId?: number) {
+  if (!userId) return false;
+  const [ids, chat] = await Promise.all([cachedSetting<any[]>('botAdmins', [], 60_000), getSecret('telegram_admin_chat_id')]);
+  return (ids || []).map(x => String(x).trim()).includes(String(userId)) || String(chat || '').trim() === String(userId);
+}
+
+async function edu(action: string, body: Record<string, unknown> = {}): Promise<any> {
+  const secret = await getSecret('cron_secret');
+  const r = await fetch(`${SUPABASE_URL}/functions/v1/edutizim-sync`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json', 'x-cron-secret': secret }, body: JSON.stringify({ action, ...body })
+  });
+  return await r.json().catch(() => ({ ok: false, error: `HTTP ${r.status}` }));
+}
+
+const ADMIN_KB = { inline_keyboard: [
+  [ib('➕ Lid qo‘shish', 'ad:lead'), ib('🔍 O‘quvchi', 'ad:find')],
+  [ib('💰 Kirim', 'ad:in'), ib('💸 Chiqim', 'ad:out')],
+  [ib('📊 Hisobot', 'ad:report'), ib('🔄 Sinxron', 'ad:sync')]
+] };
+const sum = (n: number) => money(Math.round(Number(n) || 0));
+const parseAmount = (t: string) => {
+  const s = String(t || '').toLowerCase().replace(/so.?m/g, '').trim();
+  const k = /(\d+(?:[.,]\d+)?)\s*(k|ming)$/.exec(s);
+  if (k) return Math.round(Number(k[1].replace(',', '.')) * 1000);
+  const m = /(\d+(?:[.,]\d+)?)\s*(mln|m)$/.exec(s);
+  if (m) return Math.round(Number(m[1].replace(',', '.')) * 1_000_000);
+  return Number(s.replace(/\D/g, '')) || 0;
+};
+
+async function adminHome(chatId: number) {
+  await setSession(chatId, null);
+  await send(chatId, '🛠 <b>Admin · Edutizim</b>\n\nLid, o‘quvchi, kassa va hisobot — tanlang 👇', { reply_markup: ADMIN_KB });
+}
+
+// ---------- 🔍 O'quvchi qidirish ----------
+async function eduFind(q: string) {
+  const digits = q.replace(/\D/g, '');
+  let query = admin.from('crm_edu_students').select('id,full_name,phone,groups,data').limit(8);
+  if (digits.length >= 7) query = query.ilike('phone_digits', `%${digits.slice(-9)}%`);
+  else {
+    const words = q.trim().split(/\s+/).filter(w => w.length >= 2).slice(0, 3);
+    for (const w of words) query = query.ilike('full_name', `%${w.replace(/[%_]/g, '')}%`);
+  }
+  const { data } = await query;
+  return (data || []).map((s: any) => ({
+    id: s.id as string, name: s.full_name as string, phone: s.phone as string, groups: s.groups as string,
+    balance: Number(s.data?.balance) || 0, status: s.data?.status?.name || '', payDate: s.data?.paymentDate || ''
+  }));
+}
+const studentLine = (s: any, i?: number) =>
+  `${i !== undefined ? `<b>${i + 1}.</b> ` : ''}👤 <b>${esc(s.name)}</b>${s.phone ? ` · ${esc(s.phone)}` : ''}\n` +
+  `   💳 Balans: <b>${s.balance < 0 ? '🔴 ' : ''}${sum(s.balance)}</b>${s.groups ? `\n   👥 ${esc(String(s.groups).slice(0, 80))}` : ''}${s.status ? ` · ${esc(s.status)}` : ''}`;
+
+async function adminFindAnswer(chatId: number, q: string) {
+  if (q.trim().length < 3) return void send(chatId, 'Kamida 3 harf yoki telefon raqamini yozing.');
+  const list = await eduFind(q);
+  if (!list.length) return void send(chatId, '😕 Edutizim o‘quvchilari orasida topilmadi (ma’lumot har soatda yangilanadi). Boshqacha yozib ko‘ring yoki /admin.', { reply_markup: CANCEL_KB });
+  await setSession(chatId, 'ad_find', { found: list });
+  const rows = list.map((s, i) => [ib(`💰 ${i + 1}. ${s.name.slice(0, 28)} — to‘lov`, `adp:${i}`)]);
+  rows.push([ib('⬅️ Admin menyu', 'ad:home')]);
+  await send(chatId, `🔍 Topildi (${list.length}):\n\n${list.map(studentLine).join('\n\n')}\n\nYana qidirish uchun ism yoki raqam yozing.`, { reply_markup: { inline_keyboard: rows } });
+}
+
+// ---------- ➕ Lid ----------
+async function adminLeadCourse(chatId: number, s: Session) {
+  await tg(await token(), 'sendChatAction', { chat_id: chatId, action: 'typing' });
+  const meta = await edu('meta');
+  if (!meta.ok) { await setSession(chatId, null); return void send(chatId, `⚠️ Edutizim: ${esc(meta.error)}`, { reply_markup: ADMIN_KB }); }
+  const courses = (meta.courses || []).slice(0, 40).map((c: any) => ({ id: c.id, name: c.name }));
+  await setSession(chatId, 'ad_lead_course', { ...s.data, courses, defCourse: meta.defaults?.courseId || null });
+  const btns = courses.map((c: any, i: number) => ib(String(c.name).slice(0, 30), `adc:${i}`));
+  const rows = [];
+  for (let i = 0; i < btns.length; i += 2) rows.push(btns.slice(i, i + 2));
+  rows.push([ib('⏭ Kurssiz (standart)', 'adc:-')]);
+  await send(chatId, `👤 ${esc(s.data.name)} · 📱 ${esc(s.data.phone)}\n\n📚 Qaysi kursga qiziqadi?`, { reply_markup: { inline_keyboard: rows } });
+}
+
+async function adminLeadPush(chatId: number, s: Session, force = false, by = '') {
+  const courseId = s.data.courseId || undefined;
+  const r = await edu('pushLead', { students: [{ fullName: s.data.name, phone: s.data.phone }], courseId, force });
+  const res = r.results?.[0];
+  if (!r.ok || !res) { await setSession(chatId, null); return void send(chatId, `⚠️ ${esc(r.error || 'Xatolik')}`, { reply_markup: ADMIN_KB }); }
+  if (res.skipped === 'exists' && !force) {
+    await setSession(chatId, 'ad_lead_dup', s.data);
+    return void send(chatId, `ℹ️ ${esc(res.message)}\n\nBaribir yangi lid qo‘shilsinmi?`, { reply_markup: { inline_keyboard: [[ib('➕ Ha, qo‘shish', 'adl:force'), ib('❌ Yo‘q', 'ad:home')]] } });
+  }
+  await setSession(chatId, null);
+  await send(chatId, res.ok
+    ? `✅ Edutizim’ga lid qo‘shildi!\n\n👤 ${esc(s.data.name)}\n📱 ${esc(s.data.phone)}${s.data.courseName ? `\n📚 ${esc(s.data.courseName)}` : ''}`
+    : `⚠️ Lid qo‘shilmadi: ${esc(res.message)}`, { reply_markup: ADMIN_KB });
+  if (res.ok) await notifyAdmin(`➕ Bot orqali lid: <b>${esc(s.data.name)}</b> · ${esc(s.data.phone)}${s.data.courseName ? ' · ' + esc(s.data.courseName) : ''}${by ? ' · @' + esc(by) : ''}`);
+}
+
+// ---------- 📊 Hisobot / 🔄 Sinxron ----------
+async function adminReport(chatId: number) {
+  await tg(await token(), 'sendChatAction', { chat_id: chatId, action: 'typing' });
+  const tz = 5 * 3600_000;
+  const dayStart = new Date(Math.floor((Date.now() + tz) / 86400_000) * 86400_000 - tz).toISOString();
+  const weekStart = new Date(Date.now() - 7 * 86400_000).toISOString();
+  const balances: number[] = [];
+  for (let from = 0; from < 20000; from += 1000) {
+    const { data } = await admin.from('crm_edu_students').select('balance:data->balance').range(from, from + 999);
+    (data || []).forEach((r: any) => balances.push(Number(r.balance) || 0));
+    if (!data || data.length < 1000) break;
+  }
+  const [groups, leadsDay, leadsWeek, lastSync, kassaOps, meta] = await Promise.all([
+    admin.from('crm_edu_groups').select('id', { count: 'exact', head: true }),
+    admin.from('crm_edu_pushes').select('id', { count: 'exact', head: true }).eq('ok', true).gte('created_at', dayStart),
+    admin.from('crm_edu_pushes').select('id', { count: 'exact', head: true }).eq('ok', true).gte('created_at', weekStart),
+    admin.from('crm_sync_log').select('created_at,ok,message').eq('source', 'edutizim').order('created_at', { ascending: false }).limit(1).maybeSingle(),
+    admin.from('crm_sync_log').select('ok').eq('source', 'edutizim-kassa').eq('ok', true).gte('created_at', dayStart),
+    edu('kassaMeta')
+  ]);
+  const debt = balances.filter(b => b < 0);
+  const debtSum = debt.reduce((a, b) => a + b, 0);
+  const t = (iso?: string) => iso ? new Date(iso).toLocaleString('uz-UZ', { timeZone: 'Asia/Tashkent', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—';
+  const cbs = meta.ok ? (meta.cashboxes || []).map((c: any) => `🏦 <b>${esc(c.name)}</b>\n   💵 Naqd: ${sum(c.cash)}\n   💳 Karta: ${sum(c.card)}\n   🖲 Terminal: ${sum(c.terminal)}`).join('\n') : `⚠️ Kassa: ${esc(meta.error || '')}`;
+  await send(chatId,
+    `📊 <b>Edutizim hisoboti</b>${meta.branch ? ` · ${esc(meta.branch.name)}` : ''}\n\n` +
+    `👥 O‘quvchilar: <b>${balances.length}</b> · guruhlar: <b>${groups.count ?? 0}</b>\n` +
+    `🔴 Qarzdorlar: <b>${debt.length}</b> · jami qarz: <b>${sum(-debtSum)}</b>\n` +
+    `➕ CRM/bot lidlari: bugun <b>${leadsDay.count ?? 0}</b> · 7 kun <b>${leadsWeek.count ?? 0}</b>\n` +
+    `💰 Bot orqali kassa amallari bugun: <b>${(kassaOps.data || []).length}</b>\n\n${cbs}\n\n` +
+    `🔄 Oxirgi sinxron: ${t(lastSync.data?.created_at)} ${lastSync.data ? (lastSync.data.ok ? '✅' : '⚠️') : ''}`,
+    { reply_markup: ADMIN_KB });
+}
+
+async function adminSync(chatId: number) {
+  await send(chatId, '⏳ Edutizim bilan sinxronlanmoqda… (30–60 soniya)');
+  const r = await edu('sync');
+  await send(chatId, r.ok ? `✅ Sinxron tugadi: <b>${r.students}</b> o‘quvchi, <b>${r.groups}</b> guruh (${Math.round((r.ms || 0) / 1000)} s)` : `⚠️ Sinxron xatosi: ${esc(r.error)}`, { reply_markup: ADMIN_KB });
+}
+
+// ---------- 💰 Kassa: kirim / chiqim ----------
+async function kassaStart(chatId: number, kind: 'in' | 'out', student: any = null) {
+  await tg(await token(), 'sendChatAction', { chat_id: chatId, action: 'typing' });
+  const meta = await edu('kassaMeta');
+  if (!meta.ok) return void send(chatId, `⚠️ Edutizim kassasi: ${esc(meta.error)}`, { reply_markup: ADMIN_KB });
+  const types = (meta.types || []).filter((t: any) => t.type === (kind === 'in' ? 'payIn' : 'payOut') && t.subtype !== 'employee' && (!student || t.subtype === 'student'));
+  const cashboxes = (meta.cashboxes || []).filter((c: any) => !c.frozen);
+  if (!types.length || !cashboxes.length) return void send(chatId, '⚠️ Edutizim’da mos kassa yoki kirim/chiqim turi topilmadi.', { reply_markup: ADMIN_KB });
+  const data = { kind, types, methods: meta.methods || [], cashboxes, student };
+  if (student && types.length) {
+    const t = types.find((x: any) => /student to.?ladi/i.test(x.name)) || types[0];
+    await setSession(chatId, 'ak_amount', { ...data, type: t });
+    return void send(chatId, `💰 <b>Kirim</b> · ${esc(t.name)}\n${studentLine(student)}\n\n💵 Summani yozing (masalan: <code>350000</code> yoki <code>350k</code>):`, { reply_markup: CANCEL_KB });
+  }
+  await setSession(chatId, 'ak_type', data);
+  const btns = types.map((t: any, i: number) => ib(String(t.name).slice(0, 32), `akt:${i}`));
+  const rows = [];
+  for (let i = 0; i < btns.length; i += 2) rows.push(btns.slice(i, i + 2));
+  rows.push([ib('⬅️ Admin menyu', 'ad:home')]);
+  await send(chatId, kind === 'in' ? '💰 <b>Kassaga kirim</b> — turini tanlang:' : '💸 <b>Kassadan chiqim</b> — turini tanlang:', { reply_markup: { inline_keyboard: rows } });
+}
+
+async function kassaAskMethod(chatId: number, s: Session) {
+  const btns = (s.data.methods || []).map((m: any, i: number) => ib(String(m.name).replace(/\s+/g, ' ').trim().slice(0, 30), `akm:${i}`));
+  const rows = [];
+  for (let i = 0; i < btns.length; i += 2) rows.push(btns.slice(i, i + 2));
+  await send(chatId, `💵 Summa: <b>${sum(s.data.amount)}</b>\n\n💳 To‘lov usuli:`, { reply_markup: { inline_keyboard: rows } });
+}
+
+async function kassaAskComment(chatId: number, s: Session) {
+  await setSession(chatId, 'ak_comment', s.data);
+  await send(chatId, '📝 Izoh yozing (masalan: “Noyabr to‘lovi” yoki “Kanstovar: qog‘oz”) yoki o‘tkazib yuboring:', { reply_markup: SKIP_KB });
+}
+
+function kassaSummary(d: any) {
+  return `${d.kind === 'in' ? '💰 <b>KIRIM</b>' : '💸 <b>CHIQIM</b>'} · ${esc(d.type?.name)}\n` +
+    (d.student ? `👤 ${esc(d.student.name)}${d.student.phone ? ' · ' + esc(d.student.phone) : ''}\n` : '') +
+    `💵 <b>${sum(d.amount)}</b> · 💳 ${esc(String(d.method?.name || '').replace(/\s+/g, ' ').trim())}\n` +
+    `🏦 ${esc(d.cashbox?.name)}${d.comment ? `\n📝 ${esc(d.comment)}` : ''}`;
+}
+
+async function kassaConfirm(chatId: number, s: Session) {
+  await setSession(chatId, 'ak_confirm', s.data);
+  await send(chatId, `${kassaSummary(s.data)}\n\nTasdiqlaysizmi? Amal Edutizim kassasiga darhol yoziladi.`, {
+    reply_markup: { inline_keyboard: [[ib('✅ Tasdiqlash', 'akok'), ib('❌ Bekor', 'akno')]] }
+  });
+}
+
+async function kassaExecute(chatId: number, s: Session, by: string) {
+  const d = s.data;
+  await setSession(chatId, 'ak_busy', {});
+  const r = await edu('kassaPay', {
+    kind: d.kind, cashboxId: d.cashbox?.id, paymentTransactionId: d.type?.id, paymentMethodId: d.method?.id,
+    amount: d.amount, studentId: d.student?.id || undefined, comment: `[Bot${by ? ' @' + by : ''}] ${d.comment || d.type?.name || ''}`.trim(), by
+  });
+  await setSession(chatId, null);
+  if (!r.ok) return void send(chatId, `⚠️ Kassaga yozilmadi: ${esc(r.error)}\n\n${kassaSummary(d)}`, { reply_markup: ADMIN_KB });
+  const kb: any = { inline_keyboard: [[ib(d.kind === 'in' ? '💰 Yana kirim' : '💸 Yana chiqim', d.kind === 'in' ? 'ad:in' : 'ad:out'), ib('⬅️ Admin', 'ad:home')]] };
+  if (r.id) kb.inline_keyboard.unshift([ib('↩️ Bu amalni bekor qilish', `akx:${r.id}`)]);
+  await send(chatId, `✅ <b>Kassaga yozildi</b>\n\n${kassaSummary(d)}`, { reply_markup: kb });
+  await notifyAdmin(`${d.kind === 'in' ? '💰 Kirim' : '💸 Chiqim'} (bot${by ? ' @' + esc(by) : ''}): ${esc(d.type?.name)} · <b>${sum(d.amount)}</b>${d.student ? ' · ' + esc(d.student.name) : ''}${d.comment ? ' · ' + esc(d.comment) : ''}`);
+}
+
+// Admin matnli qadamlari (onMessage'dan)
+async function adminText(chatId: number, s: Session, text: string, m: any): Promise<boolean> {
+  if (!s.step || !/^(ad_|ak_)/.test(s.step)) return false;
+  if (!(await isBotAdmin(m.from?.id))) { await setSession(chatId, null); await send(chatId, '⛔ Ruxsat yo‘q.', { reply_markup: MENU }); return true; }
+  switch (s.step) {
+    case 'ad_lead_name':
+      if (text.length < 3) { await send(chatId, 'Familiya va ismni to‘liq yozing.'); return true; }
+      await setSession(chatId, 'ad_lead_phone', { name: text.replace(/\s+/g, ' ').slice(0, 80) });
+      await send(chatId, '📱 Telefon raqami (masalan: +998 90 123 45 67):', { reply_markup: CANCEL_KB });
+      return true;
+    case 'ad_lead_phone': {
+      const ph = normPhone(m.contact?.phone_number || text);
+      if (!ph) { await send(chatId, 'Raqamni to‘g‘ri yozing: +998 90 123 45 67'); return true; }
+      await adminLeadCourse(chatId, { step: s.step, data: { ...s.data, phone: ph } });
+      return true;
+    }
+    case 'ad_find':
+      await adminFindAnswer(chatId, text);
+      return true;
+    case 'ak_student': {
+      if (text.trim().length < 3) { await send(chatId, 'Kamida 3 harf yoki telefon raqamini yozing.'); return true; }
+      const list = await eduFind(text);
+      if (!list.length) { await send(chatId, '😕 Topilmadi. Boshqacha yozib ko‘ring.'); return true; }
+      await setSession(chatId, 'ak_student', { ...s.data, found: list });
+      await send(chatId, list.map(studentLine).join('\n\n'), { reply_markup: { inline_keyboard: list.map((x, i) => [ib(`${i + 1}. ${x.name.slice(0, 34)}`, `aks:${i}`)]) } });
+      return true;
+    }
+    case 'ak_amount': {
+      const amount = parseAmount(text);
+      const t = s.data.type || {};
+      if (!amount || amount < 100) { await send(chatId, 'Summani raqamda yozing, masalan: 350000 yoki 350k'); return true; }
+      if (t.min && amount < t.min) { await send(chatId, `“${esc(t.name)}” uchun eng kam summa: ${sum(t.min)}`); return true; }
+      if (t.max && amount > t.max) { await send(chatId, `“${esc(t.name)}” uchun eng ko‘p summa: ${sum(t.max)}`); return true; }
+      const data = { ...s.data, amount };
+      await setSession(chatId, 'ak_method', data);
+      await send(chatId, '✅', { reply_markup: { remove_keyboard: true } });
+      await kassaAskMethod(chatId, { step: 'ak_method', data });
+      return true;
+    }
+    case 'ak_comment': {
+      const comment = text === BTN_SKIP ? '' : text.slice(0, 200);
+      await send(chatId, '✅', { reply_markup: { remove_keyboard: true } });
+      await kassaConfirm(chatId, { step: s.step, data: { ...s.data, comment } });
+      return true;
+    }
+    default:
+      return false;
+  }
+}
+
+// Admin tugmalari (routeCallback'dan)
+async function adminCallback(chatId: number, q: any, data: string): Promise<boolean> {
+  if (!/^(ad:|adc:|adl:|adp:|akt:|aks:|akm:|akb:|akx:|akok$|akno$)/.test(data)) return false;
+  if (!(await isBotAdmin(q.from?.id))) { await send(chatId, '⛔ Bu bo‘lim faqat bot adminlari uchun.', { reply_markup: MENU }); return true; }
+  const by = q.from?.username || '';
+  if (data.startsWith('ad:')) {
+    const a = data.slice(3);
+    if (a === 'home') { await adminHome(chatId); return true; }
+    if (a === 'lead') { await setSession(chatId, 'ad_lead_name', {}); await send(chatId, '➕ <b>Yangi lid</b>\n\n👤 Familiya va ismini yozing:', { reply_markup: CANCEL_KB }); return true; }
+    if (a === 'find') { await setSession(chatId, 'ad_find', {}); await send(chatId, '🔍 O‘quvchining ismi yoki telefon raqamini yozing:', { reply_markup: CANCEL_KB }); return true; }
+    if (a === 'report') { await adminReport(chatId); return true; }
+    if (a === 'sync') { await adminSync(chatId); return true; }
+    if (a === 'in' || a === 'out') { await kassaStart(chatId, a); return true; }
+    return true;
+  }
+  const s = await getSession(chatId);
+  if (data.startsWith('adc:') && s.step === 'ad_lead_course') {
+    const c = data === 'adc:-' ? null : (s.data.courses || [])[Number(data.slice(4))];
+    const d = { ...s.data, courseId: c?.id || s.data.defCourse || null, courseName: c?.name || '' };
+    await setSession(chatId, 'ad_lead_push', d);
+    await adminLeadPush(chatId, { step: 'ad_lead_push', data: d }, false, by);
+    return true;
+  }
+  if (data === 'adl:force' && s.step === 'ad_lead_dup') { await adminLeadPush(chatId, s, true, by); return true; }
+  if (data.startsWith('adp:')) {
+    const st = (s.data.found || [])[Number(data.slice(4))];
+    if (!st) { await send(chatId, 'Qaytadan qidiring.', { reply_markup: ADMIN_KB }); return true; }
+    await kassaStart(chatId, 'in', st);
+    return true;
+  }
+  if (data.startsWith('akt:') && s.step === 'ak_type') {
+    const t = (s.data.types || [])[Number(data.slice(4))];
+    if (!t) return true;
+    if (t.subtype === 'student' && !s.data.student) {
+      await setSession(chatId, 'ak_student', { ...s.data, type: t });
+      await send(chatId, `${esc(t.name)}\n\n👤 O‘quvchining ismi yoki telefon raqamini yozing:`, { reply_markup: CANCEL_KB });
+      return true;
+    }
+    await setSession(chatId, 'ak_amount', { ...s.data, type: t });
+    await send(chatId, `${s.data.kind === 'in' ? '💰' : '💸'} <b>${esc(t.name)}</b>\n\n💵 Summani yozing (masalan: <code>150000</code> yoki <code>150k</code>):`, { reply_markup: CANCEL_KB });
+    return true;
+  }
+  if (data.startsWith('aks:') && s.step === 'ak_student') {
+    const st = (s.data.found || [])[Number(data.slice(4))];
+    if (!st) return true;
+    const { found: _f, ...rest } = s.data;
+    await setSession(chatId, 'ak_amount', { ...rest, student: st });
+    await send(chatId, `${studentLine(st)}\n\n💵 Summani yozing:`, { reply_markup: CANCEL_KB });
+    return true;
+  }
+  if (data.startsWith('akm:') && s.step === 'ak_method') {
+    const method = (s.data.methods || [])[Number(data.slice(4))];
+    if (!method) return true;
+    const d: any = { ...s.data, method };
+    if ((d.cashboxes || []).length > 1) {
+      await setSession(chatId, 'ak_cashbox', d);
+      await send(chatId, '🏦 Qaysi kassa?', { reply_markup: { inline_keyboard: d.cashboxes.map((c: any, i: number) => [ib(`🏦 ${String(c.name).slice(0, 34)}${c.main ? ' ⭐' : ''}`, `akb:${i}`)]) } });
+      return true;
+    }
+    await kassaAskComment(chatId, { step: 'ak_method', data: { ...d, cashbox: d.cashboxes[0] } });
+    return true;
+  }
+  if (data.startsWith('akb:') && s.step === 'ak_cashbox') {
+    const cashbox = (s.data.cashboxes || [])[Number(data.slice(4))];
+    if (!cashbox) return true;
+    await kassaAskComment(chatId, { step: 'ak_cashbox', data: { ...s.data, cashbox } });
+    return true;
+  }
+  if (data === 'akok') {
+    if (s.step !== 'ak_confirm') { await send(chatId, s.step === 'ak_busy' ? '⏳ Yozilmoqda…' : 'Amal eskirgan. Qaytadan boshlang.', { reply_markup: ADMIN_KB }); return true; }
+    await kassaExecute(chatId, s, by);
+    return true;
+  }
+  if (data === 'akno') { await setSession(chatId, null); await send(chatId, '❌ Kassa amali bekor qilindi.', { reply_markup: ADMIN_KB }); return true; }
+  if (data.startsWith('akx:')) {
+    const r = await edu('kassaCancel', { transactionId: data.slice(4), by });
+    if (q.message?.message_id && r.ok) await tg(await token(), 'editMessageReplyMarkup', { chat_id: chatId, message_id: q.message.message_id, reply_markup: ADMIN_KB }).catch(() => {});
+    await send(chatId, r.ok ? '↩️ Kassa amali bekor qilindi (Edutizim’da “bekor qilingan” bo‘lib turadi).' : `⚠️ Bekor qilib bo‘lmadi: ${esc(r.error)}`, { reply_markup: ADMIN_KB });
+    if (r.ok) await notifyAdmin(`↩️ Kassa amali bekor qilindi (bot${by ? ' @' + esc(by) : ''})`);
+    return true;
+  }
+  await send(chatId, 'Amal eskirgan. /admin', { reply_markup: MENU });
+  return true;
+}
+
 // ---------------------------------------------------------
 // 🏠 Bosh menyu va bo'limlar (inline tugmalar bilan)
 // ---------------------------------------------------------
@@ -869,10 +1207,11 @@ async function miniAppUrl() {
   return await cachedSetting<string>('miniAppUrl', '', 300_000);
 }
 
-async function sendHome(chatId: number, firstName = '') {
-  const [, app] = await Promise.all([
+async function sendHome(chatId: number, firstName = '', userId?: number) {
+  const [, app, isAdminUser] = await Promise.all([
     send(chatId, `👋 Assalomu alaykum${firstName ? ', <b>' + esc(firstName) + '</b>' : ''}!`, { reply_markup: MENU }),
-    miniAppUrl()
+    miniAppUrl(),
+    isBotAdmin(userId)
   ]);
   const rows: any[] = [
     [ib('🧒 Kids Mock’ga yozilish', 'go:reg'), ib('📸 Natijani tekshirish', 'go:check')],
@@ -880,6 +1219,7 @@ async function sendHome(chatId: number, firstName = '') {
     [ib('🔍 Farzandim natijasi', 'go:result'), ib('🏅 Yutuqli karta', 'go:card')]
   ];
   if (app) rows.push([{ text: '📱 Ilovani ochish', web_app: { url: app } }]);
+  if (isAdminUser) rows.push([ib('🛠 Admin · Edutizim', 'ad:home')]);
   const caption = '<b>Registan LC</b> — you belong here! 🧡\n\n' +
     '🧒 <b>Kids Mock</b> — imtihonga ro‘yxatdan o‘tish\n' +
     '📸 <b>Natija</b> — varaq rasmini yuborib ballni bilish\n' +
@@ -947,7 +1287,7 @@ async function onMessage(m: any) {
   }
   if (text === '/start' || text === '/menu' || text === BTN_HOME) {
     await setSession(chatId, null);
-    return sendHome(chatId, m.from?.first_name || '');
+    return sendHome(chatId, m.from?.first_name || '', m.from?.id);
   }
   if (text === BTN_CANCEL || text === '/cancel') {
     await Promise.all([setSession(chatId, null), send(chatId, '❌ Bekor qilindi. Kerakli bo‘limni tanlang 👇', { reply_markup: MENU })]);
@@ -969,10 +1309,15 @@ async function onMessage(m: any) {
   if (text === '/hisobot') return answerReport(chatId);
   if (text === M_PROCTOR || text === BTN_PROCTOR || text === '/nazorat') return startProctor(chatId, m.from?.id);
   if (text === M_HELP || text === BTN_HELP || text === '/yordam' || text === '/help') return sendHelp(chatId);
+  if (text === '/admin') {
+    if (!(await isBotAdmin(m.from?.id))) return void send(chatId, `⛔ Admin bo‘limi yopiq. Telegram ID’ingiz: <code>${m.from?.id}</code> — uni CRM → 🤖 Telegram Bot → “Bot adminlari”ga qo‘shing.`, { reply_markup: MENU });
+    return adminHome(chatId);
+  }
 
   if (isSheetFile(m.document)) return handleEvalbeeFile(chatId, m);
 
   const s = await getSession(chatId);
+  if (await adminText(chatId, s, text, m)) return;
   switch (s.step) {
     case 'pr_link':
       return linkProctor(chatId, m);
@@ -1088,12 +1433,13 @@ async function routeCallback(q: any) {
         case 'contact': return await answerContact(chatId);
         case 'help': return await sendHelp(chatId);
         case 'proctor': return await startProctor(chatId, q.from?.id);
-        default: return await sendHome(chatId, q.from?.first_name || '');
+        default: return await sendHome(chatId, q.from?.first_name || '', q.from?.id);
       }
     } finally {
       await reset;
     }
   }
+  if (await adminCallback(chatId, q, data)) return;
   if (data.startsWith('t:')) return pickTest(chatId, data.slice(2));
   if (data.startsWith('k:')) return showKey(chatId, data.slice(2));
   if (data.startsWith('cs:')) return pickCheckSchool(chatId, data.slice(3));
@@ -1131,6 +1477,20 @@ async function routeCallback(q: any) {
     return askTeacher(chatId);
   }
   if (data.startsWith('km:')) return pickMockReg(chatId, Number(data.slice(3)));
+  // ⏰ Eslatmadagi "Boraman / Bora olmayman"
+  if (data.startsWith('att:')) {
+    const [, yn, idRaw] = data.split(':');
+    const confirm = yn === 'y' ? 'Boraman' : 'Bora olmayman';
+    const { data: reg } = await admin.from('crm_mock_registrations').update({ confirm, confirmed_at: new Date().toISOString() })
+      .eq('id', Number(idRaw)).eq('chat_id', chatId).select('id,full_name,room,session').maybeSingle();
+    if (!reg) return void send(chatId, 'Ariza topilmadi.', { reply_markup: MENU });
+    if (q.message?.message_id) await tg(await token(), 'editMessageReplyMarkup', { chat_id: chatId, message_id: q.message.message_id, reply_markup: { inline_keyboard: [] } }).catch(() => {});
+    await send(chatId, yn === 'y'
+      ? `✅ Rahmat! <b>${esc(reg.full_name)}</b> imtihonga keladi deb belgilandi.\n🚪 Xona: <b>${esc(reg.room)}</b> · 🔖 KM-${reg.id}`
+      : `Tushunarli, <b>${esc(reg.full_name)}</b> kelmasligi belgilandi. Fikringiz o‘zgarsa, administratorga yozing: /aloqa`, { reply_markup: MENU });
+    if (yn !== 'y') await notifyAdmin(`❌ Kids Mock'ga kelmaydi: <b>${esc(reg.full_name)}</b> · KM-${reg.id} · ${esc(reg.session)} · ${esc(reg.room)}`);
+    return;
+  }
   // EvalBee
   if (data.startsWith('eb:') || data.startsWith('ebs:') || data.startsWith('ebc:')) {
     if (data === 'eb:cancel') { await setSession(chatId, null); return void send(chatId, '❌ Import bekor qilindi.', { reply_markup: MENU }); }

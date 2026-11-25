@@ -854,7 +854,7 @@ function renderRegsTab() {
                 <td class="font-mono">${esc(r.phone)}</td>
                 <td class="text-[11px]">${esc(r.session)}</td>
                 <td>${canWrite() ? `<select onchange="crmRegUpdate(${r.id},{room:this.value})" class="${input} py-1">${[...rooms.map(x => x.name), 'Navbatda'].map(n => `<option ${n === r.room ? 'selected' : ''}>${esc(n)}</option>`).join('')}</select>` : esc(r.room)}</td>
-                <td>${canWrite() ? `<select onchange="crmRegUpdate(${r.id},{status:this.value})" class="${input} py-1">${REG_STATUSES.map(s => `<option ${s === r.status ? 'selected' : ''}>${s}</option>`).join('')}</select>` : esc(r.status)}</td>
+                <td>${canWrite() ? `<select onchange="crmRegUpdate(${r.id},{status:this.value})" class="${input} py-1">${REG_STATUSES.map(s => `<option ${s === r.status ? 'selected' : ''}>${s}</option>`).join('')}</select>` : esc(r.status)}${r.confirm ? `<div class="text-[10px] font-black ${r.confirm === 'Boraman' ? 'text-emerald-700' : 'text-rose-600'}">${r.confirm === 'Boraman' ? '✅ Boraman' : '❌ Bora olmayman'}</div>` : ''}</td>
                 <td class="text-slate-500 whitespace-nowrap">${fmtDate(r.created_at)}</td>
                 <td class="whitespace-nowrap">${canWrite() ? `<button onclick="crmRegToMock(${r.id})" class="px-2.5 py-1 rounded-lg bg-slate-900 text-white font-bold" title="Kids Mock natijalar ro‘yxatiga qo‘shish">➕ Mock</button>` : ''}</td>
               </tr>`).join('') || '<tr><td colspan="11" class="py-6 text-center text-slate-400 font-bold">Hali ariza yo‘q. Ota-onalar botdagi “🧒 Kids Mock ro‘yxatdan o‘tish” tugmasi orqali yoziladi.</td></tr>'}
@@ -867,6 +867,15 @@ function renderRegsTab() {
           <textarea id="reg-sessions" rows="3" ${isAdmin() ? '' : 'disabled'} class="${input} w-full mt-1">${esc(mockSessions.join('\n'))}</textarea></label>
         <label class="text-xs font-bold block mt-2">Xonalar va sig‘imi (masalan: 1-xona:30)
           <textarea id="reg-rooms" rows="4" ${isAdmin() ? '' : 'disabled'} class="${input} w-full mt-1 font-mono">${esc(rooms.map(r => `${r.name}:${r.capacity}`).join('\n'))}</textarea></label>
+        <div class="text-xs font-black mt-3">⏰ Imtihon sanasi va vaqti</div>
+        <p class="text-[10px] text-slate-500">Bot ota-onalarga 1 kun va 2 soat oldin eslatma yuboradi, “Boraman / Bora olmayman” tugmalari bilan.</p>
+        ${mockSessions.map((ss, i) => { const sc = (state.mockSchedule || {})[ss] || {}; return `
+          <div class="mt-2 p-2 rounded-xl bg-slate-50 border border-slate-200" data-sched="${i}">
+            <div class="text-[11px] font-black truncate">${esc(ss)}</div>
+            <div class="flex gap-1 mt-1"><input type="date" data-f="date" value="${esc(sc.date || '')}" ${isAdmin() ? '' : 'disabled'} class="${input} py-1 flex-1 min-w-0"><input type="time" data-f="time" value="${esc(sc.time || '09:00')}" ${isAdmin() ? '' : 'disabled'} class="${input} py-1 w-24"></div>
+            <input data-f="place" value="${esc(sc.place || '')}" placeholder="Manzil (ixtiyoriy)" ${isAdmin() ? '' : 'disabled'} class="${input} py-1 w-full mt-1">
+            ${canWrite() && sc.date ? `<button onclick="crmRemindNow(${i})" class="mt-1 w-full px-2 py-1 rounded-lg bg-sky-600 text-white text-[11px] font-bold">⏰ Hozir eslatma yuborish</button>` : ''}
+          </div>`; }).join('')}
         ${isAdmin() ? `<button onclick="crmSaveRegSettings()" class="${btn('[#F2642A]')} mt-2 w-full">💾 Saqlash</button>` : '<div class="text-[11px] text-slate-400 mt-2">Faqat admin o‘zgartiradi.</div>'}
         <p class="text-[11px] text-slate-500 mt-3">Bot ariza kelganda birinchi bo‘sh xonani avtomatik beradi. Xonalar to‘lsa — “Navbatda”.</p>
       `, 'h-fit')}
@@ -893,11 +902,28 @@ window.crmSaveRegSettings = () => {
     const [name, cap] = s.split(':');
     return { name: name.trim(), capacity: Number(cap) || 30 };
   });
+  const sched = {};
+  const sess = state.mockSessions;
+  document.querySelectorAll('[data-sched]').forEach(el => {
+    const name = (state.mockSessions || [])[Number(el.dataset.sched)];
+    const v = f => el.querySelector(`[data-f="${f}"]`).value.trim();
+    if (name && v('date')) sched[name] = { date: v('date'), time: v('time') || '09:00', place: v('place') };
+  });
+  sess.forEach(n => { if (!sched[n] && (state.mockSchedule || {})[n]) sched[n] = state.mockSchedule[n]; });
+  state.mockSchedule = sched;
   saveState();
   showToast('Bot sozlamalari saqlandi');
+  renderRegsTab();
+};
+window.crmRemindNow = async i => {
+  const session = (state.mockSessions || [])[i];
+  if (!confirm(`“${session}” ishtirokchilariga hozir eslatma yuborilsinmi?`)) return;
+  const r = await invoke('bot-jobs', { action: 'remind', session });
+  if (!r.ok) return showToast(r.error || 'Xato', '⚠️');
+  showToast(`Eslatma yuborildi: ${r.sent} ta${r.failed ? ` · ⚠️ ${r.failed}` : ''}`, '⏰');
 };
 window.crmExportRegs = () => {
-  const rows = crm().registrations.map(r => ({ 'Ariza': `KM-${r.id}`, 'F.I.Sh.': r.full_name, Sinf: r.grade, '1-fan': r.subject1 || '', Daraja: r.level || '', '2-fan': r.subject2 || 'Ingliz tili', '2-fan darajasi': r.level2 || '', 'O‘qituvchi': r.teacher || '', Telefon: r.phone, Sessiya: r.session, Xona: r.room, Holat: r.status, Telegram: r.tg_username ? '@' + r.tg_username : '', Vaqt: fmtDate(r.created_at) }));
+  const rows = crm().registrations.map(r => ({ 'Ariza': `KM-${r.id}`, 'F.I.Sh.': r.full_name, Sinf: r.grade, '1-fan': r.subject1 || '', Daraja: r.level || '', '2-fan': r.subject2 || 'Ingliz tili', '2-fan darajasi': r.level2 || '', 'O‘qituvchi': r.teacher || '', Telefon: r.phone, Sessiya: r.session, Xona: r.room, Holat: r.status, Tasdiq: r.confirm || '', Telegram: r.tg_username ? '@' + r.tg_username : '', Vaqt: fmtDate(r.created_at) }));
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), 'Kids Mock arizalar');
   XLSX.writeFile(wb, 'KidsMock_arizalar.xlsx');
@@ -1254,6 +1280,33 @@ async function renderTelegramTab() {
       </div>
       <p class="text-[11px] text-slate-400 mt-2">Token serverda saqlanadi va brauzerga qaytmaydi. Chat ID ni bilish uchun botga yoki guruhga <code>/id</code> yozing.</p>` : ''}
     `)}
+    ${isAdmin() ? card(`
+      <div class="flex items-center justify-between gap-2 mb-2"><h3 class="text-lg font-black text-slate-900">📣 Ommaviy xabar</h3><span id="bc-count" class="text-xs font-black text-sky-700"></span></div>
+      <div class="grid sm:grid-cols-2 gap-2 text-xs">
+        <label class="font-bold">Kimga
+          <select id="bc-aud" onchange="crmBcAud()" class="${input} w-full mt-1">
+            <option value="all">👥 Botning barcha foydalanuvchilari</option>
+            <option value="mock">🧒 Kids Mock ishtirokchilari</option>
+            <option value="proctors">👮 Nazoratchi va ustozlar</option>
+          </select></label>
+        <div id="bc-mock" class="hidden grid grid-cols-3 gap-1">
+          <label class="font-bold col-span-3 sm:col-span-1">Sessiya<select id="bc-session" onchange="crmBcCount()" class="${input} w-full mt-1 py-1"><option value="">Hammasi</option>${(state.mockSessions || []).map(x => `<option>${esc(x)}</option>`).join('')}</select></label>
+          <label class="font-bold">Xona<select id="bc-room" onchange="crmBcCount()" class="${input} w-full mt-1 py-1"><option value="">Hammasi</option>${(state.mockRooms || []).map(x => `<option>${esc(x.name)}</option>`).join('')}<option>Navbatda</option></select></label>
+          <label class="font-bold">Tasdiq<select id="bc-confirm" onchange="crmBcCount()" class="${input} w-full mt-1 py-1"><option value="">Hammasi</option><option>Boraman</option><option>Bora olmayman</option><option value="none">Javob bermagan</option></select></label>
+        </div>
+      </div>
+      <textarea id="bc-text" rows="5" maxlength="4000" placeholder="Hurmatli ota-onalar! ..." class="${input} w-full mt-2 text-sm"></textarea>
+      <div class="grid sm:grid-cols-3 gap-2 mt-2 text-xs">
+        <label class="font-bold">🖼 Rasm (ixtiyoriy)<input id="bc-photo" type="file" accept="image/jpeg,image/png,image/webp" class="block w-full mt-1 text-[11px]"></label>
+        <label class="font-bold">Tugma matni<input id="bc-btn-text" placeholder="Batafsil" class="${input} w-full mt-1"></label>
+        <label class="font-bold">Tugma havolasi<input id="bc-btn-url" placeholder="https://..." class="${input} w-full mt-1"></label>
+      </div>
+      <div class="flex flex-wrap gap-2 mt-3">
+        <button onclick="crmBroadcast(true)" class="${btn('slate-500')}">🧪 Avval admin chatga sinov</button>
+        <button onclick="crmBroadcast(false)" class="${btn('[#F2642A]')}">📣 Yuborish</button>
+      </div>
+      <div id="bc-history" class="mt-4 space-y-1.5"></div>
+    `) : ''}
     ${card(`
       <div class="text-sm font-black text-slate-800 mb-2">⌨️ Bot buyruqlari</div>
       <div class="grid sm:grid-cols-2 gap-1.5 text-xs">
@@ -1272,6 +1325,12 @@ async function renderTelegramTab() {
         ].map(([c, d]) => `<div class="p-2 rounded-xl bg-slate-50 border border-slate-200"><code class="font-black text-sky-700">${c}</code> — ${d}</div>`).join('')}
       </div>
     `)}
+    ${isAdmin() ? card(`
+      <div class="text-sm font-black text-slate-800 mb-1">🛠 Bot adminlari (Edutizim boshqaruvi)</div>
+      <p class="text-[11px] text-slate-500 mb-2">Bu Telegram ID egalari botda <code>/admin</code> orqali Edutizim’ga lid qo‘shadi, o‘quvchini qidiradi, <b>kassaga kirim/chiqim</b> qiladi, hisobot va sinxronni ishga tushiradi. ID’ni bilish uchun botga <code>/admin</code> yoki <code>/id</code> yozing. Har qatorda bitta ID (izoh qo‘shish mumkin: <code>123456789 Maqsud</code>).</p>
+      <textarea id="tg-bot-admins" rows="3" class="${input} w-full font-mono" placeholder="123456789 Maqsud">${esc((state.botAdmins || []).join('\n'))}</textarea>
+      <button onclick="crmSaveBotAdmins()" class="${btn('sky-600')} mt-2">💾 Saqlash</button>
+    `) : ''}
     ${card(`
       <div class="text-sm font-black text-slate-800 mb-1">📞 /aloqa matni</div>
       <p class="text-[11px] text-slate-500 mb-2">Ota-onalar /aloqa yoki “📞 Aloqa” tugmasini bosganda shu matn yuboriladi.</p>
@@ -1294,9 +1353,74 @@ async function renderTelegramTab() {
     `) : ''}
   </div>`;
   crmTgStatus();
+  if (isAdmin()) { crmBcCount(); crmBcHistory(); }
 }
 window.renderTelegramTab = renderTelegramTab;
 
+// ---------- 📣 Ommaviy xabar ----------
+const bcFilter = () => ({
+  audience: document.getElementById('bc-aud').value,
+  filter: { session: document.getElementById('bc-session').value, room: document.getElementById('bc-room').value, confirm: document.getElementById('bc-confirm').value }
+});
+window.crmBcAud = () => { document.getElementById('bc-mock').classList.toggle('hidden', document.getElementById('bc-aud').value !== 'mock'); crmBcCount(); };
+window.crmBcCount = async () => {
+  const el = document.getElementById('bc-count');
+  if (!el) return;
+  el.textContent = '…';
+  const r = await invoke('bot-jobs', { action: 'count', ...bcFilter() });
+  el.textContent = r.ok ? `👥 ${r.count} ta qabul qiluvchi` : '';
+};
+const BC_AUD = { all: '👥 Barchaga', mock: '🧒 Kids Mock', proctors: '👮 Nazoratchilar', test: '🧪 Sinov' };
+let bcTimer = null;
+window.crmBcHistory = async () => {
+  const box = document.getElementById('bc-history');
+  if (!box) return;
+  const { data } = await sb().from('crm_broadcasts').select('id,created_at,audience,text,status,total,sent,failed,error').order('id', { ascending: false }).limit(8);
+  box.innerHTML = (data || []).length ? '<div class="text-[11px] font-black text-slate-500">Oxirgi xabarlar</div>' + data.map(b => {
+    const pct = b.total ? Math.round(((b.sent + b.failed) / b.total) * 100) : 0;
+    const st = { queued: '⏳ navbatda', sending: `📤 ${pct}%`, done: '✅ yuborildi', cancelled: '⛔ to‘xtatildi', error: '⚠️ ' + (b.error || 'xato') }[b.status] || b.status;
+    return `<div class="p-2 rounded-xl bg-slate-50 border border-slate-200 text-[11px]">
+      <div class="flex justify-between gap-2"><b>#${b.id} · ${BC_AUD[b.audience] || b.audience}</b><span class="text-slate-500">${fmtDate(b.created_at)}</span></div>
+      <div class="truncate text-slate-600">${esc(b.text || '🖼 rasm')}</div>
+      <div class="flex justify-between gap-2 mt-0.5"><span>${st} · ✅ ${b.sent} · ⚠️ ${b.failed} / ${b.total}</span>${['queued', 'sending'].includes(b.status) ? `<button onclick="crmBcCancel(${b.id})" class="text-rose-600 font-black">To‘xtatish</button>` : ''}</div>
+      ${b.status === 'sending' ? `<div class="h-1 bg-slate-200 rounded mt-1"><div class="h-1 bg-[#F2642A] rounded" style="width:${pct}%"></div></div>` : ''}
+    </div>`;
+  }).join('') : '';
+  clearTimeout(bcTimer);
+  if ((data || []).some(b => ['queued', 'sending'].includes(b.status))) bcTimer = setTimeout(crmBcHistory, 3000);
+};
+window.crmBcCancel = async id => { await invoke('bot-jobs', { action: 'cancel', id }); crmBcHistory(); };
+window.crmBroadcast = async test => {
+  const text = document.getElementById('bc-text').value.trim();
+  const file = document.getElementById('bc-photo').files[0];
+  if (!text && !file) return showToast('Matn yoki rasm kiriting', '⚠️');
+  const f = bcFilter();
+  if (!test) {
+    const n = document.getElementById('bc-count').textContent;
+    if (!confirm(`Xabar yuborilsinmi?\n${BC_AUD[f.audience]} · ${n}`)) return;
+  }
+  let photoPath = null;
+  if (file) {
+    if (file.size > 10 * 1024 * 1024) return showToast('Rasm 10 MB dan katta', '⚠️');
+    photoPath = `${Date.now()}-${file.name.replace(/[^\w.\-]/g, '_')}`;
+    const { error } = await sb().storage.from('crm-broadcast').upload(photoPath, file, { contentType: file.type });
+    if (error) return showToast('Rasm yuklanmadi: ' + error.message, '⚠️');
+  }
+  const r = await invoke('bot-jobs', {
+    action: 'broadcast', text, photoPath, audience: test ? 'test' : f.audience, filter: f.filter,
+    button: { text: document.getElementById('bc-btn-text').value.trim(), url: document.getElementById('bc-btn-url').value.trim() }
+  });
+  if (!r.ok) return showToast(r.error || 'Xato', '⚠️');
+  showToast(test ? 'Sinov xabari admin chatga yuborildi' : `Yuborilmoqda: ${r.total} ta qabul qiluvchi`, '📣');
+  crmBcHistory();
+};
+
+window.crmSaveBotAdmins = () => {
+  state.botAdmins = document.getElementById('tg-bot-admins').value.split('\n').map(l => (l.match(/\d{5,15}/) || [])[0]).filter(Boolean);
+  saveState();
+  showToast(`Bot adminlari: ${state.botAdmins.length} ta`, '🛠');
+  renderTelegramTab();
+};
 window.crmSaveCenterInfo = () => {
   state.centerInfo = document.getElementById('tg-center-info').value.trim();
   saveState();
