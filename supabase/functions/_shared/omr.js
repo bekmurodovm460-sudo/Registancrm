@@ -18,14 +18,15 @@ export const ORIENT_MARK = { x: 27, y: 14, size: 5 };
 export const LETTERS = ['A', 'B', 'C', 'D', 'E'];
 
 export function getLayout(numQuestions, numOptions = 4) {
-  const cols = numQuestions <= 20 ? 1 : numQuestions <= 40 ? 2 : 3;
+  // ≤60 savol: 1–3 ustun (avvalgidek); 61–100 savol: 4 ustun (Kids Mock 80 savol)
+  const cols = numQuestions <= 20 ? 1 : numQuestions <= 40 ? 2 : numQuestions <= 60 ? 3 : 4;
   const rows = Math.ceil(numQuestions / cols);
-  const colWidth = 62;
+  const colWidth = cols === 4 ? (numOptions > 4 ? 45 : 46) : 62;
   const totalWidth = cols * colWidth;
   const x0 = (SHEET.w - totalWidth) / 2 + 4;
   const y0 = 82;
   const step = Math.min(10, (268 - y0) / Math.max(rows, 1));
-  const r = Math.min(2.9, step * 0.3);
+  const r = Math.min(cols === 4 ? 2.6 : 2.9, step * 0.3);
   const bubbles = [];
   for (let q = 0; q < numQuestions; q++) {
     const c = Math.floor(q / rows);
@@ -33,7 +34,8 @@ export function getLayout(numQuestions, numOptions = 4) {
     const cx = x0 + c * colWidth;
     const cy = y0 + row * step;
     const opts = [];
-    for (let j = 0; j < numOptions; j++) opts.push({ x: cx + 14 + j * 8.5, y: cy });
+    const gap = cols === 4 ? (numOptions > 4 ? 6.4 : 7.6) : 8.5;
+    for (let j = 0; j < numOptions; j++) opts.push({ x: cx + (cols === 4 ? 11 : 14) + j * gap, y: cy });
     bubbles.push({ q: q + 1, labelX: cx + 2, y: cy, opts });
   }
   return { cols, rows, step, r, bubbles };
@@ -73,7 +75,7 @@ export function drawSheet(ctx, pxWidth, test) {
   const r = L.r;
   L.bubbles.forEach(b => {
     ctx.fillStyle = '#111827';
-    ctx.font = `800 ${3.6 * k}px Inter, Arial, sans-serif`;
+    ctx.font = `800 ${(L.cols === 4 ? 2.9 : 3.6) * k}px Inter, Arial, sans-serif`;
     ctx.textAlign = 'left';
     ctx.fillText(String(b.q).padStart(2, ' ') + '.', b.labelX * k, b.y * k);
     b.opts.forEach((o, j) => {
@@ -83,7 +85,7 @@ export function drawSheet(ctx, pxWidth, test) {
       ctx.strokeStyle = '#4b5563';
       ctx.stroke();
       ctx.fillStyle = '#9ca3af';
-      ctx.font = `700 ${2.6 * k}px Inter, Arial, sans-serif`;
+      ctx.font = `700 ${(L.cols === 4 ? 2.3 : 2.6) * k}px Inter, Arial, sans-serif`;
       ctx.textAlign = 'center';
       ctx.fillText(LETTERS[j], o.x * k, o.y * k + 0.15 * k);
     });

@@ -65,6 +65,20 @@
           <span class="block text-xs font-extrabold muted mb-2">Nechanchi sinfda o‘qiydi?</span>
           <div id="m-grades" class="grid grid-cols-4 gap-2"></div>
         </div>
+        <div>
+          <span class="block text-xs font-extrabold muted mb-2">1-fan <span class="font-semibold">(2-fan — 🇬🇧 Ingliz tili)</span></span>
+          <div id="m-subject" class="grid grid-cols-2 gap-2">
+            <button type="button" class="chip" data-s="Matematika">📐 Matematika</button>
+            <button type="button" class="chip" data-s="Rus tili">🇷🇺 Rus tili</button>
+          </div>
+        </div>
+        <div>
+          <span class="block text-xs font-extrabold muted mb-2">Daraja</span>
+          <div id="m-level" class="grid grid-cols-2 gap-2">
+            <button type="button" class="chip" data-l="Oson">🟢 Oson</button>
+            <button type="button" class="chip" data-l="Qiyin">🔴 Qiyin</button>
+          </div>
+        </div>
         <label><span>Ota-ona telefon raqami</span>
           <div class="flex gap-2">
             <input id="m-phone" class="inp" inputmode="tel" placeholder="+998 90 123 45 67" />
@@ -82,6 +96,7 @@
         <div class="font-black mb-3">📋 Mening arizalarim</div>
         <div id="m-list" class="space-y-2 text-sm"></div>
       </div>
+      <button id="p-join" type="button" class="w-full text-center text-xs font-extrabold muted py-2">👮 Nazoratchi yoki ustozmisiz? Raqamingizni tasdiqlang</button>
     </section>
 
     <!-- ============ VARAQ TEKSHIRISH ============ -->
@@ -115,13 +130,35 @@
       </div>
       <div id="k-view" class="card p-5 hidden"></div>
     </section>
+
+    <!-- ============ 👮 NAZORATCHILAR (maktab testlari) ============ -->
+    <section id="v-proctor" class="space-y-4 hidden">
+      <div class="card p-5 space-y-4">
+        <div>
+          <div class="text-lg font-black">👮 Maktab testi natijasi</div>
+          <div id="p-who" class="text-xs muted mt-1"></div>
+        </div>
+        <label><span>1. Maktab</span><select id="p-school" class="inp"></select></label>
+        <div><span class="block text-xs font-extrabold muted mb-2">2. Sinf</span><div id="p-grades" class="grid grid-cols-4 gap-2"></div></div>
+        <div><span class="block text-xs font-extrabold muted mb-2">3. Sinf harfi</span><div id="p-letters" class="grid grid-cols-4 gap-2"><div class="col-span-4 muted text-sm">Avval sinfni tanlang</div></div></div>
+        <div id="p-test" class="text-xs font-bold hidden" style="color:var(--brand-2)"></div>
+        <label><span>4. O‘quvchining familiya va ismi</span><input id="p-name" class="inp" placeholder="Masalan: Karimov Azizbek" /></label>
+        <label><span>5. O‘quvchi telefoni (ixtiyoriy)</span><input id="p-sphone" class="inp" inputmode="tel" placeholder="+998 __ ___ __ __" /></label>
+        <label><span>6. Ota-ona telefoni (ixtiyoriy)</span><input id="p-pphone" class="inp" inputmode="tel" placeholder="+998 __ ___ __ __" /></label>
+        <input id="p-file" type="file" accept="image/*" capture="environment" class="hidden" />
+        <button id="p-shot" class="btn">📷 Natijalar varag‘ini yuklash</button>
+        <div id="p-err" class="text-sm font-bold" style="color:var(--bad)"></div>
+      </div>
+      <div id="p-result" class="card p-5 hidden"></div>
+    </section>
   </main>
 
   <!-- Pastki menyu -->
-  <nav class="fixed bottom-0 inset-x-0 card rounded-none border-x-0 border-b-0 grid grid-cols-3 text-center py-2 pb-[max(8px,env(safe-area-inset-bottom))]">
+  <nav id="nav" class="fixed bottom-0 inset-x-0 card rounded-none border-x-0 border-b-0 grid grid-cols-3 text-center py-2 pb-[max(8px,env(safe-area-inset-bottom))]">
     <button data-tab="mock" class="tab on py-1"><div class="text-xl">🧒</div><div class="text-[11px] font-extrabold">Kids Mock</div></button>
     <button data-tab="check" class="tab py-1"><div class="text-xl">📸</div><div class="text-[11px] font-extrabold">Tekshirish</div></button>
     <button data-tab="keys" class="tab py-1"><div class="text-xl">🔑</div><div class="text-[11px] font-extrabold">Javoblar</div></button>
+    <button data-tab="proctor" class="tab py-1 hidden"><div class="text-xl">👮</div><div class="text-[11px] font-extrabold">Nazorat</div></button>
   </nav>
 
   <script src="config.js"></script>
@@ -135,6 +172,8 @@
     const API = `${window.CRM_CONFIG.SUPABASE_URL}/functions/v1/miniapp`;
     let data = null;
     let grade = '';
+    let subject1 = '';
+    let level = '';
     let cls = '';
 
     // ---------- Telegram muhiti ----------
@@ -161,14 +200,14 @@
       $('fatal').classList.remove('hidden');
       $('fatal').innerHTML = `<div class="text-3xl mb-2">🤖</div><div class="font-black">${esc(msg)}</div>
         <div class="text-xs muted mt-2">Botni oching va pastdagi “Ilova” tugmasini bosing.</div>`;
-      ['v-mock', 'v-check', 'v-keys'].forEach(id => $(id).classList.add('hidden'));
+      ['v-mock', 'v-check', 'v-keys', 'v-proctor'].forEach(id => $(id).classList.add('hidden'));
     }
 
     // ---------- Tablar ----------
     document.querySelectorAll('[data-tab]').forEach(b => b.onclick = () => {
       haptic();
       document.querySelectorAll('[data-tab]').forEach(x => x.classList.toggle('on', x === b));
-      ['mock', 'check', 'keys'].forEach(t => $('v-' + t).classList.toggle('hidden', t !== b.dataset.tab));
+      ['mock', 'check', 'keys', 'proctor'].forEach(t => $('v-' + t).classList.toggle('hidden', t !== b.dataset.tab));
       window.scrollTo({ top: 0, behavior: 'smooth' });
     });
 
@@ -179,6 +218,17 @@
       const b = e.target.closest('[data-g]'); if (!b) return;
       haptic(); grade = b.dataset.g;
       $('m-grades').querySelectorAll('[data-g]').forEach(x => x.classList.toggle('on', x === b));
+    };
+
+    $('m-subject').onclick = e => {
+      const b = e.target.closest('[data-s]'); if (!b) return;
+      haptic(); subject1 = b.dataset.s;
+      $('m-subject').querySelectorAll('[data-s]').forEach(x => x.classList.toggle('on', x === b));
+    };
+    $('m-level').onclick = e => {
+      const b = e.target.closest('[data-l]'); if (!b) return;
+      haptic(); level = b.dataset.l;
+      $('m-level').querySelectorAll('[data-l]').forEach(x => x.classList.toggle('on', x === b));
     };
 
     $('m-contact').onclick = () => {
@@ -194,6 +244,7 @@
       return `<div class="p-3 rounded-2xl" style="background:var(--soft)">
         <div class="flex items-center justify-between gap-2"><b>${esc(r.full_name)}</b><span class="${color}">${esc(r.status)}</span></div>
         <div class="text-xs muted mt-1">${esc(r.grade)} · ${esc(r.session)}</div>
+        <div class="text-xs mt-1">📚 ${esc(r.subject1 || 'Matematika')} (${esc(r.level || 'Oson')}) + 🇬🇧 Ingliz tili</div>
         <div class="text-xs mt-1">🚪 Xona: <b>${esc(r.room)}</b> · 🔖 KM-${r.id}</div></div>`;
     }
     function renderRegs() {
@@ -207,9 +258,11 @@
       const phone = $('m-phone').value.trim();
       if (name.length < 3) return ($('m-err').textContent = 'Familiya va ismni to‘liq yozing', haptic('err'));
       if (!grade) return ($('m-err').textContent = 'Sinfni tanlang', haptic('err'));
+      if (!subject1) return ($('m-err').textContent = '1-fanni tanlang: Matematika yoki Rus tili', haptic('err'));
+      if (!level) return ($('m-err').textContent = 'Darajani tanlang: Oson yoki Qiyin', haptic('err'));
       if (phone.replace(/\D/g, '').length < 9) return ($('m-err').textContent = 'Telefon raqamini to‘g‘ri kiriting', haptic('err'));
       $('m-submit').disabled = true; $('m-submit').textContent = '⏳ Yuborilmoqda…';
-      const r = await api('register', { name, grade, phone, session: $('m-session').value });
+      const r = await api('register', { name, grade, phone, subject1, level, session: $('m-session').value });
       $('m-submit').disabled = false; $('m-submit').textContent = '✅ Ro‘yxatdan o‘tish';
       if (!r.ok) return ($('m-err').textContent = r.error, haptic('err'));
       haptic('ok');
@@ -218,18 +271,39 @@
       $('m-done').innerHTML = `<div class="text-center space-y-2">
         <div class="text-4xl">${r.duplicate ? 'ℹ️' : '🎉'}</div>
         <div class="font-black text-lg">${r.duplicate ? 'Bu farzand allaqachon yozilgan' : 'Ro‘yxatdan o‘tdingiz!'}</div>
+        <div class="text-sm">📚 ${esc(reg.subject1 || subject1)} (${esc(reg.level || level)}) + Ingliz tili</div>
         <div class="text-sm">🚪 Xona: <b>${esc(reg.room)}</b> · 🔖 Ariza: <b>KM-${reg.id}</b></div>
         <div class="text-xs muted">Imtihon kuni shu raqamni ko‘rsating.</div></div>`;
       if (!r.duplicate) {
         data.registrations = [reg, ...(data.registrations || [])];
         renderRegs();
+        fillTests();
         $('m-name').value = '';
       }
       $('m-done').scrollIntoView({ behavior: 'smooth', block: 'center' });
     };
 
     // ---------- VARAQ TEKSHIRISH ----------
-    const curTest = () => (data.tests || []).find(t => t.code === $('c-test').value);
+    const variantOf = (s1, lv) => `${s1 === 'Rus tili' ? 'RUS' : 'MAT'}-${lv === 'Qiyin' ? 'QIYIN' : 'OSON'}`;
+    const curReg = () => { const v = $('c-test').value; return v.startsWith('reg:') ? (data.registrations || []).find(r => String(r.id) === v.slice(4)) : null; };
+    const curTest = () => {
+      const reg = curReg();
+      if (reg) {
+        const list = (data.mockTests || []).filter(t => t.variant === variantOf(reg.subject1, reg.level));
+        const t = list.find(x => !x.session || x.session === reg.session) || list[0];
+        return t ? { ...t, kind: 'mock', reg } : null;
+      }
+      return (data.tests || []).find(t => t.code === $('c-test').value);
+    };
+    function fillTests() {
+      const regs = (data.mockTests || []).length ? (data.registrations || []).filter(r => r.status !== 'Bekor') : [];
+      const opts = [
+        ...regs.map(r => `<option value="reg:${r.id}">🧒 Kids Mock — ${esc(r.full_name)} (${esc(r.subject1 || 'Matematika')} · ${esc(r.level || 'Oson')})</option>`),
+        ...(data.tests || []).map(t => `<option value="${esc(t.code)}">${esc(t.title)}</option>`)
+      ];
+      $('c-test').innerHTML = opts.join('') || '<option value="">Faol test yo‘q</option>';
+      onTestChange();
+    }
     async function loadClasses() {
       cls = '';
       $('c-classes').innerHTML = '<div class="col-span-4 muted text-sm">⏳</div>';
@@ -243,8 +317,10 @@
     };
     function onTestChange() {
       const t = curTest();
+      const reg = curReg();
       const school = t?.kind === 'school';
       $('c-school-box').classList.toggle('hidden', !school);
+      $('c-name').closest('label').classList.toggle('hidden', !!reg);
       $('c-name-label').textContent = (school ? '4' : '2') + '. Familiya va ism';
     }
     $('c-test').onchange = onTestChange;
@@ -253,9 +329,9 @@
     $('c-shot').onclick = () => {
       $('c-err').textContent = '';
       const t = curTest();
-      if (!t) return ($('c-err').textContent = 'Faol test yo‘q', haptic('err'));
+      if (!t) return ($('c-err').textContent = curReg() ? 'Bu variant uchun test hali kiritilmagan' : 'Faol test yo‘q', haptic('err'));
       if (t.kind === 'school' && !cls) return ($('c-err').textContent = 'Sinfni tanlang', haptic('err'));
-      if ($('c-name').value.trim().length < 3) return ($('c-err').textContent = 'Familiya va ismni yozing', haptic('err'));
+      if (!t.reg && $('c-name').value.trim().length < 3) return ($('c-err').textContent = 'Familiya va ismni yozing', haptic('err'));
       $('c-file').value = '';
       $('c-file').click();
     };
@@ -286,7 +362,9 @@
         const img = await fileToGray(file);
         const read = readSheet(img, { numQuestions: t.num_questions, numOptions: t.num_options });
         if (!read.ok) { $('c-err').textContent = read.error; haptic('err'); return; }
-        const r = await api('check', { code: t.code, school: $('c-school').value, cls, name: $('c-name').value.trim(), answers: read.answers });
+        const r = await api('check', t.reg
+          ? { regId: t.reg.id, answers: read.answers }
+          : { code: t.code, school: $('c-school').value, cls, name: $('c-name').value.trim(), answers: read.answers });
         if (!r.ok) { $('c-err').textContent = r.error; haptic('err'); return; }
         haptic('ok');
         showResult(t, r.result);
@@ -297,26 +375,122 @@
       }
     };
 
-    function showResult(t, g) {
+    function showResult(t, g) { renderResult($('c-result'), t, g); }
+    function renderResult(el, t, g) {
       const pct = g.total ? Math.round(g.correct / g.total * 100) : 0;
       const wrong = g.wrong.map(w => `<div class="key-cell text-xs"><b>${w.q}</b><div>${w.given === '-' ? '∅' : w.given === '*' ? '2×' : esc(w.given)}${w.right ? ` → <b style="color:var(--ok)">${esc(w.right)}</b>` : ''}</div></div>`).join('');
-      $('c-result').classList.remove('hidden');
-      $('c-result').innerHTML = `
+      el.classList.remove('hidden');
+      el.innerHTML = `
         <div class="text-center">
-          <div class="text-xs muted font-bold">${esc(t.title)}</div>
+          <div class="text-xs muted font-bold">${esc(g.title || t.title)}</div>
           <div class="text-5xl font-black mt-2" style="color:var(--brand)">${g.score}</div>
           <div class="text-xs font-bold muted">ball</div>
           <div class="mt-3 text-sm"><b>${g.correct}</b> / ${g.total} to‘g‘ri · ${pct}%</div>
           ${g.q1Count ? `<div class="flex justify-center gap-2 mt-3">
-              <span class="pill">📐 ${g.q1} × ${g.w1} = ${g.q1 * g.w1}</span>
+              <span class="pill">${g.subject1 === 'Rus tili' ? '🇷🇺' : '📐'} ${g.q1} × ${g.w1} = ${g.q1 * g.w1}</span>
               <span class="pill">🇬🇧 ${g.q2} × ${g.w2} = ${g.q2 * g.w2}</span></div>` : ''}
           ${g.crm ? `<div class="mt-3 text-xs p-2 rounded-xl" style="background:var(--soft)">🗂 ${esc(g.crm.school)} · ${esc(g.crm.cls)} · ${esc(g.crm.fullName)} — ${g.crm.matched ? 'ball yangilandi ✅' : 'sinfga yangi o‘quvchi sifatida qo‘shildi 🆕'}</div>` : ''}
         </div>
         ${g.wrong.length ? `<div class="mt-4 text-xs font-black muted">Xato va bo‘sh javoblar (${g.wrong.length})</div><div class="grid grid-cols-5 gap-1.5 mt-2">${wrong}</div>
           ${g.wrong.some(w => !w.right) ? '<div class="text-[11px] muted mt-2">To‘g‘ri javoblar imtihon kaliti e’lon qilingach ko‘rinadi.</div>' : ''}`
           : '<div class="text-center mt-4 font-black">🎉 Barcha javoblar to‘g‘ri!</div>'}`;
-      $('c-result').scrollIntoView({ behavior: 'smooth', block: 'start' });
+      el.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
+
+
+    // ---------- 👮 NAZORATCHILAR ----------
+    function showProctor(p, open) {
+      document.querySelector('[data-tab="proctor"]').classList.remove('hidden');
+      $('nav').classList.replace('grid-cols-3', 'grid-cols-4');
+      $('p-join').classList.add('hidden');
+      $('p-who').textContent = `${p.role === 'ustoz' ? '👩‍🏫 Ustoz' : '👮 Nazoratchi'}: ${p.name}`;
+      const schools = (data.schools || []).filter(x => !p.school || x.id === p.school);
+      $('p-school').innerHTML = schools.map(x => `<option value="${esc(x.id)}">${esc(x.name)}</option>`).join('');
+      if (schools.length) pLoadGrades();
+      if (open) document.querySelector('[data-tab="proctor"]').click();
+    }
+    // Parolsiz: Telegram raqamini ulashadi -> bot CRM ro'yxati bilan solishtiradi -> tab ochiladi
+    $('p-join').onclick = () => {
+      if (!tg?.requestContact) return;
+      tg.requestContact(async ok => {
+        if (!ok) return;
+        $('p-join').textContent = '⏳ Tekshirilmoqda…';
+        for (let i = 0; i < 5; i++) {
+          await new Promise(r => setTimeout(r, 1500));
+          const r = await api('init');
+          if (r.ok && r.proctor) { data = r; haptic('ok'); return showProctor(r.proctor, true); }
+        }
+        haptic('err');
+        $('p-join').textContent = '⛔ Bu raqam CRM’dagi nazoratchilar ro‘yxatida yo‘q';
+      });
+    };
+    let pGrade = '', pCls = '', pTest = null;
+    const chipGrid = (el, items, attr, label = x => x) => {
+      el.innerHTML = items.map(x => `<button type="button" class="chip" data-${attr}="${esc(x)}">${esc(label(x))}</button>`).join('') || '<div class="col-span-4 muted text-sm">Topilmadi</div>';
+    };
+    async function pLoadGrades() {
+      pGrade = ''; pCls = ''; pTest = null;
+      $('p-test').classList.add('hidden');
+      $('p-letters').innerHTML = '<div class="col-span-4 muted text-sm">Avval sinfni tanlang</div>';
+      $('p-grades').innerHTML = '<div class="col-span-4 muted text-sm">⏳</div>';
+      const r = await api('pGrades', { school: $('p-school').value });
+      if (!r.ok) return ($('p-err').textContent = r.error);
+      chipGrid($('p-grades'), r.grades, 'pg', g => `${g}-sinf`);
+    }
+    $('p-school').onchange = pLoadGrades;
+    $('p-grades').onclick = async e => {
+      const b = e.target.closest('[data-pg]'); if (!b) return;
+      haptic(); pGrade = b.dataset.pg; pCls = '';
+      $('p-grades').querySelectorAll('[data-pg]').forEach(x => x.classList.toggle('on', x === b));
+      $('p-letters').innerHTML = '<div class="col-span-4 muted text-sm">⏳</div>';
+      const r = await api('pLetters', { school: $('p-school').value, grade: pGrade });
+      if (!r.ok) return ($('p-err').textContent = r.error);
+      chipGrid($('p-letters'), r.classes, 'pc');
+      pTest = r.test;
+      $('p-test').classList.remove('hidden');
+      $('p-test').textContent = pTest ? `📝 Test: ${pTest.title} (${pTest.num_questions} savol)` : `⚠️ ${pGrade}-sinf uchun faol test yo‘q`;
+    };
+    $('p-letters').onclick = e => {
+      const b = e.target.closest('[data-pc]'); if (!b) return;
+      haptic(); pCls = b.dataset.pc;
+      $('p-letters').querySelectorAll('[data-pc]').forEach(x => x.classList.toggle('on', x === b));
+    };
+    $('p-shot').onclick = () => {
+      $('p-err').textContent = '';
+      if (!pCls) return ($('p-err').textContent = 'Sinf va harfini tanlang', haptic('err'));
+      if (!pTest) return ($('p-err').textContent = 'Bu sinf uchun faol test yo‘q', haptic('err'));
+      if ($('p-name').value.trim().length < 3) return ($('p-err').textContent = 'O‘quvchining familiya va ismini yozing', haptic('err'));
+      for (const id of ['p-sphone', 'p-pphone']) {
+        const d = $(id).value.replace(/\D/g, '');
+        if (d && d.length < 9) return ($('p-err').textContent = 'Telefon raqamini to‘liq yozing yoki bo‘sh qoldiring', haptic('err'));
+      }
+      $('p-file').value = '';
+      $('p-file').click();
+    };
+    $('p-file').onchange = async () => {
+      const file = $('p-file').files[0]; if (!file) return;
+      $('p-shot').disabled = true; $('p-shot').textContent = '⏳ O‘qilmoqda…';
+      try {
+        const img = await fileToGray(file);
+        const read = readSheet(img, { numQuestions: pTest.num_questions, numOptions: pTest.num_options });
+        if (!read.ok) { $('p-err').textContent = read.error; haptic('err'); return; }
+        const r = await api('pCheck', { school: $('p-school').value, cls: pCls, name: $('p-name').value.trim(), studentPhone: $('p-sphone').value, parentPhone: $('p-pphone').value, answers: read.answers });
+        if (!r.ok) { $('p-err').textContent = r.error; haptic('err'); return; }
+        haptic('ok');
+        renderResult($('p-result'), pTest, r.result);
+        $('p-result').insertAdjacentHTML('beforeend', `<button id="p-next" class="btn mt-4">➕ ${esc(pCls)} — keyingi o‘quvchi</button>`);
+        $('p-next').onclick = () => {
+          ['p-name', 'p-sphone', 'p-pphone'].forEach(id => ($(id).value = ''));
+          $('p-result').classList.add('hidden');
+          window.scrollTo({ top: 0, behavior: 'smooth' });
+          setTimeout(() => $('p-name').focus(), 300);
+        };
+      } catch (e) {
+        $('p-err').textContent = 'Rasmni o‘qib bo‘lmadi: ' + e.message; haptic('err');
+      } finally {
+        $('p-shot').disabled = false; $('p-shot').textContent = '📷 Natijalar varag‘ini yuklash';
+      }
+    };
 
     // ---------- JAVOBLAR KALITI ----------
     function renderKeyList() {
@@ -352,11 +526,11 @@
       $('m-session').innerHTML = (r.sessions || []).map(s => `<option>${esc(s)}</option>`).join('');
       $('m-session-wrap').classList.toggle('hidden', (r.sessions || []).length <= 1);
       renderRegs();
-      $('c-test').innerHTML = (r.tests || []).map(t => `<option value="${esc(t.code)}">${esc(t.title)}</option>`).join('') || '<option value="">Faol test yo‘q</option>';
       $('c-school').innerHTML = (r.schools || []).map(s => `<option value="${esc(s.id)}">${esc(s.name)}</option>`).join('');
-      onTestChange();
+      fillTests();
       if ((r.schools || []).length) loadClasses();
       renderKeyList();
+      if (r.proctor) showProctor(r.proctor, location.hash === '#nazorat');
       if (location.hash === '#check') document.querySelector('[data-tab="check"]').click();
       if (location.hash === '#keys') document.querySelector('[data-tab="keys"]').click();
     })();
