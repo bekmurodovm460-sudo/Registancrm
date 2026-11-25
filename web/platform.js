@@ -1326,10 +1326,17 @@ async function renderTelegramTab() {
       </div>
     `)}
     ${isAdmin() ? card(`
-      <div class="text-sm font-black text-slate-800 mb-1">🛠 Bot adminlari (Edutizim boshqaruvi)</div>
-      <p class="text-[11px] text-slate-500 mb-2">Bu Telegram ID egalari botda <code>/admin</code> orqali Edutizim’ga lid qo‘shadi, o‘quvchini qidiradi, <b>kassaga kirim/chiqim</b> qiladi, hisobot va sinxronni ishga tushiradi. ID’ni bilish uchun botga <code>/admin</code> yoki <code>/id</code> yozing. Har qatorda bitta ID (izoh qo‘shish mumkin: <code>123456789 Maqsud</code>).</p>
-      <textarea id="tg-bot-admins" rows="3" class="${input} w-full font-mono" placeholder="123456789 Maqsud">${esc((state.botAdmins || []).join('\n'))}</textarea>
-      <button onclick="crmSaveBotAdmins()" class="${btn('sky-600')} mt-2">💾 Saqlash</button>
+      <h3 class="text-lg font-black text-slate-900">🛠 Edutizim boti (xodimlar uchun)</h3>
+      <p class="text-[11px] text-slate-500 mb-2">Alohida bot: Edutizim kassasiga <b>kirim/chiqim</b>, o‘quvchi balansi, qarzdorlar, lid qo‘shish, hisobot va sinxron. Faqat quyidagi Telegram ID egalariga ochiladi.</p>
+      <div id="edu-bot-status" class="text-xs p-3 rounded-2xl bg-slate-50 border border-slate-200">⏳ Tekshirilmoqda…</div>
+      <div class="flex flex-wrap gap-2 mt-2 text-xs">
+        <input id="edu-bot-token" type="password" autocomplete="off" placeholder="Yangi token (BotFather)" class="${input} flex-1 min-w-[200px] font-mono">
+        <button onclick="crmEduBotConnect()" class="${btn('sky-600')}">💾 Saqlash va ulash</button>
+      </div>
+      <label class="text-xs font-bold block mt-3">Bot adminlari — Telegram ID (har qatorda bittasi, izoh mumkin: <code>123456789 Maqsud</code>)
+        <textarea id="tg-bot-admins" rows="3" class="${input} w-full font-mono mt-1" placeholder="123456789 Maqsud">${esc((state.botAdmins || []).join('\n'))}</textarea></label>
+      <p class="text-[10px] text-slate-400">ID’ni bilish: ruxsatsiz odam botga /start yozsa, bot uning ID’sini ko‘rsatadi. Admin chat ID egasi ham avtomatik admin.</p>
+      <button onclick="crmSaveBotAdmins()" class="${btn('[#F2642A]')} mt-2">💾 Adminlarni saqlash</button>
     `) : ''}
     ${card(`
       <div class="text-sm font-black text-slate-800 mb-1">📞 /aloqa matni</div>
@@ -1353,7 +1360,7 @@ async function renderTelegramTab() {
     `) : ''}
   </div>`;
   crmTgStatus();
-  if (isAdmin()) { crmBcCount(); crmBcHistory(); }
+  if (isAdmin()) { crmBcCount(); crmBcHistory(); crmEduBotStatus(); }
 }
 window.renderTelegramTab = renderTelegramTab;
 
@@ -1415,6 +1422,25 @@ window.crmBroadcast = async test => {
   crmBcHistory();
 };
 
+window.crmEduBotStatus = async () => {
+  const box = document.getElementById('edu-bot-status');
+  if (!box) return;
+  const r = await invoke('tg-admin', { action: 'eduStatus' });
+  if (!r.ok) { box.innerHTML = `<span class="text-rose-600 font-bold">⚠️ ${esc(r.error || 'Ulanmagan')}</span>`; return; }
+  const ok = (r.webhook?.url || '').includes('/functions/v1/edu-bot');
+  box.innerHTML = `<div class="font-black text-slate-900">@${esc(r.bot?.username)} · ${esc(r.bot?.first_name)}</div>
+    <div>Webhook: ${ok ? '<b class="text-emerald-700">✅ ulangan</b>' : '<b class="text-rose-600">✗ ulanmagan — “Saqlash va ulash”ni bosing</b>'}</div>
+    ${r.webhook?.last_error_message ? `<div class="text-rose-600">Oxirgi xato: ${esc(r.webhook.last_error_message)}</div>` : ''}
+    <a class="text-sky-700 font-bold" href="https://t.me/${esc(r.bot?.username)}" target="_blank">t.me/${esc(r.bot?.username)} ↗</a>`;
+};
+window.crmEduBotConnect = async () => {
+  const token = document.getElementById('edu-bot-token').value.trim();
+  try { if (token) await setSecret('edu_bot_token', token); } catch (e) { return showToast(e.message, '⚠️'); }
+  const r = await invoke('tg-admin', { action: 'setEduWebhook' });
+  showToast(r.ok ? 'Edutizim boti ulandi' : 'Xato: ' + r.error, r.ok ? '🛠' : '⚠️');
+  document.getElementById('edu-bot-token').value = '';
+  crmEduBotStatus();
+};
 window.crmSaveBotAdmins = () => {
   state.botAdmins = document.getElementById('tg-bot-admins').value.split('\n').map(l => (l.match(/\d{5,15}/) || [])[0]).filter(Boolean);
   saveState();
