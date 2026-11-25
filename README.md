@@ -70,3 +70,11 @@ Himoya ma’lumotlar bazasi darajasida (Row Level Security). Bot tokeni va eduti
 - **O‘quvchi qo‘shish:** sinf ichki oynasidagi “2-Oyna” formasi. Jadvaldagi ✏️ tugmasi bilan o‘quvchi tahrirlanadi yoki boshqa sinfga ko‘chiriladi.
 - **Sinf rahbari:** sinf qo‘shishda yoki sinf ichida (“👩‍🏫 Sinf rahbari (tizim hisobi)”) xodim hisobi biriktiriladi. Xodim avtomatik o‘qituvchi bo‘ladi va faqat shu sinf o‘quvchilarini tahrirlay oladi. Biriktirishni admin bajaradi.
 - Sinfni qayta nomlash (o‘quvchilar va rahbar ham ergashadi) va o‘chirish (admin) sinf oynasi sarlavhasida.
+
+## Saytga kirish: ochiq yoki parol bilan
+
+- Boshlang‘ich holatda sayt **ochiq**: kim ochsa, umumiy “Platforma” hisobi bilan avtomatik kiradi (login oynasi chiqmaydi).
+- Admin “👥 Xodimlar → 🔒 Sayt kirish paroli” bo‘limida parol o‘rnatadi — sayt darhol yopiladi va kirishda **faqat shu parol** so‘raladi (email kerak emas). Ochiq rejimda kirgan boshqa qurilmalar seanslari bekor qilinadi.
+- Shu yerda parolni almashtirish yoki olib tashlash (saytni yana ochiq qilish) mumkin.
+- Shaxsiy xodim hisoblari (email + parol) “Xodim hisobi (email) bilan kirish” havolasi orqali ishlashda davom etadi.
+- Texnik: `supabase/migrations/007_site_password.sql` — `crm_access_info`, `crm_open_login`, `crm_set_site_password`, `crm_open_site`.
