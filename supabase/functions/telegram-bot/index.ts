@@ -916,7 +916,8 @@ async function onCallback(q: any) {
 }
 
 async function routeCallback(q: any) {
-  const chatId = q.message?.chat?.id as number;
+  // Shaxsiy chatda chat ID = foydalanuvchi ID; Telegram ba'zan callback'da message'ni yubormaydi
+  const chatId = (q.message?.chat?.id ?? q.from?.id) as number;
   const data = String(q.data || '');
   if (!chatId) return;
   if (data.startsWith('go:')) {
@@ -1008,13 +1009,13 @@ Deno.serve(async req => {
   }
   const update = await req.json().catch(() => ({}));
   const um = update.message, uq = update.callback_query;
-  console.log('upd', Object.keys(update).filter(k => k !== 'update_id').join(','), um ? `msg chat=${um.chat?.id}/${um.chat?.type} text=${String(um.text || (um.contact ? '[contact]' : um.photo ? '[photo]' : '')).slice(0, 40)}` : uq ? `cb chat=${uq.message?.chat?.id} data=${uq.data}` : '');
+  console.log('upd', Object.keys(update).filter(k => k !== 'update_id').join(','), um ? `msg chat=${um.chat?.id}/${um.chat?.type} text=${String(um.text || (um.contact ? '[contact]' : um.photo ? '[photo]' : '')).slice(0, 40)}` : uq ? `cb chat=${uq.message?.chat?.id ?? 'from:' + uq.from?.id} keys=${Object.keys(uq).join('/')} data=${uq.data}` : '');
   try {
     if (update.message) await onMessage(update.message);
     else if (update.callback_query) await onCallback(update.callback_query);
   } catch (e) {
     console.error('bot error', e);
-    const chatId = update.message?.chat?.id || update.callback_query?.message?.chat?.id;
+    const chatId = update.message?.chat?.id || update.callback_query?.message?.chat?.id || update.callback_query?.from?.id;
     if (chatId) await send(chatId, '⚠️ Texnik xatolik. Birozdan so‘ng qayta urinib ko‘ring.').catch(() => {});
   }
   return new Response('ok');
