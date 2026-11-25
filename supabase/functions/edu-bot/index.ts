@@ -13,11 +13,12 @@ const B_IN = '💰 Kirim';
 const B_OUT = '💸 Chiqim';
 const B_REPORT = '📊 Hisobot';
 const B_SYNC = '🔄 Sinxron';
+const B_STATS = '📈 Statistika';
 const B_CANCEL = '❌ Bekor qilish';
 const B_SKIP = '⏭ O‘tkazib yuborish';
 
 const kb = (rows: string[][]) => ({ keyboard: rows.map(r => r.map(text => ({ text }))), resize_keyboard: true });
-const MENU = { ...kb([[B_IN, B_OUT], [B_FIND, B_DEBT], [B_LEAD, B_REPORT], [B_SYNC]]), is_persistent: true, input_field_placeholder: 'Amalni tanlang…' };
+const MENU = { ...kb([[B_IN, B_OUT], [B_STATS, B_DEBT], [B_FIND, B_LEAD], [B_REPORT, B_SYNC]]), is_persistent: true, input_field_placeholder: 'Amalni tanlang…' };
 const CANCEL_KB = kb([[B_CANCEL]]);
 const SKIP_KB = kb([[B_SKIP], [B_CANCEL]]);
 const BANNER = 'https://raw.githubusercontent.com/bekmurodovm460-sudo/Registancrm/refs/heads/claude/html-site-web-platform-pltyl0/brand/edu-bot-tavsif-1280x720.png';
@@ -87,7 +88,8 @@ async function edu(action: string, body: Record<string, unknown> = {}): Promise<
 // ---------------------------------------------------------
 const toStudent = (s: any) => ({
   id: s.id as string, name: s.full_name as string, phone: s.phone as string, groups: s.groups as string,
-  balance: Number(s.data?.balance ?? s.balance) || 0, status: s.data?.status?.name || ''
+  balance: Number(s.data?.balance ?? s.balance) || 0, status: s.data?.status?.name || '',
+  active: Number(s.data?.groupsCount ?? s.gc) > 0
 });
 async function eduFind(q: string) {
   const digits = q.replace(/\D/g, '');
@@ -104,7 +106,7 @@ const line = (s: any, i?: number) =>
 async function allBalances() {
   const out: any[] = [];
   for (let from = 0; from < 20000; from += 1000) {
-    const { data } = await admin.from('crm_edu_students').select('id,full_name,phone,groups,balance:data->balance').range(from, from + 999);
+    const { data } = await admin.from('crm_edu_students').select('id,full_name,phone,groups,balance:data->balance,gc:data->groupsCount').range(from, from + 999);
     (data || []).forEach((r: any) => out.push(toStudent(r)));
     if (!data || data.length < 1000) break;
   }
@@ -121,16 +123,73 @@ async function findAnswer(chatId: number, q: string) {
   });
 }
 
-async function debtors(chatId: number) {
+async function debtors(chatId: number, scope: 'active' | 'all' = 'active') {
   await typing(chatId);
-  const list = (await allBalances()).filter(s => s.balance < 0).sort((a, b) => a.balance - b.balance);
+  const list = (await allBalances()).filter(s => s.balance < 0 && (scope === 'all' || s.active)).sort((a, b) => a.balance - b.balance);
   if (!list.length) return void send(chatId, '✅ Qarzdorlar yo‘q.', { reply_markup: MENU });
   const top = list.slice(0, 20);
   await setSession(chatId, 'find', { found: top });
   const total = list.reduce((a, b) => a + b.balance, 0);
-  await send(chatId, `🔴 <b>Qarzdorlar: ${list.length}</b> · jami <b>${sum(-total)}</b>\nEng katta 20 tasi:\n\n${top.map((s, i) => `<b>${i + 1}.</b> ${esc(s.name)} — <b>${sum(-s.balance)}</b>${s.phone ? ` · ${esc(s.phone)}` : ''}`).join('\n')}`, {
-    reply_markup: { inline_keyboard: top.slice(0, 10).map((s, i) => [ib(`💰 ${i + 1}. ${s.name.slice(0, 30)} — to‘lov`, `pay:${i}`)]) }
+  const rows = top.slice(0, 10).map((s, i) => [ib(`💰 ${i + 1}. ${s.name.slice(0, 30)} — to‘lov`, `pay:${i}`)]);
+  rows.push([scope === 'active' ? ib('📋 Barcha qarzdorlar (ketganlar bilan)', 'dbt:all') : ib('✅ Faqat aktiv qarzdorlar', 'dbt:active')]);
+  await send(chatId, `🔴 <b>${scope === 'active' ? 'Aktiv o‘quvchilar qarzi' : 'Barcha qarzdorlar'}: ${list.length}</b> · jami <b>${sum(-total)}</b>\nEng katta 20 tasi:\n\n${top.map((s, i) => `<b>${i + 1}.</b> ${esc(s.name)} — <b>${sum(-s.balance)}</b>${s.active ? '' : ' · <i>guruhda emas</i>'}${s.phone ? ` · ${esc(s.phone)}` : ''}`).join('\n')}`, {
+    reply_markup: { inline_keyboard: rows }
   });
+}
+
+// ---------------------------------------------------------
+// 📈 Statistika: aktiv o'quvchilar va qarzdorlik
+// ---------------------------------------------------------
+const pct = (a: number, b: number) => (b ? Math.round((a / b) * 100) : 0);
+const mln = (n: number) => (Math.abs(n) >= 1_000_000 ? (Math.round(n / 100_000) / 10).toString().replace('.', ',') + ' mln so‘m' : sum(n));
+async function stats(chatId: number) {
+  await typing(chatId);
+  const [all, lastSync] = await Promise.all([
+    allBalances(),
+    admin.from('crm_edu_students').select('synced_at').order('synced_at', { ascending: false }).limit(1).maybeSingle()
+  ]);
+  const active = all.filter(s => s.active);
+  const inactive = all.filter(s => !s.active);
+  const aDebt = active.filter(s => s.balance < 0);
+  const iDebt = inactive.filter(s => s.balance < 0);
+  const aPrepaid = active.filter(s => s.balance > 0);
+  const total = (l: any[]) => -l.reduce((x, s) => x + s.balance, 0);
+  const aDebtSum = total(aDebt), iDebtSum = total(iDebt);
+  const buckets = [
+    ['🟢 200 ming gacha', (b: number) => b <= 200_000],
+    ['🟡 200–500 ming', (b: number) => b > 200_000 && b <= 500_000],
+    ['🟠 500 ming – 1 mln', (b: number) => b > 500_000 && b <= 1_000_000],
+    ['🔴 1 mln dan ko‘p', (b: number) => b > 1_000_000]
+  ] as const;
+  const bLines = buckets.map(([label, f]) => {
+    const l = aDebt.filter(s => f(-s.balance));
+    return `${label}: <b>${l.length}</b> ta · ${mln(total(l))}`;
+  }).join('\n');
+  // Guruhlar bo'yicha (aktiv qarzdorlar, birinchi guruh nomi)
+  const byGroup = new Map<string, { n: number; sum: number }>();
+  aDebt.forEach(s => {
+    const g = String(s.groups || '').split(',')[0].trim() || '—';
+    const v = byGroup.get(g) || { n: 0, sum: 0 };
+    v.n++; v.sum += -s.balance; byGroup.set(g, v);
+  });
+  const topGroups = [...byGroup.entries()].sort((a, b) => b[1].sum - a[1].sum).slice(0, 7)
+    .map(([g, v], i) => `${i + 1}. ${esc(g.slice(0, 40))} — <b>${v.n}</b> ta · ${mln(v.sum)}`).join('\n');
+  const t = lastSync.data?.synced_at ? new Date(lastSync.data.synced_at).toLocaleString('uz-UZ', { timeZone: 'Asia/Tashkent', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—';
+  await send(chatId,
+    `📈 <b>Statistika</b>\n\n` +
+    `👥 Bazada jami: <b>${all.length}</b>\n` +
+    `✅ <b>Aktiv o‘quvchilar</b> (guruhda o‘qiyotgan): <b>${active.length}</b>\n` +
+    `💤 Guruhda emas (ketgan / lid): <b>${inactive.length}</b>\n\n` +
+    `🔴 <b>Aktivlar qarzi</b>\n` +
+    `Qarzdor: <b>${aDebt.length}</b> ta (${pct(aDebt.length, active.length)}% aktivlarning)\n` +
+    `Jami qarz: <b>${mln(aDebtSum)}</b> · o‘rtacha: ${sum(aDebt.length ? aDebtSum / aDebt.length : 0)}\n` +
+    `💚 Oldindan to‘lagan: <b>${aPrepaid.length}</b> ta · ${mln(-total(aPrepaid))}\n\n` +
+    `<b>Qarz miqdori bo‘yicha:</b>\n${bLines}\n\n` +
+    (topGroups ? `<b>Eng ko‘p qarzli guruhlar:</b>\n${topGroups}\n\n` : '') +
+    `🟤 <b>Ketganlar qarzi</b> (guruhda emas): <b>${iDebt.length}</b> ta · ${mln(iDebtSum)}\n` +
+    `💰 <b>Umumiy qarz:</b> ${mln(aDebtSum + iDebtSum)}\n\n` +
+    `<i>🔄 Ma’lumot: ${t} holatiga (har soatda yangilanadi)</i>`,
+    { reply_markup: { inline_keyboard: [[ib('🔴 Aktiv qarzdorlar ro‘yxati', 'dbt:active')], [ib('📋 Barcha qarzdorlar', 'dbt:all'), ib('🔄 Yangilash', 'st:sync')]] } });
 }
 
 // ---------------------------------------------------------
@@ -278,7 +337,7 @@ async function onMessage(m: any) {
   if (cmd === '/start' || cmd === '/menu' || text === B_CANCEL || cmd === '/cancel') {
     await setSession(chatId, null);
     if (cmd === '/start') {
-      const caption = `👋 Assalomu alaykum, <b>${esc(m.from?.first_name || '')}</b>!\n\n💼 <b>Registan Globus · Moliya</b>\n\n💰 <b>Kirim</b> — o‘quvchi to‘lovi, boshqa tushumlar\n💸 <b>Chiqim</b> — xarajatlar (kanstovar, arenda…)\n🔍 <b>O‘quvchi</b> — balans, guruh, to‘lov qabul qilish\n🔴 <b>Qarzdorlar</b> — eng katta qarzlar\n➕ <b>Lid</b> — Edutizim’ga yangi mijoz\n📊 <b>Hisobot</b> · 🔄 <b>Sinxron</b>\n\nPastdagi tugmalardan tanlang 👇`;
+      const caption = `👋 Assalomu alaykum, <b>${esc(m.from?.first_name || '')}</b>!\n\n💼 <b>Registan Globus · Moliya</b>\n\n💰 <b>Kirim</b> — o‘quvchi to‘lovi, boshqa tushumlar\n💸 <b>Chiqim</b> — xarajatlar (kanstovar, arenda…)\n🔍 <b>O‘quvchi</b> — balans, guruh, to‘lov qabul qilish\n🔴 <b>Qarzdorlar</b> — eng katta qarzlar\n➕ <b>Lid</b> — Edutizim’ga yangi mijoz\n📈 <b>Statistika</b> — aktiv o‘quvchilar va qarzdorlik\n📊 <b>Hisobot</b> · 🔄 <b>Sinxron</b>\n\nPastdagi tugmalardan tanlang 👇`;
       const r = await tg(await token(), 'sendPhoto', { chat_id: chatId, photo: BANNER, caption, parse_mode: 'HTML', reply_markup: MENU });
       if (!r?.ok) await send(chatId, caption, { reply_markup: MENU });
       return;
@@ -290,6 +349,7 @@ async function onMessage(m: any) {
   if (text === B_OUT || cmd === '/chiqim') return kassaStart(chatId, 'out');
   if (text === B_FIND || cmd === '/qidir') { await setSession(chatId, 'find', {}); return void send(chatId, '🔍 O‘quvchining ismi yoki telefon raqamini yozing:', { reply_markup: CANCEL_KB }); }
   if (text === B_DEBT || cmd === '/qarz') return debtors(chatId);
+  if (text === B_STATS || cmd === '/statistika') return stats(chatId);
   if (text === B_LEAD || cmd === '/lid') { await setSession(chatId, 'lead_name', {}); return void send(chatId, '➕ <b>Yangi lid</b>\n\n👤 Familiya va ismini yozing:', { reply_markup: CANCEL_KB }); }
   if (text === B_REPORT || cmd === '/hisobot') return report(chatId);
   if (text === B_SYNC || cmd === '/sinxron') return sync(chatId);
@@ -336,6 +396,8 @@ async function onCallback(q: any) {
   if (!(await isAdmin(q.from?.id))) return void send(chatId, '⛔ Ruxsat yo‘q.');
   const s = await getSession(chatId);
   if (data === 'x') { await setSession(chatId, null); return void send(chatId, '❌ Bekor qilindi.', { reply_markup: MENU }); }
+  if (data === 'dbt:active' || data === 'dbt:all') return debtors(chatId, data === 'dbt:all' ? 'all' : 'active');
+  if (data === 'st:sync') { await sync(chatId); return stats(chatId); }
   if (data.startsWith('pay:')) {
     const st = (s.data.found || [])[Number(data.slice(4))];
     if (!st) return void send(chatId, 'Qaytadan qidiring.', { reply_markup: MENU });
