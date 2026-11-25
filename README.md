@@ -79,11 +79,29 @@ Himoya ma’lumotlar bazasi darajasida (Row Level Security). Bot tokeni va eduti
 - Shaxsiy xodim hisoblari (email + parol) “Xodim hisobi (email) bilan kirish” havolasi orqali ishlashda davom etadi.
 - Texnik: `supabase/migrations/007_site_password.sql` — `crm_access_info`, `crm_open_login`, `crm_set_site_password`, `crm_open_site`.
 
+## Telegram bot bo‘limlari
+
+```
+📚 Maktab imtihonlari javoblari
+   ├ 🔑 Javoblar kaliti      — CRM’da “🔓 E’lon qilingan” testlar (📝 Testlar & OMR jadvali)
+   └ 📸 Varaqni tekshirish   — OMR
+🧒 Kids Mock’ga ro‘yxatdan o‘tish
+   ├ 📝 Ro‘yxatdan o‘tish
+   └ 📋 Mening arizalarim
+📊 Natijalar ro‘yxati
+   ├ 🔍 Farzandim natijasi
+   ├ 🏆 TOP-3 sovrindorlar   — maktab → parallel
+   └ 🏅 Yutuqli karta
+📞 Aloqa · ℹ️ Yordam
+```
+
 ## Telegram bot buyruqlari
 
 | Buyruq | Kim uchun | Nima qiladi |
 |---|---|---|
 | `/start` | hamma | bosh menyu |
+| `/javoblar` | hamma | e’lon qilingan imtihon javoblari kaliti |
+| `/top` | hamma | maktab → parallel bo‘yicha TOP-3 sovrindorlar |
 | `/natija` | ota-ona | ism (≥4 harf) yoki telefon bo‘yicha ball, maktab, parallel TOP-3 o‘rni |
 | `/karta` | ota-ona | “📱 Raqamni yuborish” orqali **o‘z** raqami tasdiqlanadi; farzand TOP-3 bo‘lsa yutuqli karta **rasmi** yuboriladi |
 | `/tekshir` | o‘quvchi | javoblar varaqasi rasmi orqali natija (OMR) |

@@ -29,6 +29,8 @@ Deno.serve(async req => {
         });
         const commands = [
           { command: 'start', description: 'Bosh menyu' },
+          { command: 'javoblar', description: 'Maktab imtihonlari javoblari' },
+          { command: 'top', description: 'TOP-3 sovrindorlar ro‘yxati' },
           { command: 'natija', description: 'Farzand natijasi va TOP-3 o‘rni' },
           { command: 'karta', description: 'Yutuqli karta (TOP-3)' },
           { command: 'tekshir', description: 'Javoblar varaqasini tekshirish' },
