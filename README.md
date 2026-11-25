@@ -32,6 +32,7 @@ netlify.toml
    O‘quvchi botda “📝 Natijani tekshirish” → testni tanlaydi → ismini yozadi → to‘ldirilgan varaq rasmini yuboradi → bot darhol ball va xatolarni qaytaradi. Kids Mock testlari natijasi CRM’dagi Kids Mock ro‘yxatiga ham tushadi.
 5. **Kids Mock ro‘yxati.** Ota-onalar botda “🧒 Kids Mock ro‘yxatdan o‘tish” orqali yoziladi; xona avtomatik beriladi. Arizalar “🧒 Bot arizalari” bo‘limida real vaqtda ko‘rinadi. Sessiya va xona sig‘imini shu bo‘limda sozlang.
 6. **Edutizim.** “🔗 Edutizim” bo‘limida edutizim xodim hisobining telefon raqami va parolini kiriting → “Ulanishni tekshirish” → “Sinxronlash”. Hisobda SMS orqali 2 bosqichli tasdiqlash o‘chiq bo‘lishi kerak (alohida integratsiya hisobi tavsiya etiladi).
+   Sinxronlash **har soatda avtomatik** ishlaydi (pg_cron `crm-edutizim-sync`, har soatning 17-daqiqasida). Tashkilot `Origin: https://registan.edutizim.uz` orqali, filial esa login javobidagi `branches` dan aniqlanadi.
 
 ## Rollar
 
