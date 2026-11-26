@@ -1326,7 +1326,7 @@ async function renderTelegramTab() {
       </div>
     `)}
     ${isAdmin() ? card(`
-      <h3 class="text-lg font-black text-slate-900">🛠 Edutizim boti (xodimlar uchun)</h3>
+      <h3 class="text-lg font-black text-slate-900">🏛 Registan · Markaz boti (xodimlar uchun)</h3>
       <p class="text-[11px] text-slate-500 mb-2">Alohida bot: Edutizim kassasiga <b>kirim/chiqim</b>, o‘quvchi balansi, qarzdorlar, lid qo‘shish, hisobot va sinxron. Faqat quyidagi Telegram ID egalariga ochiladi.</p>
       <div id="edu-bot-status" class="text-xs p-3 rounded-2xl bg-slate-50 border border-slate-200">⏳ Tekshirilmoqda…</div>
       <div class="flex flex-wrap gap-2 mt-2 text-xs">

@@ -80,7 +80,7 @@ export async function schedulePdf(lessons: Lesson[], opts: { stamp: string; titl
   doc.registerFontkit(fontkit);
   const f = await fonts();
   const F = { r: await doc.embedFont(f.r, { subset: true }), b: await doc.embedFont(f.b, { subset: true }) };
-  doc.setTitle('Registan LC — Dars jadvali'); doc.setAuthor('Registan Globus · Moliya bot');
+  doc.setTitle('Registan LC — Dars jadvali'); doc.setAuthor('Registan · Markaz bot');
   const list = opts.teacherId ? lessons.filter(l => l.teacherId === opts.teacherId) : lessons;
   const patterns = new Map<string, Lesson[]>();
   list.forEach(l => { const k = daysLabel(l.days) || '—'; (patterns.get(k) || patterns.set(k, []).get(k)!).push(l); });

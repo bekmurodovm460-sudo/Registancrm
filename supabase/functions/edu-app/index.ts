@@ -4,7 +4,7 @@
 //    har guruh: kelgan / sababli / sababsiz / belgilanmagan (guruh ro'yxatiga nisbatan)
 // Faqat o'qiydi — Edutizimda hech narsa o'zgartirilmaydi.
 // =========================================================
-import { admin, cors, getSecret, getSetting, json, SUPABASE_URL } from '../_shared/common.ts';
+import { admin, cors, getSecret, getSetting, json, SUPABASE_URL, tg } from '../_shared/common.ts';
 
 const enc = new TextEncoder();
 async function hmac(key: Uint8Array, msg: string) {
@@ -143,9 +143,40 @@ Deno.serve(async req => {
   const user = await verifyInitData(String(body.initData || ''), token);
   if (!user?.id) return json({ ok: false, error: 'Telegram orqali oching' }, 401);
   const { role, user: u } = await roleOf(user.id);
-  if (!['top', 'senior', 'service', 'teacher'].includes(role)) return json({ ok: false, error: 'Ruxsat yo‘q' }, 403);
+  if (!['top', 'senior', 'service', 'teacher', 'media'].includes(role)) return json({ ok: false, error: 'Ruxsat yo‘q' }, 403);
+  const MEDIA_ROLES = ['top', 'senior', 'media'];
   try {
+    // 🎬 Video montaj: brauzerda tayyorlangan videoni yopiq bucket'ga yuklash → bot chatga yuboradi
+    if (body.action === 'mediaUploadUrl') {
+      if (!MEDIA_ROLES.includes(role)) return json({ ok: false, error: 'Video montaj — media, katta va top menejer uchun' }, 403);
+      const ext = body.ext === 'mp4' ? 'mp4' : 'webm';
+      const size = Number(body.size) || 0;
+      if (size > 50 * 1024 * 1024) return json({ ok: false, error: 'Video 50 MB dan katta. Qisqaroq yoki past sifatda eksport qiling.' });
+      const path = `${user.id}/${Date.now()}.${ext}`;
+      const { data, error } = await admin.storage.from('edu-media').createSignedUploadUrl(path);
+      if (error || !data) return json({ ok: false, error: error?.message || 'Yuklash havolasi olinmadi' });
+      return json({ ok: true, path, url: data.signedUrl, token: data.token });
+    }
+    if (body.action === 'mediaSend') {
+      if (!MEDIA_ROLES.includes(role)) return json({ ok: false, error: 'Ruxsat yo‘q' }, 403);
+      const path = String(body.path || '');
+      if (!path.startsWith(`${user.id}/`) || path.includes('..')) return json({ ok: false, error: 'Noto‘g‘ri fayl' }, 400);
+      const caption = String(body.caption || '🎬 Video tayyor — Registan LC').slice(0, 900);
+      const { data: file, error } = await admin.storage.from('edu-media').download(path);
+      if (error || !file) return json({ ok: false, error: 'Fayl topilmadi: ' + (error?.message || '') });
+      const mp4 = path.endsWith('.mp4');
+      const form = new FormData();
+      form.append('chat_id', String(user.id));
+      form.append(mp4 ? 'video' : 'document', file, `Registan_video_${new Date(Date.now() + TZ).toISOString().slice(0, 16).replace(/[-:T]/g, '')}.${mp4 ? 'mp4' : 'webm'}`);
+      form.append('caption', caption);
+      if (mp4) { form.append('supports_streaming', 'true'); if (body.width) form.append('width', String(body.width)); if (body.height) form.append('height', String(body.height)); if (body.duration) form.append('duration', String(Math.round(body.duration))); }
+      const r = await tg(token, mp4 ? 'sendVideo' : 'sendDocument', form);
+      await admin.storage.from('edu-media').remove([path]).catch(() => {});
+      if (!r?.ok) return json({ ok: false, error: `Telegram: ${r?.description || 'yuborilmadi'}` });
+      return json({ ok: true });
+    }
     if (body.action === 'attendance') {
+      if (role === 'media') return json({ ok: false, error: 'Davomat media roli uchun yopiq' }, 403);
       const kind = body.kind === 'juft' ? 'juft' : 'toq';
       const today = localYmd(Date.now());
       let day = /^\d{4}-\d{2}-\d{2}$/.test(String(body.day || '')) ? String(body.day) : lastDayOf(kind);
