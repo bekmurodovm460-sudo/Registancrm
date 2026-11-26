@@ -235,6 +235,84 @@ async function taskReminders() {
 }
 
 // ---------------------------------------------------------
+// 🌙 Kechki hisobot (har kuni 20:00 dan keyin bir marta): davomat, izohlar, xavf, vazifalar
+// ---------------------------------------------------------
+async function eduCall(action: string, body: Record<string, unknown> = {}): Promise<any> {
+  const secret = await getSecret('cron_secret');
+  const r = await fetch(`${SUPABASE_URL}/functions/v1/edutizim-sync`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-cron-secret': secret }, body: JSON.stringify({ action, ...body }) });
+  return await r.json().catch(() => ({ ok: false, error: `HTTP ${r.status}` }));
+}
+const normName = (s: string) => String(s || '').toLowerCase().replace(/[ʻʼ‘’'`]/g, '').replace(/\s+/g, ' ').trim();
+
+async function dailyReport(force = false) {
+  const token = await getSecret('edu_bot_token');
+  if (!token) return { skipped: 'no token' };
+  const tz = 5 * 3600_000, now = Date.now();
+  const local = new Date(now + tz);
+  const today = local.toISOString().slice(0, 10);
+  const hour = local.getUTCHours();
+  if (!force) {
+    if (hour < 20) return { skipped: 'early' };
+    const sent = await getSetting<string>('eduDailyReportSent', '');
+    if (sent === today) return { skipped: 'sent' };
+  }
+  await admin.from('crm_settings').upsert({ key: 'eduDailyReportSent', value: today });
+  const d0 = Math.floor((now + tz) / 86400_000) * 86400_000 - tz;
+  const [abs, risk, tasksRes] = await Promise.all([
+    eduCall('absences', { fromDate: new Date(d0).toISOString(), toDate: new Date(d0 + 86400_000 - 1).toISOString() }),
+    eduCall('absenceRisk', { days: 21 }),
+    admin.from('crm_edu_tasks').select('teacher_name,items,status,deadline').in('status', ['open', 'overdue'])
+  ]);
+  if (!abs.ok) return { error: abs.error };
+  const seen = new Set<string>();
+  const rows = (abs.rows || []).filter((x: any) => { const k = `${x.studentId}|${x.groupId}`; if (seen.has(k)) return false; seen.add(k); return true; });
+  const cm = rows.length ? await eduCall('commentsFor', { studentIds: rows.map((x: any) => x.studentId) }) : { comments: {} };
+  const has = (sid: string) => (cm.comments?.[sid] || []).some((c: any) => new Date(c.at).getTime() >= d0);
+  const done = rows.filter((x: any) => has(x.studentId)).length;
+  const unr = rows.filter((x: any) => x.state === 'unreasonable').length;
+  const byMgr = new Map<string, { n: number; done: number; pending: any[] }>();
+  rows.forEach((x: any) => {
+    const k = x.manager || '—';
+    const v = byMgr.get(k) || { n: 0, done: 0, pending: [] };
+    v.n++; if (has(x.studentId)) v.done++; else v.pending.push(x);
+    byMgr.set(k, v);
+  });
+  const riskRows = risk.ok ? risk.rows || [] : [];
+  const red = riskRows.filter((x: any) => x.streak >= 3).length;
+  const tasks = tasksRes.data || [];
+  const dd = `${String(local.getUTCDate()).padStart(2, '0')}.${String(local.getUTCMonth() + 1).padStart(2, '0')}`;
+  const pct = rows.length ? Math.round((done / rows.length) * 100) : 100;
+  const mgrLines = [...byMgr.entries()].sort((a, b) => (b[1].n - b[1].done) - (a[1].n - a[1].done))
+    .map(([k, v]) => `${v.done === v.n ? '✅' : '⏳'} ${esc(k)}: ${v.done}/${v.n}${v.pending.length ? ` · qoldi ${v.pending.length}` : ''}`).join('\n');
+  const taskLines = tasks.map((t: any) => { const n = (t.items || []).length, d = (t.items || []).filter((x: any) => x.doneAt).length; return `${t.status === 'overdue' ? '🔴' : '⏳'} ${esc(t.teacher_name)}: ${d}/${n}`; }).join('\n');
+  const text = `🌙 <b>Kunlik hisobot · ${dd}</b>\n\n` +
+    `📅 <b>Davomat</b>\n❌ Kelmaganlar: <b>${rows.length}</b> (🔴 sababsiz ${unr} · 🟡 sababli ${rows.length - unr})\n📞 Izoh yozilgan: <b>${done}/${rows.length}</b> (${pct}%) ${pct === 100 ? '✅' : '⚠️'}\n` +
+    (mgrLines ? `\n<b>Menejerlar:</b>\n${mgrLines}\n` : '') +
+    `\n⚠️ <b>Notcoming xavfi:</b> ${riskRows.length} ta (🔴 3+ dars: ${red} · 🟠 2 dars: ${riskRows.length - red})\n` +
+    (tasks.length ? `\n📋 <b>Ustozlar vazifalari (ochiq):</b>\n${taskLines}\n` : '') +
+    `\nBatafsil: 📅 Davomat · ⚠️ Xavf ostida`;
+  const [ids, chat, { data: users }] = await Promise.all([
+    getSetting<any[]>('botAdmins', []), getSecret('telegram_admin_chat_id'),
+    admin.from('crm_edu_bot_users').select('tg_id,role,full_name').in('role', ['top', 'service'])
+  ]);
+  const tops = new Set<string>([...(ids || []).map(String), String(chat || ''), ...(users || []).filter(u => u.role === 'top').map(u => String(u.tg_id))].filter(Boolean));
+  for (const id of tops) await tg(token, 'sendMessage', { chat_id: id, text, parse_mode: 'HTML' }).catch(() => {});
+  // Servis menejerlarga — faqat o'zida izohsiz qolganlar (Edutizim'dagi mas'ul menejer ismi bo'yicha)
+  let serviceSent = 0;
+  for (const u of (users || []).filter(u => u.role === 'service')) {
+    const mine = [...byMgr.entries()].find(([k]) => normName(k) && normName(k) === normName(u.full_name));
+    if (!mine) continue;
+    const v = mine[1];
+    const body = v.pending.length
+      ? `🌙 <b>Bugungi davomat · ${dd}</b>\n\nSizga biriktirilgan kelmaganlar: ${v.n} · izoh yozilgan: ${v.done}\n⚠️ <b>Izohsiz qolganlar (${v.pending.length}):</b>\n${v.pending.slice(0, 40).map((x: any, i: number) => `${i + 1}. ${esc(x.name)} · ${esc(x.phone)} · ${esc(x.group)}`).join('\n')}\n\nQo‘ng‘iroq qilib, 📅 Davomat bo‘limida izoh yozing.`
+      : `🌙 <b>Bugungi davomat · ${dd}</b>\n\n✅ Barcha ${v.n} ta o‘quvchiga izoh yozilgan. Rahmat!`;
+    await tg(token, 'sendMessage', { chat_id: u.tg_id, text: body, parse_mode: 'HTML' }).catch(() => {});
+    serviceSent++;
+  }
+  return { sent: tops.size, serviceSent, absent: rows.length, done, risk: riskRows.length };
+}
+
+// ---------------------------------------------------------
 Deno.serve(async req => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors });
   const cronSecret = await getSecret('cron_secret');
@@ -249,11 +327,16 @@ Deno.serve(async req => {
         if (role !== 'cron') return json({ ok: false, error: 'Ruxsat yo‘q' }, 403);
         const reminders = await cronReminders();
         const tasks = await taskReminders().catch(e => ({ error: String(e) }));
+        const daily = await dailyReport().catch(e => ({ error: String(e) }));
         // To'xtab qolgan ommaviy xabarlarni davom ettirish
         const stale = new Date(Date.now() - 3 * 60_000).toISOString();
         const { data: stuck } = await admin.from('crm_broadcasts').select('id').in('status', ['queued', 'sending']).lt('updated_at', stale).limit(3);
         for (const b of stuck || []) EdgeRuntime.waitUntil(work(Number(b.id)));
-        return json({ ok: true, reminders, tasks, resumed: (stuck || []).length });
+        return json({ ok: true, reminders, tasks, daily, resumed: (stuck || []).length });
+      }
+      case 'daily': {
+        if (role !== 'cron' && role !== 'admin') return json({ ok: false, error: 'Ruxsat yo‘q' }, 403);
+        return json({ ok: true, ...(await dailyReport(true)) });
       }
       case 'continue': {
         if (role !== 'cron') return json({ ok: false, error: 'Ruxsat yo‘q' }, 403);
