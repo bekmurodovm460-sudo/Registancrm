@@ -78,9 +78,24 @@
   .det > div { overflow: hidden; }
   .g.open .det { grid-template-rows: 1fr; }
   .who { margin-top: 10px; border-top: 1px dashed var(--line); padding-top: 8px; font-size: 13px; }
-  .who div { padding: 4px 0; display: flex; justify-content: space-between; gap: 8px; }
-  .who small { color: var(--muted); }
   .badge-nm { font-size: 11px; font-weight: 700; padding: 2px 7px; border-radius: 999px; background: var(--none-soft); color: var(--muted); margin-left: 6px; vertical-align: middle; }
+  .person { padding: 8px 0; border-bottom: 1px solid var(--line); }
+  .person:last-child { border-bottom: 0; }
+  .person .row1 { display: flex; justify-content: space-between; gap: 8px; font-weight: 600; }
+  .person .row1 small { font-weight: 500; }
+  .person .mgr { font-size: 12px; color: var(--muted); margin-top: 2px; }
+  .note-b { margin-top: 5px; padding: 7px 9px; border-radius: 10px; background: var(--none-soft); font-size: 12.5px; line-height: 1.4; animation: rise .4s both; }
+  .note-b b { font-weight: 700; }
+  .note-b .src { font-size: 11px; color: var(--muted); }
+  .note-b.today { background: var(--ok-soft); }
+  .warn-b { margin-top: 5px; font-size: 12px; font-weight: 600; color: var(--bad); }
+  .mgrs { background: var(--card); border-radius: 16px; padding: 12px 14px; box-shadow: var(--shadow); margin-bottom: 14px; }
+  .mgrs h3 { margin: 0 0 8px; font-size: 13px; color: var(--muted); font-weight: 600; }
+  .mrow { display: flex; align-items: center; gap: 10px; padding: 5px 0; font-size: 13.5px; }
+  .mrow .nm2 { flex: 1; font-weight: 600; }
+  .mrow .mbar { flex: 1.2; height: 8px; border-radius: 6px; background: var(--none-soft); overflow: hidden; }
+  .mrow .mbar i { display: block; height: 100%; width: 0; background: var(--ok); transition: width 1s cubic-bezier(.22,1,.36,1); }
+  .mrow .cnt { font-weight: 700; min-width: 44px; text-align: right; }
   .empty, .err { text-align: center; color: var(--muted); padding: 40px 10px; font-size: 14px; }
   .sk { height: 86px; border-radius: 16px; margin-bottom: 10px; background: linear-gradient(90deg, var(--card) 25%, var(--none-soft) 50%, var(--card) 75%); background-size: 200% 100%; animation: sh 1.2s infinite; }
   @keyframes sh { to { background-position: -200% 0; } }
@@ -170,30 +185,38 @@ function render() {
         <div class="stat s-none" style="animation-delay:.26s"><b data-v="${t.unmarked}">0</b><span>⏳ Belgilanmagan</span></div>
       </div>
     </div>
-    <div class="note">Jami ${t.total} o‘quvchi. Foiz — davomat qilinganlar ichida kelganlar ulushi. “Belgilanmagan” — ustoz Edutizim’da hali davomat qilmagan o‘quvchilar. Guruhni bosib ro‘yxatni oching.</div>`;
+    <div class="note">Jami ${t.total} o‘quvchi. Foiz — davomat qilinganlar ichida kelganlar ulushi. “Belgilanmagan” — ustoz Edutizim’da hali davomat qilmagan o‘quvchilar. Guruhni bosib ro‘yxatni oching.</div>
+    ${t.absent ? `<div class="mgrs"><h3>📞 Menejer izohlari (shu kuni): <b style="color:var(--ink)">${t.noted}/${t.absent}</b></h3>
+      ${(d.managers || []).map(m => `<div class="mrow"><span class="nm2">${m.done === m.n ? '✅' : '⏳'} ${esc(m.name)}</span><span class="mbar"><i data-w="${m.n ? m.done / m.n * 100 : 0}"></i></span><span class="cnt">${m.done}/${m.n}</span></div>`).join('')}</div>` : ''}`;
   requestAnimationFrame(() => requestAnimationFrame(() => {
     document.querySelectorAll('.ring .seg').forEach(c => { c.setAttribute('stroke-dasharray', `${c.dataset.len} ${C}`); c.setAttribute('stroke-dashoffset', c.dataset.off); });
     countUp($('pct'), pct);
+    setTimeout(() => document.querySelectorAll('.mbar i').forEach(b => { b.style.width = b.dataset.w + '%'; }), 150);
     document.querySelectorAll('.stat b').forEach(b => countUp(b, Number(b.dataset.v)));
   }));
-  const F = [['all', 'Hammasi'], ['absent', `Kelmaganlar bor (${d.groups.filter(g => g.unreasonable + g.reasonable).length})`], ['unmarked', `Belgilanmagan (${d.groups.filter(g => g.unmarked).length})`]];
+  const F = [['all', 'Hammasi'], ['absent', `Kelmaganlar bor (${d.groups.filter(g => g.unreasonable + g.reasonable).length})`], ['unmarked', `Belgilanmagan (${d.groups.filter(g => g.unmarked).length})`], ['nonote', `Izohsiz (${d.groups.filter(g => g.absentList.some(x => !x.noted)).length})`]];
   $('filters').innerHTML = F.map(([k, l]) => `<button data-f="${k}" class="${state.filter === k ? 'on' : ''}">${l}</button>`).join('');
-  const gs = d.groups.filter(g => state.filter === 'all' || (state.filter === 'absent' ? g.unreasonable + g.reasonable > 0 : g.unmarked > 0));
+  const gs = d.groups.filter(g => state.filter === 'all' || (state.filter === 'absent' ? g.unreasonable + g.reasonable > 0 : state.filter === 'nonote' ? g.absentList.some(x => !x.noted) : g.unmarked > 0));
   if (!gs.length) { $('list').innerHTML = `<div class="empty">${d.groups.length ? 'Bu filtr bo‘yicha guruh yo‘q 🎉' : 'Bu kunda dars yo‘q.'}</div>`; return; }
   $('list').innerHTML = gs.map((g, i) => {
     const den = Math.max(1, g.attended + g.reasonable + g.unreasonable + g.unmarked);
     const p = g.marked ? Math.round(g.attended / Math.max(1, g.attended + g.reasonable + g.unreasonable) * 100) : null;
     const col = p === null ? 'var(--none)' : p >= 85 ? 'var(--ok)' : p >= 60 ? 'var(--warn)' : 'var(--bad)';
+    const fmtAt = a => { if (!a) return ''; const x = new Date(new Date(a).getTime() + 5 * 3600e3); return `${String(x.getUTCDate()).padStart(2, '0')}.${String(x.getUTCMonth() + 1).padStart(2, '0')} ${String(x.getUTCHours()).padStart(2, '0')}:${String(x.getUTCMinutes()).padStart(2, '0')}`; };
+    const SRC = { bot: '🤖 bot orqali', ustoz: '👩‍🏫 ustoz', edutizim: '🗂 Edutizim' };
     const who = [
-      ...g.absentList.map(s => `<div><span>${s.st === 'unreasonable' ? '❌' : '🟡'} ${esc(s.name)}</span><small>${esc(s.reason || (s.st === 'unreasonable' ? 'sababsiz' : 'sababli'))}</small></div>`),
-      ...g.unmarkedList.map(s => `<div><span>⏳ ${esc(s.name)}</span><small>belgilanmagan</small></div>`)
-    ].join('') || '<div><span>✅ Hamma keldi</span></div>';
+      ...g.absentList.map(s => `<div class="person"><div class="row1"><span>${s.st === 'unreasonable' ? '❌' : '🟡'} ${esc(s.name)}</span><small style="color:${s.st === 'unreasonable' ? 'var(--bad)' : 'var(--warn)'}">${esc(s.reason || (s.st === 'unreasonable' ? 'sababsiz' : 'sababli'))}</small></div>
+        <div class="mgr">👤 Mas’ul menejer: <b>${esc(s.manager || '—')}</b></div>
+        ${(s.notes || []).map(n => `<div class="note-b ${s.noted ? 'today' : ''}">💬 ${esc(n.text)}<div class="src"><b>${esc(n.who)}</b> · ${SRC[n.via] || ''} · ${fmtAt(n.at)}</div></div>`).join('')}
+        ${s.noted ? '' : `<div class="warn-b">⚠️ Shu kuni izoh yozilmagan${(s.notes || []).length ? ' (yuqorida — oldingi izoh)' : ''}</div>`}</div>`),
+      ...g.unmarkedList.map(s => `<div class="person"><div class="row1"><span>⏳ ${esc(s.name)}</span><small style="color:var(--muted)">belgilanmagan</small></div>${s.manager ? `<div class="mgr">👤 Mas’ul menejer: <b>${esc(s.manager)}</b></div>` : ''}</div>`)
+    ].join('') || '<div class="person"><div class="row1"><span>✅ Hamma keldi</span></div></div>';
     return `<div class="g" style="animation-delay:${Math.min(i * 0.06, 0.9)}s" data-i="${i}">
       <div class="top"><div><div class="nm">${esc(g.name)}${g.marked ? '' : '<span class="badge-nm">davomat qilinmagan</span>'}</div>
         <div class="meta">${esc(g.start)}–${esc(g.end)} · ${esc(g.room)} · ${esc(g.teacher)}</div></div>
         <div class="pct" style="color:${col}">${p === null ? '—' : p + '%'}</div></div>
       <div class="bar"><i class="b-ok" data-w="${g.attended / den * 100}"></i><i class="b-warn" data-w="${g.reasonable / den * 100}"></i><i class="b-bad" data-w="${g.unreasonable / den * 100}"></i><i class="b-none" data-w="${g.unmarked / den * 100}"></i></div>
-      <div class="chips"><span class="chip s-ok">✅ ${g.attended}</span>${g.unreasonable ? `<span class="chip s-bad">❌ ${g.unreasonable}</span>` : ''}${g.reasonable ? `<span class="chip s-warn">🟡 ${g.reasonable}</span>` : ''}${g.unmarked ? `<span class="chip s-none">⏳ ${g.unmarked}</span>` : ''}<span class="chip" style="color:var(--muted)">${g.total} o‘quvchi</span></div>
+      <div class="chips"><span class="chip s-ok">✅ ${g.attended}</span>${g.unreasonable ? `<span class="chip s-bad">❌ ${g.unreasonable}</span>` : ''}${g.reasonable ? `<span class="chip s-warn">🟡 ${g.reasonable}</span>` : ''}${g.unmarked ? `<span class="chip s-none">⏳ ${g.unmarked}</span>` : ''}${g.absentList.length ? `<span class="chip ${g.noted === g.absentList.length ? 's-ok' : 's-bad'}">💬 ${g.noted}/${g.absentList.length}</span>` : ''}<span class="chip" style="color:var(--muted)">${g.total} o‘quvchi</span></div>
       <div class="det"><div><div class="who">${who}</div></div></div>
     </div>`;
   }).join('');

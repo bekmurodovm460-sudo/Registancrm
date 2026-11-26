@@ -42,6 +42,15 @@ export function lastDayOf(kind: 'toq' | 'juft', now = Date.now()) {
   for (let i = 0; i < 7; i++) { const d = localYmd(now - i * DAY); if ((PATTERNS[kind] as readonly number[]).includes(eduDay(d))) return d; }
   return localYmd(now);
 }
+// Izoh muallifi: bot orqali yozilganlarda "[Bot · Ism]" / "[Ustoz Ism]" belgisi
+function noteOf(c: any) {
+  const t = String(c?.text || '');
+  let m = /^\[Bot · ([^\]]+)\]\s*/.exec(t);
+  if (m) return { who: m[1], via: 'bot', text: t.slice(m[0].length), at: c.at };
+  m = /^\[Ustoz ([^\]]+)\]\s*/.exec(t);
+  if (m) return { who: m[1], via: 'ustoz', text: t.slice(m[0].length), at: c.at };
+  return { who: c?.by || '—', via: 'edutizim', text: t, at: c.at };
+}
 const fullName = (o: any) => [o?.firstName, o?.lastName].filter(Boolean).join(' ').trim() || String(o?.fullName || '').trim();
 
 async function roleOf(tgId: number) {
@@ -93,8 +102,38 @@ async function attendanceFor(day: string, kind: 'toq' | 'juft', teacherId?: stri
     });
   }
   out.sort((a, b) => a.start.localeCompare(b.start) || a.name.localeCompare(b.name));
+  // 💬 Kelmaganlarga menejer izohlari + mas'ul menejer (belgilanmaganlarga — o'quvchi kartasidagi menejer)
+  const absentIds = [...new Set(out.flatMap(g => g.absentList.map((x: any) => x.id)))];
+  const unmarkedIds = [...new Set(out.flatMap(g => g.unmarkedList.map((x: any) => x.id)))];
+  const dayStartMs = new Date(day + 'T00:00:00Z').getTime() - TZ;
+  let comments: Record<string, any[]> = {};
+  if (absentIds.length) {
+    const cm = await edu('commentsFor', { studentIds: absentIds, limit: 3 });
+    if (cm.ok) comments = cm.comments || {};
+  }
+  const mgr = new Map<string, string>();
+  for (let i = 0; i < unmarkedIds.length; i += 200) {
+    const { data } = await admin.from('crm_edu_students').select('id,data->moderator').in('id', unmarkedIds.slice(i, i + 200));
+    (data || []).forEach((r: any) => mgr.set(String(r.id), fullName(r.moderator)));
+  }
+  const managers = new Map<string, { n: number; done: number }>();
+  for (const g of out) {
+    g.absentList = g.absentList.map((x: any) => {
+      const list = (comments[x.id] || []).map(noteOf);
+      const today = list.filter(n => n.at && new Date(n.at).getTime() >= dayStartMs);
+      const k = x.manager || '—';
+      const v = managers.get(k) || { n: 0, done: 0 }; v.n++; if (today.length) v.done++; managers.set(k, v);
+      return { ...x, noted: today.length > 0, notes: (today.length ? today : list).slice(0, 2) };
+    });
+    g.unmarkedList = g.unmarkedList.map((x: any) => ({ ...x, manager: mgr.get(x.id) || '' }));
+    g.noted = g.absentList.filter((x: any) => x.noted).length;
+  }
   const sum = (k: string) => out.reduce((s, g) => s + g[k], 0);
-  return { kind, day, weekday: eduDay(day), groups: out, totals: { groups: out.length, marked: out.filter(g => g.marked).length, total: sum('total'), attended: sum('attended'), reasonable: sum('reasonable'), unreasonable: sum('unreasonable'), unmarked: sum('unmarked') } };
+  return {
+    kind, day, weekday: eduDay(day), groups: out,
+    managers: [...managers.entries()].map(([name, v]) => ({ name, ...v })).sort((a, b) => (b.n - b.done) - (a.n - a.done) || a.name.localeCompare(b.name)),
+    totals: { groups: out.length, marked: out.filter(g => g.marked).length, total: sum('total'), attended: sum('attended'), reasonable: sum('reasonable'), unreasonable: sum('unreasonable'), unmarked: sum('unmarked'), absent: absentIds.length, noted: sum('noted') }
+  };
 }
 
 Deno.serve(async req => {
