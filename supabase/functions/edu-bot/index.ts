@@ -34,6 +34,14 @@ const persist = (rows: string[][], ph = 'Bo‘limni tanlang…') => ({ ...kb(row
 const MENU = persist([[B_IN, B_OUT], [B_ATT, B_RISK], [B_STATS, B_EXP], [B_DEBT, B_FIND], [B_TEACH, B_TASKS], [B_LEAD, B_ADMIN]]);
 const MENU_SERVICE = persist([[B_ATT, B_RISK], [B_FIND, B_DEBT], [B_LEAD]]);
 const MENU_TEACHER = persist([[B_MY, B_MYTASK]]);
+// Bosh sahifadagi bosib tanlanadigan (inline) bo'limlar — rolga qarab
+const GO: Record<string, string> = { kirim: B_IN, chiqim: B_OUT, davomat: B_ATT, xavf: B_RISK, stat: B_STATS, xarajat: B_EXP, qarz: B_DEBT, qidir: B_FIND, ustoz: B_TEACH, vazifa: B_TASKS, lid: B_LEAD, admin: B_ADMIN, natijam: B_MY, myvazifa: B_MYTASK };
+const GO_ROWS: Record<string, string[][]> = {
+  top: [['kirim', 'chiqim'], ['davomat', 'xavf'], ['stat', 'xarajat'], ['qarz', 'qidir'], ['ustoz', 'vazifa'], ['lid', 'admin']],
+  service: [['davomat', 'xavf'], ['qidir', 'qarz'], ['lid']],
+  teacher: [['natijam', 'myvazifa']]
+};
+const homeKb = (r: string) => ({ inline_keyboard: (GO_ROWS[r] || []).map(row => row.map(k => ({ text: GO[k], callback_data: `go:${k}` }))) });
 type Role = 'top' | 'service' | 'teacher' | 'pending' | 'blocked' | 'none';
 type Ctx = { role: Role; user: any; menu: any; from: any };
 const als = new AsyncLocalStorage<Ctx>();
@@ -846,6 +854,7 @@ function cbAllowed(data: string, r: Role) {
   const top = ['kt', 'ks', 'km', 'kb', 'ok', 'kx', 'pay', 'ex', 'exc', 'st', 'ua', 'ur', 'urs', 'adm', 'trp', 'txl', 'tnew', 'tt', 'tp', 'td', 'tc'];
   const svc = ['att', 'ac', 'rc', 'dbt', 'lc', 'lf', 'x', 'ch', 'fn', 'fnw'];
   const tch = ['tk', 'ti', 'my', 'x'];
+  if (p === 'go' || p === 'home') return ['top', 'service', 'teacher'].includes(r);
   if (r === 'top') return true;
   if (r === 'service') return svc.includes(p);
   if (r === 'teacher') return tch.includes(p);
@@ -860,9 +869,11 @@ async function startMsg(chatId: number, m: any) {
     : r === 'service'
       ? `📅 <b>Davomat</b> — bugun kelmaganlar: qo‘ng‘iroq qilib izoh yozing\n⚠️ <b>Xavf ostida</b> — ketma-ket kelmayotganlar\n🔍 <b>O‘quvchi</b> · 🔴 <b>Qarzdorlar</b> · ➕ <b>Lid</b>`
       : `📊 <b>Mening natijam</b> — aktiv, kelgan, ketgan, konversiya\n📋 <b>Vazifalarim</b> — top menejer topshiriqlari`;
-  const caption = `👋 Assalomu alaykum, <b>${name}</b>!\n💼 <b>Registan Globus · Moliya</b> · ${ROLE_NAME[r] || ''}\n\n${body}\n\nPastdagi tugmalardan tanlang 👇`;
-  const res = await tg(await token(), 'sendPhoto', { chat_id: chatId, photo: BANNER, caption, parse_mode: 'HTML', reply_markup: menu() });
-  if (!res?.ok) await send(chatId, caption, { reply_markup: menu() });
+  // 1) salom + doimiy pastki menyu, 2) banner ostida bosib tanlanadigan bo'limlar
+  await send(chatId, `👋 Assalomu alaykum, <b>${name}</b>!`, { reply_markup: menu() });
+  const caption = `💼 <b>Registan Globus · Moliya</b> · ${ROLE_NAME[r] || ''}\n\n${body}\n\nKerakli bo‘limni tanlang 👇`;
+  const res = await tg(await token(), 'sendPhoto', { chat_id: chatId, photo: BANNER, caption, parse_mode: 'HTML', reply_markup: homeKb(r) });
+  if (!res?.ok) await send(chatId, caption, { reply_markup: homeKb(r) });
 }
 
 async function onMessage(m: any) {
@@ -952,6 +963,12 @@ async function onCallback(q: any) {
   if (!cbAllowed(data, role())) return void send(chatId, '⛔ Ruxsat yo‘q.', { reply_markup: menu() });
   const s = await getSession(chatId);
   if (data === 'x') { await setSession(chatId, null); return void send(chatId, '❌ Bekor qilindi.', { reply_markup: menu() }); }
+  // Bosh sahifa tugmalari → xuddi menyu tugmasi bosilgandek
+  if (data.startsWith('go:') && GO[data.slice(3)]) {
+    await setSession(chatId, null);
+    return onMessage({ chat: { id: chatId, type: 'private' }, from: q.from, text: GO[data.slice(3)] });
+  }
+  if (data === 'home') return startMsg(chatId, { from: q.from });
   // Rollar
   if (data.startsWith('ua:')) { const [, id, r] = data.split(':'); return setRole(chatId, Number(id), r as Role, q.from); }
   if (data.startsWith('ur:')) {
