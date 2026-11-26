@@ -364,6 +364,19 @@ async function teacherReport(base: string, headers: Record<string, string>, b: a
   }
   const joinedByTeacher = new Map<string, Set<string>>();
   const cTrials = new Set<string>(), cConv = new Set<string>();
+  // O'quvchi → mas'ul menejer (soatlik sinxron nusxasidan)
+  const modOf = new Map<string, { id: string; name: string }>();
+  for (let fromRow = 0; fromRow < 20000; fromRow += 1000) {
+    const { data } = await admin.from('crm_edu_students').select('id,mod:data->moderator').range(fromRow, fromRow + 999);
+    (data || []).forEach((r: any) => { if (r.mod?._id) modOf.set(r.id, { id: r.mod._id, name: String(r.mod.fullName || fullName(r.mod)).trim() }); });
+    if (!data || data.length < 1000) break;
+  }
+  const M = new Map<string, any>();
+  const mgr = (m: { id: string; name: string } | undefined) => {
+    const k = m?.id || 'none';
+    if (!M.has(k)) M.set(k, { id: k, name: m?.name || '—', trials: new Set<string>(), converted: new Set<string>(), newStudents: 0, left: 0 });
+    return M.get(k);
+  };
   T.forEach((t, id) => joinedByTeacher.set(id, new Set(t.joined.map((j: any) => j.id))));
   for (const a of trials) {
     const tid = a.teacher?._id || a.teacherId;
@@ -372,6 +385,9 @@ async function teacherReport(base: string, headers: Record<string, string>, b: a
     const sid = a.student?._id || a.studentId;
     t.trials.add(sid); cTrials.add(sid);
     if (joinedByTeacher.get(tid)?.has(sid)) { t.converted.add(sid); cConv.add(sid); }
+    const mm = mgr(a.moderator?._id ? { id: a.moderator._id, name: fullName(a.moderator) } : modOf.get(sid));
+    mm.trials.add(sid);
+    if (cJoined.has(sid)) mm.converted.add(sid);
   }
   const empPhone = new Map(emps.map((e: any) => [e.id, e.phone]));
   const teachers = [...T.values()].filter(t => t.teacherId !== 'none' && (t.active || t.joined.length || t.left.length || t.trials.size)).map(t => ({
@@ -384,14 +400,29 @@ async function teacherReport(base: string, headers: Record<string, string>, b: a
     leftActive: [...t.startSet].filter((id: string) => !t.endSet.has(id)).map((id: string) => t.stInfo.get(id)),
     newActive: [...t.endSet].filter((id: string) => !t.startSet.has(id)).length
   })).filter(t => t.start || t.now || t.joined.length || t.left.length || t.trials).sort((a, b) => b.now - a.now);
+  // 🆕 Yangi talabalar: markazga birinchi marta shu davrda qo'shilganlar
+  const first = new Map<string, any>();
+  for (const row of ts) for (const g of row.groups || []) {
+    const sid = row.student?._id, j = ts0(g.joinedAt);
+    if (!sid || !Number.isFinite(j)) continue;
+    const cur = first.get(sid);
+    if (!cur || j < cur.j) first.set(sid, { j, sid, name: fullName(row.student), phone: row.student?.phoneNumber || '', group: g.group?.name || '', teacher: fullName(row.teacher), price: g.price || 0, state: g.state });
+  }
+  const newStudents = [...first.values()].filter(x => x.j >= from && x.j <= to).sort((a, b) => b.j - a.j)
+    .map(x => { const m = modOf.get(x.sid); mgr(m).newStudents++; return { id: x.sid, name: x.name, phone: x.phone, group: x.group, teacher: x.teacher, date: new Date(x.j).toISOString(), price: x.price, state: x.state, manager: m?.name || '—', managerId: m?.id || null }; });
+  for (const id of cLeft) mgr(modOf.get(id)).left++;
+  const managers = [...M.values()].filter(m => m.id !== 'none' && (m.trials.size || m.newStudents)).map(m => ({
+    id: m.id, name: m.name, trials: m.trials.size, converted: m.converted.size, conversion: m.trials.size ? Math.round((m.converted.size / m.trials.size) * 100) : null, newStudents: m.newStudents, left: m.left
+  })).sort((a, b) => b.newStudents - a.newStudents);
   const center = {
+    newStudents: newStudents.length,
     start: cStart.size, now: cEnd.size, delta: cEnd.size - cStart.size,
     joined: cJoined.size, left: cLeft.size, graduated: cGrad.size,
     leftActive: [...cStart].filter(id => !cEnd.has(id)).length, newActive: [...cEnd].filter(id => !cStart.has(id)).length,
     trials: cTrials.size, converted: cConv.size, conversion: cTrials.size ? Math.round((cConv.size / cTrials.size) * 100) : null,
     teachers: teachers.length
   };
-  return { ok: true, fromDate: b.fromDate, toDate: b.toDate, endAt: new Date(endT).toISOString(), center, teachers };
+  return { ok: true, fromDate: b.fromDate, toDate: b.toDate, endAt: new Date(endT).toISOString(), center, teachers, newStudents, managers };
 }
 
 // 📩 SMS: Edutizim integratsiyasi orqali (Eskiz va h.k.)

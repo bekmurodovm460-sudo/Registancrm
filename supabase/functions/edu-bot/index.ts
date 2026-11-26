@@ -28,19 +28,21 @@ const B_MY = '📊 Mening natijam';
 const B_MYTASK = '📋 Vazifalarim';
 const B_BELL = '🔔 Qo‘ng‘iroqchalar';
 const B_PRICE = '💲 Narx nazorati';
+const B_NEW = '🆕 Yangi talabalar';
+const B_MGR = '🎧 Menejerlar';
 const B_CANCEL = '❌ Bekor qilish';
 const B_SKIP = '⏭ O‘tkazib yuborish';
 
 const kb = (rows: string[][]) => ({ keyboard: rows.map(r => r.map(text => ({ text }))), resize_keyboard: true });
 const persist = (rows: string[][], ph = 'Bo‘limni tanlang…') => ({ ...kb(rows), is_persistent: true, input_field_placeholder: ph });
-const MENU = persist([[B_IN, B_OUT], [B_BELL, B_PRICE], [B_ATT, B_RISK], [B_STATS, B_EXP], [B_DEBT, B_FIND], [B_TEACH, B_TASKS], [B_LEAD, B_ADMIN]]);
-const MENU_SERVICE = persist([[B_ATT, B_RISK], [B_FIND, B_DEBT], [B_LEAD]]);
+const MENU = persist([[B_IN, B_OUT], [B_BELL, B_PRICE], [B_NEW, B_MGR], [B_ATT, B_RISK], [B_STATS, B_EXP], [B_DEBT, B_FIND], [B_TEACH, B_TASKS], [B_LEAD, B_ADMIN]]);
+const MENU_SERVICE = persist([[B_ATT, B_RISK], [B_NEW, B_MY], [B_FIND, B_DEBT], [B_LEAD]]);
 const MENU_TEACHER = persist([[B_MY, B_MYTASK]]);
 // Bosh sahifadagi bosib tanlanadigan (inline) bo'limlar — rolga qarab
-const GO: Record<string, string> = { kirim: B_IN, chiqim: B_OUT, davomat: B_ATT, xavf: B_RISK, stat: B_STATS, xarajat: B_EXP, qarz: B_DEBT, qidir: B_FIND, ustoz: B_TEACH, vazifa: B_TASKS, lid: B_LEAD, admin: B_ADMIN, natijam: B_MY, myvazifa: B_MYTASK, bell: B_BELL, narx: B_PRICE };
+const GO: Record<string, string> = { kirim: B_IN, chiqim: B_OUT, davomat: B_ATT, xavf: B_RISK, stat: B_STATS, xarajat: B_EXP, qarz: B_DEBT, qidir: B_FIND, ustoz: B_TEACH, vazifa: B_TASKS, lid: B_LEAD, admin: B_ADMIN, natijam: B_MY, myvazifa: B_MYTASK, bell: B_BELL, narx: B_PRICE, yangi: B_NEW, mgr: B_MGR };
 const GO_ROWS: Record<string, string[][]> = {
-  top: [['kirim', 'chiqim'], ['bell', 'narx'], ['davomat', 'xavf'], ['stat', 'xarajat'], ['qarz', 'qidir'], ['ustoz', 'vazifa'], ['lid', 'admin']],
-  service: [['davomat', 'xavf'], ['qidir', 'qarz'], ['lid']],
+  top: [['kirim', 'chiqim'], ['bell', 'narx'], ['yangi', 'mgr'], ['davomat', 'xavf'], ['stat', 'xarajat'], ['qarz', 'qidir'], ['ustoz', 'vazifa'], ['lid', 'admin']],
+  service: [['davomat', 'xavf'], ['yangi', 'natijam'], ['qidir', 'qarz'], ['lid']],
   teacher: [['natijam', 'myvazifa']]
 };
 const homeKb = (r: string) => ({ inline_keyboard: (GO_ROWS[r] || []).map(row => row.map(k => ({ text: GO[k], callback_data: `go:${k}` }))) });
@@ -476,7 +478,7 @@ async function sticker(chatId: number | string, key: string) {
 const STICKER_OF: Record<string, string> = {
   [B_IN]: 'kirim', [B_OUT]: 'chiqim', [B_ATT]: 'davomat', [B_RISK]: 'xavf', [B_STATS]: 'statistika', [B_EXP]: 'xarajat',
   [B_DEBT]: 'qarz', [B_FIND]: 'qidir', [B_TEACH]: 'oqituvchi', [B_TASKS]: 'vazifa', [B_LEAD]: 'lid', [B_ADMIN]: 'boshqaruv',
-  [B_MY]: 'natijam', [B_MYTASK]: 'vazifa', [B_BELL]: 'qongiroq', [B_PRICE]: 'narx', '/qongiroq': 'qongiroq', '/narx': 'narx',
+  [B_MY]: 'natijam', [B_MYTASK]: 'vazifa', [B_BELL]: 'qongiroq', [B_PRICE]: 'narx', [B_NEW]: 'lid', [B_MGR]: 'oqituvchi', '/qongiroq': 'qongiroq', '/narx': 'narx',
   '/kirim': 'kirim', '/chiqim': 'chiqim', '/davomat': 'davomat', '/xavf': 'xavf', '/statistika': 'statistika', '/xarajat': 'xarajat', '/xarajat_oy': 'xarajat',
   '/qarz': 'qarz', '/qidir': 'qidir', '/oqituvchilar': 'oqituvchi', '/vazifalar': 'vazifa', '/lid': 'lid', '/boshqaruv': 'boshqaruv', '/natijam': 'natijam', '/vazifalarim': 'vazifa'
 };
@@ -487,10 +489,10 @@ const CMDS: Record<string, any[]> = {
   top: [C('start', '🏠 Bosh menyu'), C('davomat', '📅 Davomat — kelmaganlar va izohlar'), C('xavf', '⚠️ Xavf ostida — notcoming'),
     C('kirim', '💰 Kassaga kirim'), C('chiqim', '💸 Kassadan chiqim'), C('statistika', '📈 Aktiv o‘quvchilar va qarz'),
     C('xarajat', '🧾 Xarajatlar — haftalik'), C('xarajat_oy', '🗓 Xarajatlar — oylik'), C('qarz', '🔴 Qarzdorlar'),
-    C('qidir', '🔍 O‘quvchini qidirish'), C('oqituvchilar', '👩‍🏫 O‘qituvchilar hisoboti va Excel'), C('vazifalar', '📋 Ustozlar vazifalari'),
+    C('qidir', '🔍 O‘quvchini qidirish'), C('oqituvchilar', '👩‍🏫 O‘qituvchilar hisoboti va Excel'), C('yangilar', '🆕 Yangi talabalar'), C('menejerlar', '🎧 Menejerlar konversiyasi'), C('vazifalar', '📋 Ustozlar vazifalari'),
     C('lid', '➕ Yangi lid'), C('boshqaruv', '⚙️ Rollar, hisobot, sinxron'), C('cancel', '❌ Bekor qilish')],
   service: [C('start', '🏠 Bosh menyu'), C('davomat', '📅 Davomat — kelmaganlar va izohlar'), C('xavf', '⚠️ Xavf ostida — notcoming'),
-    C('qidir', '🔍 O‘quvchini qidirish'), C('qarz', '🔴 Qarzdorlar'), C('lid', '➕ Yangi lid'), C('cancel', '❌ Bekor qilish')],
+    C('yangilar', '🆕 Yangi talabalar'), C('natijam', '📊 Mening konversiyam'), C('qidir', '🔍 O‘quvchini qidirish'), C('qarz', '🔴 Qarzdorlar'), C('lid', '➕ Yangi lid'), C('cancel', '❌ Bekor qilish')],
   teacher: [C('start', '🏠 Bosh menyu'), C('natijam', '📊 Mening natijam — konversiya'), C('vazifalarim', '📋 Vazifalarim'), C('cancel', '❌ Bekor qilish')],
   none: [C('start', '🚀 Boshlash — raqamni yuborish')]
 };
@@ -830,6 +832,64 @@ async function priceApply(chatId: number, from: any) {
   if (ok) await notifyOthers(`💲 Narx to‘g‘rilandi: ${esc(s.data.group)} · ${ok} ta → ${sum(s.data.price)} · ${esc(by)}`, from?.id);
 }
 
+
+// =========================================================
+// 🆕 Yangi talabalar va 🎧 menejerlar konversiyasi
+// =========================================================
+const normN = (x: string) => String(x || '').toLowerCase().replace(/[ʻʼ‘’'`]/g, '').replace(/\s+/g, ' ').trim();
+function myManager(r: any) {
+  const u = me();
+  return (r.managers || []).find((m: any) => (u?.employee_id && m.id === u.employee_id) || normN(m.name) === normN(u?.full_name));
+}
+const periodKb = (cb: string, which: string) => [ib(which === 'm' ? '• Bu oy' : 'Bu oy', `${cb}:m`), ib(which === 'pm' ? '• O‘tgan oy' : 'O‘tgan oy', `${cb}:pm`)];
+
+async function newStudentsView(chatId: number, which: 'm' | 'pm' = 'm') {
+  await typing(chatId);
+  const r = await teacherReport(which);
+  if (!r.ok) return void send(chatId, `⚠️ ${esc(r.error)}`, { reply_markup: menu() });
+  let list = r.newStudents || [];
+  let head = `🆕 <b>Yangi talabalar · ${r.label}</b>\nMarkazga birinchi marta qo‘shilganlar: <b>${list.length}</b>`;
+  if (role() === 'service') {
+    const m = myManager(r);
+    list = list.filter((x: any) => m && x.managerId === m.id);
+    head += `\n👤 Sizga biriktirilganlar: <b>${list.length}</b>`;
+  } else {
+    const byM = new Map<string, number>();
+    list.forEach((x: any) => byM.set(x.manager, (byM.get(x.manager) || 0) + 1));
+    head += '\n' + [...byM.entries()].sort((a, b) => b[1] - a[1]).map(([k, v]) => `🎧 ${esc(k)}: ${v}`).join(' · ');
+  }
+  const active = list.filter((x: any) => x.state === 'active').length;
+  head += `\n✅ Hozir o‘qiyapti: ${active} · 🚪 chiqib ketgan: ${list.length - active}`;
+  const lines = list.slice(0, 120).map((x: any, i: number) => `${i + 1}. ${x.state === 'active' ? '✅' : '🚪'} <b>${esc(x.name)}</b> · ${esc(x.phone)}\n   ${dmy(new Date(x.date).getTime())} · ${esc(x.group)} · ${esc(firstName(x.teacher))}${role() === 'top' ? ` · 🎧 ${esc(firstName(x.manager))}` : ''}`).join('\n');
+  await sendLong(chatId, `${head}\n\n${lines || 'Hali yo‘q.'}${list.length > 120 ? `\n… yana ${list.length - 120} ta` : ''}`, { reply_markup: { inline_keyboard: [periodKb('nst', which)] } });
+}
+
+async function managersView(chatId: number, which: 'm' | 'pm' = 'm') {
+  await typing(chatId);
+  const r = await teacherReport(which);
+  if (!r.ok) return void send(chatId, `⚠️ ${esc(r.error)}`, { reply_markup: menu() });
+  const ms = r.managers || [];
+  const lines = ms.map((m: any, i: number) => `<b>${i + 1}. ${esc(m.name)}</b>\n   🆕 yangi: <b>${m.newStudents}</b> · 🔁 konversiya: <b>${m.conversion ?? '—'}%</b> (${m.converted}/${m.trials}) · ➖ ketgan: ${m.left}`).join('\n');
+  const c = r.center || {};
+  await send(chatId, `🎧 <b>Menejerlar · ${r.label}</b>\n\n🏫 Markaz: 🆕 ${c.newStudents ?? (r.newStudents || []).length} yangi · 🔁 ${c.conversion ?? '—'}% (${c.converted}/${c.trials})\n\n${lines || 'Ma’lumot yo‘q.'}\n\n<i>Konversiya — menejerga biriktirilgan, sinov darsiga kelgan o‘quvchilardan shu oy guruhga qo‘shilganlar ulushi.</i>`,
+    { reply_markup: { inline_keyboard: [periodKb('mgv', which), [ib('🆕 Yangi talabalar ro‘yxati', `nst:${which}`)]] } });
+}
+
+async function managerMyStats(chatId: number, which: 'm' | 'pm' = 'm') {
+  await typing(chatId);
+  const r = await teacherReport(which);
+  if (!r.ok) return void send(chatId, `⚠️ ${esc(r.error)}`, { reply_markup: menu() });
+  const m = myManager(r);
+  if (!m) return void send(chatId, `ℹ️ ${r.label} uchun sizga biriktirilgan ma’lumot topilmadi (Edutizim’dagi ismingiz botdagi bilan mos kelishi kerak: ${esc(me()?.full_name || '')}).`, { reply_markup: { inline_keyboard: [periodKb('mys', which)] } });
+  const ms = (r.managers || []).filter((x: any) => x.conversion !== null).sort((a: any, b: any) => (b.conversion ?? 0) - (a.conversion ?? 0));
+  const rank = ms.findIndex((x: any) => x.id === m.id) + 1;
+  const mine = (r.newStudents || []).filter((x: any) => x.managerId === m.id);
+  await send(chatId,
+    `📊 <b>Mening natijam · ${r.label}</b>\n👤 ${esc(m.name)}\n\n🔁 <b>Konversiya: ${m.conversion ?? '—'}%</b> (${m.converted}/${m.trials})\n<i>Sinov darsiga kelganlardan guruhga qo‘shilganlar</i>${rank ? `\n🏅 Menejerlar orasida: ${rank}/${ms.length}` : ''}\n\n🆕 Yangi talabalar: <b>${m.newStudents}</b> (hozir o‘qiyapti: ${mine.filter((x: any) => x.state === 'active').length})\n➖ Ketganlar: ${m.left}\n🏫 Markaz konversiyasi: ${r.center?.conversion ?? '—'}%` +
+    (mine.length ? `\n\n<b>Yangi talabalarim:</b>\n${mine.slice(0, 25).map((x: any) => `${x.state === 'active' ? '✅' : '🚪'} ${esc(x.name)} · ${esc(x.group)} · ${dmy(new Date(x.date).getTime())}`).join('\n')}` : ''),
+    { reply_markup: { inline_keyboard: [periodKb('mys', which)] } });
+}
+
 async function riskView(chatId: number) {
   await typing(chatId);
   const r = await edu('absenceRisk', { days: 21 });
@@ -896,6 +956,7 @@ async function teachersView(chatId: number, which: 'm' | 'pm' = 'm') {
     { reply_markup: { inline_keyboard: [
       [ib(which === 'm' ? '• Bu oy' : 'Bu oy', 'trp:m'), ib(which === 'pm' ? '• O‘tgan oy' : 'O‘tgan oy', 'trp:pm')],
       [ib('📥 Excel (har bir o‘qituvchi)', `txl:${which}`)],
+      [ib('🆕 Yangi talabalar', `nst:${which}`), ib('🎧 Menejerlar', `mgv:${which}`)],
       [ib('📋 O‘qituvchiga vazifa berish', 'tnew')]
     ] } });
 }
@@ -1061,14 +1122,14 @@ async function myStats(chatId: number, which: 'm' | 'pm' = 'm') {
 // =========================================================
 const ACCESS: Record<string, Role[]> = {
   // matn tugmalari
-  [B_IN]: ['top'], [B_OUT]: ['top'], [B_STATS]: ['top'], [B_EXP]: ['top'], [B_TEACH]: ['top'], [B_TASKS]: ['top'], [B_ADMIN]: ['top'], [B_BELL]: ['top'], [B_PRICE]: ['top'],
+  [B_IN]: ['top'], [B_OUT]: ['top'], [B_STATS]: ['top'], [B_EXP]: ['top'], [B_TEACH]: ['top'], [B_TASKS]: ['top'], [B_ADMIN]: ['top'], [B_BELL]: ['top'], [B_PRICE]: ['top'], [B_NEW]: ['top', 'service'], [B_MGR]: ['top'],
   [B_ATT]: ['top', 'service'], [B_RISK]: ['top', 'service'], [B_FIND]: ['top', 'service'], [B_DEBT]: ['top', 'service'], [B_LEAD]: ['top', 'service'],
-  [B_MY]: ['teacher'], [B_MYTASK]: ['teacher']
+  [B_MY]: ['teacher', 'service'], [B_MYTASK]: ['teacher']
 };
 function cbAllowed(data: string, r: Role) {
   const p = data.split(':')[0];
   const top = ['kt', 'ks', 'km', 'kb', 'ok', 'kx', 'pay', 'ex', 'exc', 'st', 'ua', 'ur', 'urs', 'adm', 'trp', 'txl', 'tnew', 'tt', 'tp', 'td', 'tc'];
-  const svc = ['att', 'ac', 'rc', 'dbt', 'lc', 'lf', 'x', 'ch', 'fn', 'fnw'];
+  const svc = ['att', 'ac', 'rc', 'dbt', 'lc', 'lf', 'x', 'ch', 'fn', 'fnw', 'nst', 'mys'];
   const tch = ['tk', 'ti', 'my', 'x'];
   if (p === 'go' || p === 'home') return ['top', 'service', 'teacher'].includes(r);
   if (r === 'top') return true;
@@ -1081,9 +1142,9 @@ async function startMsg(chatId: number, m: any) {
   const r = role();
   const name = esc(m.from?.first_name || '');
   const body = r === 'top'
-    ? `💰 <b>Kirim / Chiqim</b> — Edutizim kassasi\n📅 <b>Davomat</b> — kelmaganlar va menejer izohlari\n⚠️ <b>Xavf ostida</b> — notcoming bo‘lay deganlar\n📈 <b>Statistika</b> · 🧾 <b>Xarajatlar</b>\n🔴 <b>Qarzdorlar</b> · 🔍 <b>O‘quvchi</b>\n👩‍🏫 <b>O‘qituvchilar</b> — hisobot, konversiya, Excel\n📋 <b>Vazifalar</b> — ustozlarga topshiriq\n⚙️ <b>Boshqaruv</b> — rollar, hisobot, sinxron`
+    ? `💰 <b>Kirim / Chiqim</b> — Edutizim kassasi\n🆕 <b>Yangi talabalar</b> · 🎧 <b>Menejerlar</b> konversiyasi\n📅 <b>Davomat</b> — kelmaganlar va menejer izohlari\n⚠️ <b>Xavf ostida</b> — notcoming bo‘lay deganlar\n📈 <b>Statistika</b> · 🧾 <b>Xarajatlar</b>\n🔴 <b>Qarzdorlar</b> · 🔍 <b>O‘quvchi</b>\n👩‍🏫 <b>O‘qituvchilar</b> — hisobot, konversiya, Excel\n📋 <b>Vazifalar</b> — ustozlarga topshiriq\n⚙️ <b>Boshqaruv</b> — rollar, hisobot, sinxron`
     : r === 'service'
-      ? `📅 <b>Davomat</b> — bugun kelmaganlar: qo‘ng‘iroq qilib izoh yozing\n⚠️ <b>Xavf ostida</b> — ketma-ket kelmayotganlar\n🔍 <b>O‘quvchi</b> · 🔴 <b>Qarzdorlar</b> · ➕ <b>Lid</b>`
+      ? `📅 <b>Davomat</b> — bugun kelmaganlar: qo‘ng‘iroq qilib izoh yozing\n⚠️ <b>Xavf ostida</b> — ketma-ket kelmayotganlar\n🆕 <b>Yangi talabalar</b> · 📊 <b>Mening natijam</b> — konversiyangiz\n🔍 <b>O‘quvchi</b> · 🔴 <b>Qarzdorlar</b> · ➕ <b>Lid</b>`
       : `📊 <b>Mening natijam</b> — aktiv, kelgan, ketgan, konversiya\n📋 <b>Vazifalarim</b> — top menejer topshiriqlari`;
   // 1) salom + doimiy pastki menyu, 2) banner ostida bosib tanlanadigan bo'limlar
   await send(chatId, `👋 Assalomu alaykum, <b>${name}</b>!`, { reply_markup: menu() });
@@ -1118,6 +1179,9 @@ async function onMessage(m: any) {
   if (isTop && (text === B_TASKS || cmd === '/vazifalar')) return tasksTop(chatId);
   if (isTop && (text === B_ADMIN || cmd === '/boshqaruv')) return adminPanel(chatId);
   if (isTop && (text === B_BELL || cmd === '/qongiroq')) return bellsView(chatId);
+  if (isTop && (text === B_MGR || cmd === '/menejerlar')) return managersView(chatId, 'm');
+  if (isStaff && (text === B_NEW || cmd === '/yangilar')) return newStudentsView(chatId, 'm');
+  if (r === 'service' && (text === B_MY || cmd === '/natijam')) return managerMyStats(chatId, 'm');
   if (isTop && (text === B_PRICE || cmd === '/narx')) return priceView(chatId);
   if (isTop && (text === B_REPORT || cmd === '/hisobot')) return report(chatId);
   if (isTop && (text === B_SYNC || cmd === '/sinxron')) return sync(chatId);
@@ -1260,6 +1324,9 @@ async function onCallback(q: any) {
     return void send(chatId, '⛔ Vazifa bekor qilindi.', { reply_markup: menu() });
   }
   if (data.startsWith('my:')) return myStats(chatId, data.slice(3) as any);
+  if (data.startsWith('nst:')) return newStudentsView(chatId, data.slice(4) as any);
+  if (data.startsWith('mgv:')) return managersView(chatId, data.slice(4) as any);
+  if (data.startsWith('mys:')) return managerMyStats(chatId, data.slice(4) as any);
   // Statistika, xarajatlar, qarzdorlar
   if (data === 'dbt:active' || data === 'dbt:all') return debtors(chatId, data === 'dbt:all' ? 'all' : 'active');
   if (data === 'st:sync') { await sync(chatId); return stats(chatId); }
