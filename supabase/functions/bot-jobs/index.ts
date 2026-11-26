@@ -293,9 +293,9 @@ async function dailyReport(force = false) {
     `\nBatafsil: 📅 Davomat · ⚠️ Xavf ostida`;
   const [ids, chat, { data: users }] = await Promise.all([
     getSetting<any[]>('botAdmins', []), getSecret('telegram_admin_chat_id'),
-    admin.from('crm_edu_bot_users').select('tg_id,role,full_name').in('role', ['top', 'service'])
+    admin.from('crm_edu_bot_users').select('tg_id,role,full_name').in('role', ['top', 'senior', 'service'])
   ]);
-  const tops = new Set<string>([...(ids || []).map(String), String(chat || ''), ...(users || []).filter(u => u.role === 'top').map(u => String(u.tg_id))].filter(Boolean));
+  const tops = new Set<string>([...(ids || []).map(String), String(chat || ''), ...(users || []).filter(u => u.role === 'top' || u.role === 'senior').map(u => String(u.tg_id))].filter(Boolean));
   const stk = (await getSetting<Record<string, string>>('eduStickerIds', {}))?.hisobot || 'https://raw.githubusercontent.com/bekmurodovm460-sudo/Registancrm/refs/heads/claude/html-site-web-platform-pltyl0/brand/stickers/hisobot.webp';
   for (const id of tops) {
     await tg(token, 'sendSticker', { chat_id: id, sticker: stk }).catch(() => {});
