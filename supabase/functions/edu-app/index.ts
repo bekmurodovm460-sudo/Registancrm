@@ -54,7 +54,13 @@ async function roleOf(tgId: number) {
 async function attendanceFor(day: string, kind: 'toq' | 'juft', teacherId?: string) {
   // Edutizim sana filtri kun bo'yicha keng ishlaydi — aniq kunni lessonDate bo'yicha ajratamiz
   const states = ['attended', 'reasonable', 'unreasonable'];
-  const res = await Promise.all(states.map(state => edu('read', { path: '/attendance-histoy-pagin', body: { state, fromDate: `${day}T00:00:00.000Z`, toDate: `${day}T23:59:59.999Z` }, limit: 200, pages: 15 })));
+  // Ketma-ket: Edutizim bir vaqtdagi ko'p kirishni rad etadi
+  const res: any[] = [];
+  for (const state of states) {
+    let r = await edu('read', { path: '/attendance-histoy-pagin', body: { state, fromDate: `${day}T00:00:00.000Z`, toDate: `${day}T23:59:59.999Z` }, limit: 200, pages: 15 });
+    if (!r.ok && /kirib bo/.test(String(r.error))) { await new Promise(ok => setTimeout(ok, 1200)); r = await edu('read', { path: '/attendance-histoy-pagin', body: { state, fromDate: `${day}T00:00:00.000Z`, toDate: `${day}T23:59:59.999Z` }, limit: 200, pages: 15 }); }
+    res.push(r);
+  }
   const bad = res.find(r => !r.ok);
   if (bad) throw new Error(bad.error || 'Edutizim davomati');
   const recs = res.flatMap(r => r.items || []).filter((a: any) => String(a.lessonDate || '').slice(0, 10) === day && !a.isTrial);
