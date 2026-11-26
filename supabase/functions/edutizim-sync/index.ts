@@ -402,6 +402,17 @@ async function teacherReport(base: string, headers: Record<string, string>, b: a
   })).filter(t => t.start || t.now || t.joined.length || t.left.length || t.trials).sort((a, b) => b.now - a.now);
   // 🆕 Yangi talabalar: markazga birinchi marta shu davrda qo'shilganlar
   const first = new Map<string, any>();
+  // Talabaning hozirgi holati — barcha guruhlari bo'yicha (guruh almashtirgan bo'lsa ham)
+  const nowInfo = new Map<string, { active: boolean; group: string; teacher: string; leftAt: number; reason: string; leftGroup: string }>();
+  for (const row of ts) for (const g of row.groups || []) {
+    const sid = row.student?._id;
+    if (!sid) continue;
+    const ni = nowInfo.get(sid) || { active: false, group: '', teacher: '', leftAt: 0, reason: '', leftGroup: '' };
+    if (g.state === 'active' || g.state === 'frozen') { ni.active = true; ni.group = g.group?.name || ni.group; ni.teacher = fullName(row.teacher) || ni.teacher; }
+    const la = ts0(g.leftAt || g.graduatedAt);
+    if (Number.isFinite(la) && la > ni.leftAt) { ni.leftAt = la; ni.reason = g.reason || ''; ni.leftGroup = g.group?.name || ''; }
+    nowInfo.set(sid, ni);
+  }
   for (const row of ts) for (const g of row.groups || []) {
     const sid = row.student?._id, j = ts0(g.joinedAt);
     if (!sid || !Number.isFinite(j)) continue;
@@ -409,7 +420,14 @@ async function teacherReport(base: string, headers: Record<string, string>, b: a
     if (!cur || j < cur.j) first.set(sid, { j, sid, name: fullName(row.student), phone: row.student?.phoneNumber || '', group: g.group?.name || '', teacher: fullName(row.teacher), price: g.price || 0, state: g.state });
   }
   const newStudents = [...first.values()].filter(x => x.j >= from && x.j <= to).sort((a, b) => b.j - a.j)
-    .map(x => { const m = modOf.get(x.sid); mgr(m).newStudents++; return { id: x.sid, name: x.name, phone: x.phone, group: x.group, teacher: x.teacher, date: new Date(x.j).toISOString(), price: x.price, state: x.state, manager: m?.name || '—', managerId: m?.id || null }; });
+    .map(x => {
+      const m = modOf.get(x.sid); mgr(m).newStudents++;
+      const ni = nowInfo.get(x.sid);
+      const active = !!ni?.active;
+      return { id: x.sid, name: x.name, phone: x.phone, group: active && ni?.group ? ni.group : x.group, teacher: active && ni?.teacher ? ni.teacher : x.teacher, firstGroup: x.group,
+        date: new Date(x.j).toISOString(), price: x.price, state: active ? 'active' : 'left', manager: m?.name || '—', managerId: m?.id || null,
+        leftAt: !active && ni?.leftAt ? new Date(ni.leftAt).toISOString() : null, reason: !active ? ni?.reason || '' : '', leftGroup: !active ? ni?.leftGroup || '' : '' };
+    });
   for (const id of cLeft) mgr(modOf.get(id)).left++;
   const managers = [...M.values()].filter(m => m.id !== 'none' && (m.trials.size || m.newStudents)).map(m => ({
     id: m.id, name: m.name, trials: m.trials.size, converted: m.converted.size, conversion: m.trials.size ? Math.round((m.converted.size / m.trials.size) * 100) : null, newStudents: m.newStudents, left: m.left

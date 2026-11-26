@@ -843,7 +843,7 @@ function myManager(r: any) {
 }
 const periodKb = (cb: string, which: string) => [ib(which === 'm' ? '• Bu oy' : 'Bu oy', `${cb}:m`), ib(which === 'pm' ? '• O‘tgan oy' : 'O‘tgan oy', `${cb}:pm`)];
 
-async function newStudentsView(chatId: number, which: 'm' | 'pm' = 'm') {
+async function newStudentsView(chatId: number, which: string = 'm') {
   await typing(chatId);
   const r = await teacherReport(which);
   if (!r.ok) return void send(chatId, `⚠️ ${esc(r.error)}`, { reply_markup: menu() });
@@ -856,15 +856,19 @@ async function newStudentsView(chatId: number, which: 'm' | 'pm' = 'm') {
   } else {
     const byM = new Map<string, number>();
     list.forEach((x: any) => byM.set(x.manager, (byM.get(x.manager) || 0) + 1));
-    head += '\n' + [...byM.entries()].sort((a, b) => b[1] - a[1]).map(([k, v]) => `🎧 ${esc(k)}: ${v}`).join(' · ');
+    if (byM.size) head += '\n' + [...byM.entries()].sort((a, b) => b[1] - a[1]).map(([k, v]) => `🎧 ${esc(k)}: ${v}`).join(' · ');
   }
-  const active = list.filter((x: any) => x.state === 'active').length;
-  head += `\n✅ Hozir o‘qiyapti: ${active} · 🚪 chiqib ketgan: ${list.length - active}`;
-  const lines = list.slice(0, 120).map((x: any, i: number) => `${i + 1}. ${x.state === 'active' ? '✅' : '🚪'} <b>${esc(x.name)}</b> · ${esc(x.phone)}\n   ${dmy(new Date(x.date).getTime())} · ${esc(x.group)} · ${esc(firstName(x.teacher))}${role() === 'top' ? ` · 🎧 ${esc(firstName(x.manager))}` : ''}`).join('\n');
-  await sendLong(chatId, `${head}\n\n${lines || 'Hali yo‘q.'}${list.length > 120 ? `\n… yana ${list.length - 120} ta` : ''}`, { reply_markup: { inline_keyboard: [periodKb('nst', which)] } });
+  const act = list.filter((x: any) => x.state === 'active'), gone = list.filter((x: any) => x.state !== 'active');
+  head += `\n\n✅ Hozir o‘qiyapti: <b>${act.length}</b> · 🚪 Ketgan: <b>${gone.length}</b>${list.length ? ` · qolish darajasi: <b>${Math.round((act.length / list.length) * 100)}%</b>` : ''}`;
+  const mgrTag = (x: any) => (role() === 'top' ? ` · 🎧 ${esc(firstName(x.manager))}` : '');
+  const actLines = act.slice(0, 100).map((x: any, i: number) => `${i + 1}. <b>${esc(x.name)}</b> · ${esc(x.phone)}\n   🗓 ${dmy(new Date(x.date).getTime())} · ${esc(x.group)} · ${esc(firstName(x.teacher))}${mgrTag(x)}`).join('\n');
+  const goneLines = gone.slice(0, 100).map((x: any, i: number) => `${i + 1}. <b>${esc(x.name)}</b> · ${esc(x.phone)}\n   🗓 ${dmy(new Date(x.date).getTime())} → 🚪 ${x.leftAt ? dmy(new Date(x.leftAt).getTime()) : '—'} · ${esc(x.leftGroup || x.firstGroup || x.group)}${mgrTag(x)}${x.reason ? `\n   <i>${esc(String(x.reason).slice(0, 70))}</i>` : ''}`).join('\n');
+  await sendLong(chatId,
+    `${head}\n\n✅ <b>Hozir o‘qiyotganlar (${act.length})</b>\n${actLines || '—'}${act.length > 100 ? `\n… yana ${act.length - 100}` : ''}\n\n🚪 <b>Ketganlar (${gone.length})</b>\n${goneLines || '—'}${gone.length > 100 ? `\n… yana ${gone.length - 100}` : ''}`,
+    { reply_markup: { inline_keyboard: monthKb('nst', which) } });
 }
 
-async function managersView(chatId: number, which: 'm' | 'pm' = 'm') {
+async function managersView(chatId: number, which: string = 'm') {
   await typing(chatId);
   const r = await teacherReport(which);
   if (!r.ok) return void send(chatId, `⚠️ ${esc(r.error)}`, { reply_markup: menu() });
@@ -872,22 +876,23 @@ async function managersView(chatId: number, which: 'm' | 'pm' = 'm') {
   const lines = ms.map((m: any, i: number) => `<b>${i + 1}. ${esc(m.name)}</b>\n   🆕 yangi: <b>${m.newStudents}</b> · 🔁 konversiya: <b>${m.conversion ?? '—'}%</b> (${m.converted}/${m.trials}) · ➖ ketgan: ${m.left}`).join('\n');
   const c = r.center || {};
   await send(chatId, `🎧 <b>Menejerlar · ${r.label}</b>\n\n🏫 Markaz: 🆕 ${c.newStudents ?? (r.newStudents || []).length} yangi · 🔁 ${c.conversion ?? '—'}% (${c.converted}/${c.trials})\n\n${lines || 'Ma’lumot yo‘q.'}\n\n<i>Konversiya — menejerga biriktirilgan, sinov darsiga kelgan o‘quvchilardan shu oy guruhga qo‘shilganlar ulushi.</i>`,
-    { reply_markup: { inline_keyboard: [periodKb('mgv', which), [ib('🆕 Yangi talabalar ro‘yxati', `nst:${which}`)]] } });
+    { reply_markup: { inline_keyboard: [...monthKb('mgv', which), [ib('🆕 Yangi talabalar ro‘yxati', `nst:${which}`)]] } });
 }
 
-async function managerMyStats(chatId: number, which: 'm' | 'pm' = 'm') {
+async function managerMyStats(chatId: number, which: string = 'm') {
   await typing(chatId);
   const r = await teacherReport(which);
   if (!r.ok) return void send(chatId, `⚠️ ${esc(r.error)}`, { reply_markup: menu() });
   const m = myManager(r);
-  if (!m) return void send(chatId, `ℹ️ ${r.label} uchun sizga biriktirilgan ma’lumot topilmadi (Edutizim’dagi ismingiz botdagi bilan mos kelishi kerak: ${esc(me()?.full_name || '')}).`, { reply_markup: { inline_keyboard: [periodKb('mys', which)] } });
+  if (!m) return void send(chatId, `ℹ️ ${r.label} uchun sizga biriktirilgan ma’lumot topilmadi (Edutizim’dagi ismingiz botdagi bilan mos kelishi kerak: ${esc(me()?.full_name || '')}).`, { reply_markup: { inline_keyboard: monthKb('mys', which) } });
   const ms = (r.managers || []).filter((x: any) => x.conversion !== null).sort((a: any, b: any) => (b.conversion ?? 0) - (a.conversion ?? 0));
   const rank = ms.findIndex((x: any) => x.id === m.id) + 1;
   const mine = (r.newStudents || []).filter((x: any) => x.managerId === m.id);
   await send(chatId,
     `📊 <b>Mening natijam · ${r.label}</b>\n👤 ${esc(m.name)}\n\n🔁 <b>Konversiya: ${m.conversion ?? '—'}%</b> (${m.converted}/${m.trials})\n<i>Sinov darsiga kelganlardan guruhga qo‘shilganlar</i>${rank ? `\n🏅 Menejerlar orasida: ${rank}/${ms.length}` : ''}\n\n🆕 Yangi talabalar: <b>${m.newStudents}</b> (hozir o‘qiyapti: ${mine.filter((x: any) => x.state === 'active').length})\n➖ Ketganlar: ${m.left}\n🏫 Markaz konversiyasi: ${r.center?.conversion ?? '—'}%` +
-    (mine.length ? `\n\n<b>Yangi talabalarim:</b>\n${mine.slice(0, 25).map((x: any) => `${x.state === 'active' ? '✅' : '🚪'} ${esc(x.name)} · ${esc(x.group)} · ${dmy(new Date(x.date).getTime())}`).join('\n')}` : ''),
-    { reply_markup: { inline_keyboard: [periodKb('mys', which)] } });
+    (mine.filter((x: any) => x.state === 'active').length ? `\n\n✅ <b>O‘qiyotganlar:</b>\n${mine.filter((x: any) => x.state === 'active').slice(0, 25).map((x: any) => `• ${esc(x.name)} · ${esc(x.group)} · ${dmy(new Date(x.date).getTime())}`).join('\n')}` : '') +
+    (mine.filter((x: any) => x.state !== 'active').length ? `\n\n🚪 <b>Ketganlar:</b>\n${mine.filter((x: any) => x.state !== 'active').slice(0, 25).map((x: any) => `• ${esc(x.name)} · ${x.leftAt ? dmy(new Date(x.leftAt).getTime()) : '—'}${x.reason ? ` — <i>${esc(String(x.reason).slice(0, 50))}</i>` : ''}`).join('\n')}` : ''),
+    { reply_markup: { inline_keyboard: monthKb('mys', which) } });
 }
 
 async function riskView(chatId: number) {
@@ -923,13 +928,28 @@ async function saveStudentNote(chatId: number, s: Session, text: string) {
 // 👩‍🏫 O'qituvchilar hisoboti + Excel
 // =========================================================
 const repCache = new Map<string, { at: number; r: any }>();
-function monthRange(which: 'm' | 'pm') {
+const OY = ['Yanvar', 'Fevral', 'Mart', 'Aprel', 'May', 'Iyun', 'Iyul', 'Avgust', 'Sentabr', 'Oktabr', 'Noyabr', 'Dekabr'];
+// which: 'm' (bu oy), 'pm' (o'tgan oy) yoki 'YYYY-MM'
+function monthRange(which: string) {
   const t = new Date(Date.now() + TZ);
-  const m0 = Date.UTC(t.getUTCFullYear(), t.getUTCMonth(), 1) - TZ;
-  const pm0 = Date.UTC(t.getUTCFullYear(), t.getUTCMonth() - 1, 1) - TZ;
-  return which === 'm' ? { from: m0, to: Date.now(), label: 'Bu oy' } : { from: pm0, to: m0 - 1, label: 'O‘tgan oy' };
+  let y = t.getUTCFullYear(), mo = t.getUTCMonth();
+  if (which === 'pm') mo -= 1;
+  else if (/^\d{4}-\d{2}$/.test(which)) { y = Number(which.slice(0, 4)); mo = Number(which.slice(5)) - 1; }
+  const from = Date.UTC(y, mo, 1) - TZ, end = Date.UTC(y, mo + 1, 1) - TZ - 1;
+  const cur = from <= Date.now() && Date.now() <= end;
+  const d = new Date(from + TZ);
+  return { from, to: Math.min(end, Date.now()), label: `${OY[d.getUTCMonth()]} ${d.getUTCFullYear()}${cur ? ' (joriy)' : ''}` };
 }
-async function teacherReport(which: 'm' | 'pm', teacherId?: string) {
+function lastMonths(n = 6) {
+  const t = new Date(Date.now() + TZ);
+  return Array.from({ length: n }, (_, i) => { const d = new Date(Date.UTC(t.getUTCFullYear(), t.getUTCMonth() - i, 1)); return { key: `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`, short: OY[d.getUTCMonth()].slice(0, 3) }; });
+}
+const monthKb = (cb: string, which: string) => {
+  const cur = /^\d{4}-\d{2}$/.test(which) ? which : lastMonths(2)[which === 'pm' ? 1 : 0].key;
+  const ms = lastMonths(6);
+  return [ms.slice(0, 3), ms.slice(3)].map(row => row.map(m => ib((m.key === cur ? '• ' : '') + m.short, `${cb}:${m.key}`)));
+};
+async function teacherReport(which: string, teacherId?: string) {
   const key = `${which}|${teacherId || ''}`;
   const c = repCache.get(key);
   if (c && Date.now() - c.at < 600_000) return c.r;
