@@ -444,6 +444,23 @@ async function execute(chatId: number, d: any, from: any) {
 // =========================================================
 // 👥 Foydalanuvchilar va rollar
 // =========================================================
+// "Menu" tugmasidagi buyruqlar — rolga qarab, ikonkali
+const C = (command: string, description: string) => ({ command, description });
+const CMDS: Record<string, any[]> = {
+  top: [C('start', '🏠 Bosh menyu'), C('davomat', '📅 Davomat — kelmaganlar va izohlar'), C('xavf', '⚠️ Xavf ostida — notcoming'),
+    C('kirim', '💰 Kassaga kirim'), C('chiqim', '💸 Kassadan chiqim'), C('statistika', '📈 Aktiv o‘quvchilar va qarz'),
+    C('xarajat', '🧾 Xarajatlar — haftalik'), C('xarajat_oy', '🗓 Xarajatlar — oylik'), C('qarz', '🔴 Qarzdorlar'),
+    C('qidir', '🔍 O‘quvchini qidirish'), C('oqituvchilar', '👩‍🏫 O‘qituvchilar hisoboti va Excel'), C('vazifalar', '📋 Ustozlar vazifalari'),
+    C('lid', '➕ Yangi lid'), C('boshqaruv', '⚙️ Rollar, hisobot, sinxron'), C('cancel', '❌ Bekor qilish')],
+  service: [C('start', '🏠 Bosh menyu'), C('davomat', '📅 Davomat — kelmaganlar va izohlar'), C('xavf', '⚠️ Xavf ostida — notcoming'),
+    C('qidir', '🔍 O‘quvchini qidirish'), C('qarz', '🔴 Qarzdorlar'), C('lid', '➕ Yangi lid'), C('cancel', '❌ Bekor qilish')],
+  teacher: [C('start', '🏠 Bosh menyu'), C('natijam', '📊 Mening natijam — konversiya'), C('vazifalarim', '📋 Vazifalarim'), C('cancel', '❌ Bekor qilish')],
+  none: [C('start', '🚀 Boshlash — raqamni yuborish')]
+};
+async function syncCommands(chatId: number | string, r: Role) {
+  await tg(await token(), 'setMyCommands', { commands: CMDS[r] || CMDS.none, scope: { type: 'chat', chat_id: Number(chatId) } }).catch(() => {});
+}
+
 async function resolveUser(from: any): Promise<{ role: Role; user: any }> {
   if (!from?.id) return { role: 'none', user: null };
   if ((await adminIds()).includes(String(from.id))) return { role: 'top', user: { tg_id: from.id, full_name: from.first_name || 'Owner', owner: true } };
@@ -488,7 +505,8 @@ async function setRole(chatId: number, tgId: number, newRole: Role, by: any) {
   const { data: u } = await admin.from('crm_edu_bot_users').update({ role: newRole, approved_by: by?.id || null, updated_at: new Date().toISOString() }).eq('tg_id', tgId).select('*').maybeSingle();
   if (!u) return void send(chatId, 'Foydalanuvchi topilmadi.');
   await send(chatId, `✅ ${esc(u.full_name)} — ${ROLE_NAME[newRole]}${newRole === 'teacher' && !u.employee_id ? '\n⚠️ Edutizim’da o‘qituvchi topilmadi (telefon mos emas) — “Mening natijam” ishlamaydi.' : ''}`);
-  if (newRole === 'blocked') return void send(tgId, '⛔ Botga kirish rad etildi.', { reply_markup: { remove_keyboard: true } });
+  if (newRole === 'blocked') { await syncCommands(tgId, 'none'); return void send(tgId, '⛔ Botga kirish rad etildi.', { reply_markup: { remove_keyboard: true } }); }
+  await syncCommands(tgId, newRole);
   await send(tgId, `🎉 Tasdiqlandingiz: <b>${ROLE_NAME[newRole]}</b>\n\nPastdagi tugmalardan foydalaning 👇`, { reply_markup: menuFor(newRole) });
 }
 
@@ -807,7 +825,7 @@ async function onMessage(m: any) {
   if (r === 'pending') return void send(chatId, '⏳ So‘rovingiz top menejer tomonidan ko‘rib chiqilmoqda.', { reply_markup: { remove_keyboard: true } });
   if (r === 'blocked') return void send(chatId, '⛔ Botdan foydalanishga ruxsat yo‘q.', { reply_markup: { remove_keyboard: true } });
 
-  if (cmd === '/start' || cmd === '/menu') { await setSession(chatId, null); return startMsg(chatId, m); }
+  if (cmd === '/start' || cmd === '/menu') { await Promise.all([setSession(chatId, null), syncCommands(chatId, r)]); return startMsg(chatId, m); }
   if (text === B_CANCEL || cmd === '/cancel') { await setSession(chatId, null); return void send(chatId, '❌ Bekor qilindi.', { reply_markup: menu() }); }
   if (ACCESS[text] && !ACCESS[text].includes(r)) return void send(chatId, '⛔ Bu bo‘lim sizning rolingiz uchun yopiq.', { reply_markup: menu() });
   const isTop = r === 'top', isStaff = r === 'top' || r === 'service';

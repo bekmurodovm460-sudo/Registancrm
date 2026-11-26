@@ -30,17 +30,17 @@ Deno.serve(async req => {
           drop_pending_updates: true
         });
         const commands = [
-          { command: 'start', description: 'Bosh menyu' },
-          { command: 'javoblar', description: 'Maktab imtihonlari javoblari' },
-          { command: 'top', description: 'TOP-3 sovrindorlar ro‘yxati' },
-          { command: 'natija', description: 'Farzand natijasi va TOP-3 o‘rni' },
-          { command: 'karta', description: 'Yutuqli karta (TOP-3)' },
-          { command: 'tekshir', description: 'Javoblar varaqasini tekshirish' },
-          { command: 'royxat', description: 'Kids Mock’ga yozilish' },
-          { command: 'mening', description: 'Mening arizalarim' },
-          { command: 'aloqa', description: 'Markaz bilan aloqa' },
-          { command: 'yordam', description: 'Yordam' },
-          { command: 'cancel', description: 'Bekor qilish' }
+          { command: 'start', description: '🏠 Bosh menyu' },
+          { command: 'javoblar', description: '🔑 Imtihon javoblari' },
+          { command: 'top', description: '🏆 TOP-3 sovrindorlar' },
+          { command: 'natija', description: '🔍 Farzandim natijasi' },
+          { command: 'karta', description: '🏅 Yutuqli karta' },
+          { command: 'tekshir', description: '📸 Varaqni tekshirish' },
+          { command: 'royxat', description: '🧒 Kids Mock’ga yozilish' },
+          { command: 'mening', description: '📋 Mening arizalarim' },
+          { command: 'aloqa', description: '📞 Aloqa' },
+          { command: 'yordam', description: 'ℹ️ Yordam' },
+          { command: 'cancel', description: '❌ Bekor qilish' }
         ];
         const cmd = await tg(token, 'setMyCommands', { commands });
         // Admin chatida qo'shimcha /hisobot va /id
@@ -48,7 +48,7 @@ Deno.serve(async req => {
         let adminCmd: any = null;
         if (adminChat) {
           adminCmd = await tg(token, 'setMyCommands', {
-            commands: [{ command: 'hisobot', description: 'Kunlik statistika' }, { command: 'id', description: 'Chat ID' }, ...commands],
+            commands: [{ command: 'hisobot', description: '📊 Kunlik statistika' }, { command: 'id', description: '🆔 Chat ID' }, ...commands],
             scope: { type: 'chat', chat_id: Number(adminChat) || adminChat }
           });
         }
