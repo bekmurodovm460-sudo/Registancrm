@@ -1,0 +1,86 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<style>
+  @font-face { font-family: M; font-weight: 600; src: url(fonts/Montserrat_600SemiBold.ttf); }
+  @font-face { font-family: M; font-weight: 700; src: url(fonts/Montserrat_700Bold.ttf); }
+  @font-face { font-family: M; font-weight: 800; src: url(fonts/Montserrat_800ExtraBold.ttf); }
+  * { margin: 0; box-sizing: border-box; }
+  body { background: #222; font-family: M, sans-serif; }
+  .art { position: relative; overflow: hidden; color: #fff;
+    background: radial-gradient(120% 95% at 18% 12%, #1E5A8C 0%, #123D66 45%, #0A2440 100%); }
+  .dots { position: absolute; inset: 0; opacity: .10; background-image: radial-gradient(#fff 1.4px, transparent 1.6px); background-size: 22px 22px; }
+  .ring { position: absolute; border-radius: 50%; border: 2px solid rgba(255,255,255,.13); }
+  .glow { position: absolute; border-radius: 50%; background: radial-gradient(circle, rgba(242,100,42,.45), rgba(242,100,42,0) 70%); }
+  .disc { position: relative; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+    background: radial-gradient(120% 90% at 25% 15%, #FF7A3D 0%, #EE5A24 50%, #D9461A 100%); box-shadow: 0 18px 50px rgba(0,0,0,.35), inset 0 0 0 6px rgba(255,255,255,.18); }
+  .coin { position: absolute; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+    background: radial-gradient(circle at 35% 30%, #FFE08A, #F5B82E 55%, #D99412); box-shadow: 0 8px 22px rgba(0,0,0,.35), inset 0 0 0 5px rgba(255,255,255,.35);
+    color: #7A4B00; font-weight: 800; }
+  #avatar { width: 640px; height: 640px; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+  #avatar .name { font-weight: 800; font-size: 60px; letter-spacing: -1px; margin-top: 22px; position: relative; }
+  #avatar .tag { font-weight: 700; font-size: 26px; margin-top: 4px; position: relative; color: #FFB48F; letter-spacing: 3px; text-transform: uppercase; }
+  #cover { width: 640px; height: 360px; padding: 32px 36px; display: flex; flex-direction: column; justify-content: space-between; }
+  #cover .brand { display: flex; align-items: center; gap: 16px; position: relative; }
+  #cover .name { font-weight: 800; font-size: 36px; letter-spacing: -.6px; line-height: 1; }
+  #cover .tag { font-weight: 700; font-size: 15px; margin-top: 7px; color: #FFB48F; letter-spacing: 2.5px; text-transform: uppercase; }
+  #cover h1 { font-weight: 800; font-size: 26px; line-height: 1.25; position: relative; letter-spacing: -.2px; }
+  #cover h1 span { background: #F2642A; color: #fff; padding: 0 9px; border-radius: 8px; }
+  .chips { display: flex; gap: 7px; position: relative; }
+  .chip { display: flex; align-items: center; gap: 7px; background: rgba(255,255,255,.10); border: 1.5px solid rgba(255,255,255,.28);
+    padding: 7px 11px; border-radius: 999px; font-weight: 700; font-size: 13px; white-space: nowrap; }
+  .chip i { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
+</style></head><body>
+<svg width="0" height="0" style="position:absolute"><defs>
+<symbol id="logo" viewBox="0 0 300 300">
+      <path d="M 238 62 A 128 128 0 1 0 270 168" fill="none" stroke="#fff" stroke-width="7" stroke-linecap="round"/>
+      <path d="M 252 84 A 128 128 0 0 1 274 128" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" opacity=".9"/>
+      <circle cx="86" cy="96" r="27" fill="#fff"/>
+      <circle cx="150" cy="86" r="30" fill="#fff"/>
+      <circle cx="214" cy="96" r="27" fill="#fff"/>
+      <!-- chap va o'ng kishilar -->
+      <path d="M 46 140 h 46 v 22 h -26 v 18 h -20 z" fill="#fff"/>
+      <path d="M 254 140 h -46 v 22 h 26 v 18 h 20 z" fill="#fff"/>
+      <path d="M 62 150 h 34 v 98 a 12 12 0 0 1 -12 12 h -10 a 12 12 0 0 1 -12 -12 z" fill="#fff"/>
+      <path d="M 238 150 h -34 v 98 a 12 12 0 0 0 12 12 h 10 a 12 12 0 0 0 12 -12 z" fill="#fff"/>
+      <!-- o'rtadagi kitob -->
+      <path d="M 100 128 q 25 -8 50 6 q 25 -14 50 -6 v 122 h -100 z" fill="#fff"/>
+      <path d="M 150 136 v 112" stroke="#EE5A24" stroke-width="5"/>
+      <path d="M 98 134 v 118 M 202 134 v 118" stroke="#EE5A24" stroke-width="6"/>
+    </symbol>
+</defs></svg>
+
+<div id="avatar" class="art">
+  <div class="dots"></div>
+  <div class="glow" style="width:620px;height:620px;left:10px;top:-40px"></div>
+  <div class="ring" style="width:560px;height:560px;left:40px;top:40px"></div>
+  <div class="disc" style="width:330px;height:330px;margin-top:-10px">
+    <svg width="250" height="250" style="margin-top:6px"><use href="#logo"/></svg>
+    <div class="coin" style="width:112px;height:112px;right:-14px;bottom:-6px;font-size:30px">so‘m</div>
+  </div>
+  <div class="name">Registan</div>
+  <div class="tag">Moliya · Edutizim</div>
+</div>
+
+<div style="height:20px"></div>
+
+<div id="cover" class="art">
+  <div class="dots"></div>
+  <div class="glow" style="width:420px;height:420px;right:-140px;top:-170px"></div>
+  <div class="ring" style="width:300px;height:300px;right:-80px;bottom:-170px"></div>
+  <div class="brand">
+    <div class="disc" style="width:92px;height:92px;box-shadow:0 10px 26px rgba(0,0,0,.35), inset 0 0 0 3px rgba(255,255,255,.2)">
+      <svg width="70" height="70" style="margin-top:2px"><use href="#logo"/></svg>
+      <div class="coin" style="width:36px;height:36px;right:-8px;bottom:-4px;font-size:10px;box-shadow:0 4px 10px rgba(0,0,0,.35), inset 0 0 0 2px rgba(255,255,255,.35)">so‘m</div>
+    </div>
+    <div><div class="name">Registan Globus</div><div class="tag">Moliya · Edutizim boti</div></div>
+  </div>
+  <h1>Kassa, to‘lovlar va qarzdorlar —<br><span>Edutizim</span> bilan bitta botda</h1>
+  <div class="chips">
+    <div class="chip"><i style="background:#3DDC84"></i>Kirim</div>
+    <div class="chip"><i style="background:#FF6B6B"></i>Chiqim</div>
+    <div class="chip"><i style="background:#F5B82E"></i>Qarzdorlar</div>
+    <div class="chip"><i style="background:#6CB8FF"></i>Lidlar</div>
+    <div class="chip"><i style="background:#fff"></i>Hisobot</div>
+  </div>
+</div>
+</body></html>

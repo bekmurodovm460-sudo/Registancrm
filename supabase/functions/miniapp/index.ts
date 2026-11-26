@@ -36,9 +36,14 @@ async function notifyAdmin(token: string, text: string) {
   if (chat) await tg(token, 'sendMessage', { chat_id: chat, text, parse_mode: 'HTML' }).catch(() => {});
 }
 
-const variantOf = (subject1?: string, level?: string) =>
-  `${subject1 === 'Rus tili' ? 'RUS' : 'MAT'}-${level === 'Qiyin' ? 'QIYIN' : 'OSON'}`;
-const REG_COLS = 'id,full_name,grade,phone,session,room,status,created_at,subject1,level';
+// Variant: 1-fan-daraja+2-fan-daraja (MAT-OSON+ENG-QIYIN); bo'lmasa faqat 1-fan bo'yicha (MAT-OSON)
+const SC: Record<string, string> = { 'Rus tili': 'RUS', 'Matematika': 'MAT', 'Ingliz tili': 'ENG' };
+const LC = (l?: string) => (l === 'Qiyin' ? 'QIYIN' : 'OSON');
+const baseVariant = (subject1?: string, level?: string) => `${subject1 === 'Rus tili' ? 'RUS' : 'MAT'}-${LC(level)}`;
+const variantOf = (subject1?: string, level?: string, subject2?: string, level2?: string) =>
+  `${baseVariant(subject1, level)}+${SC[subject2 || ''] || 'ENG'}-${LC(level2)}`;
+const SUBJECT2 = ['Ingliz tili', 'Rus tili', 'Matematika'];
+const REG_COLS = 'id,full_name,grade,phone,session,room,status,created_at,subject1,level,subject2,level2,teacher';
 
 type Room = { name: string; capacity: number };
 async function pickRoom(session: string): Promise<string> {
@@ -121,15 +126,21 @@ Deno.serve(async req => {
         const level = body.level === 'Qiyin' ? 'Qiyin' : body.level === 'Oson' ? 'Oson' : '';
         if (!subject1) return json({ ok: false, error: '1-fanni tanlang (Matematika yoki Rus tili)' });
         if (!level) return json({ ok: false, error: 'Darajani tanlang (Oson yoki Qiyin)' });
+        const subject2 = SUBJECT2.includes(body.subject2) ? String(body.subject2) : '';
+        if (!subject2) return json({ ok: false, error: '2-fanni tanlang' });
+        if (subject2 === subject1) return json({ ok: false, error: '2-fan 1-fandan farqli bo‘lsin' });
+        const level2 = body.level2 === 'Qiyin' ? 'Qiyin' : body.level2 === 'Oson' ? 'Oson' : '';
+        if (!level2) return json({ ok: false, error: '2-fan darajasini tanlang (Oson yoki Qiyin)' });
+        const teacher = String(body.teacher || '').trim().replace(/\s+/g, ' ').slice(0, 80) || null;
         const phone = '+998' + digits.slice(-9);
         const { data: dup } = await admin.from('crm_mock_registrations').select('id,room,session').eq('session', session).eq('phone', phone).ilike('full_name', name).maybeSingle();
         if (dup) return json({ ok: true, duplicate: true, registration: dup });
         const room = await pickRoom(session);
         const { data: reg, error } = await admin.from('crm_mock_registrations').insert({
-          chat_id: chatId, tg_username: user.username || null, full_name: name, grade, phone, session, room, subject1, level
+          chat_id: chatId, tg_username: user.username || null, full_name: name, grade, phone, session, room, subject1, level, subject2, level2, teacher
         }).select(REG_COLS).single();
         if (error) throw error;
-        await notifyAdmin(token, `🧒 Yangi Kids Mock arizasi (Mini App): <b>${esc(name)}</b> · ${esc(grade)} · ${esc(subject1)} (${esc(level)}) · ${esc(phone)} · ${esc(room)}`);
+        await notifyAdmin(token, `🧒 Yangi Kids Mock arizasi (Mini App): <b>${esc(name)}</b> · ${esc(grade)} · ${esc(subject1)} (${esc(level)}) + ${esc(subject2)} (${esc(level2)})${teacher ? ` · 👩‍🏫 ${esc(teacher)}` : ''} · ${esc(phone)} · ${esc(room)}`);
         return json({ ok: true, registration: reg });
       }
 
@@ -147,9 +158,12 @@ Deno.serve(async req => {
           const { data: r } = await admin.from('crm_mock_registrations').select('*').eq('id', Number(body.regId)).eq('chat_id', chatId).maybeSingle();
           if (!r) return json({ ok: false, error: 'Ariza topilmadi' });
           reg = r;
-          const { data: ts } = await admin.from('crm_tests').select('*').eq('active', true).eq('variant', variantOf(r.subject1, r.level)).order('created_at', { ascending: false });
-          test = (ts || []).find((t: any) => !t.session || t.session === r.session) || (ts || [])[0];
-          if (!test) return json({ ok: false, error: `${r.subject1 || 'Matematika'} · ${r.level || 'Oson'} varianti uchun faol test hali kiritilmagan` });
+          const { data: ts } = await admin.from('crm_tests').select('*').eq('active', true).in('variant', [variantOf(r.subject1, r.level, r.subject2, r.level2), baseVariant(r.subject1, r.level)]).order('created_at', { ascending: false });
+          // Aniq variant (2-fan bilan) ustun, bo'lmasa 1-fan+daraja varianti
+          const exact = variantOf(r.subject1, r.level, r.subject2, r.level2);
+          const pool = (ts || []).filter((t: any) => t.variant === exact).length ? (ts || []).filter((t: any) => t.variant === exact) : (ts || []);
+          test = pool.find((t: any) => !t.session || t.session === r.session) || pool[0];
+          if (!test) return json({ ok: false, error: `${r.subject1 || 'Matematika'} · ${r.level || 'Oson'} + ${r.subject2 || 'Ingliz tili'} (${r.level2 || 'Oson'}) varianti uchun faol test hali kiritilmagan` });
           body.name = r.full_name;
         } else {
           const { data: t } = await admin.from('crm_tests').select('*').eq('code', String(body.code || '')).eq('active', true).maybeSingle();
@@ -191,7 +205,7 @@ Deno.serve(async req => {
           await admin.from('crm_mock_students').upsert({ id: mockId, data: {
             id: mockId, fullName: name, room: reg?.room || 'Mini App', session: test.session || reg?.session || '', q1, q2, score: g.score,
             source: 'miniapp-omr', testCode: test.code,
-            ...(reg ? { regId: reg.id, subject1: reg.subject1 || 'Matematika', level: reg.level || 'Oson', phone: reg.phone } : {})
+            ...(reg ? { regId: reg.id, subject1: reg.subject1 || 'Matematika', level: reg.level || 'Oson', subject2: reg.subject2 || 'Ingliz tili', level2: reg.level2 || 'Oson', teacher: reg.teacher || '', phone: reg.phone } : {})
           } });
           await admin.from('crm_omr_submissions').update({ mock_student_id: mockId }).eq('id', sub.id);
         }
@@ -203,7 +217,7 @@ Deno.serve(async req => {
           result: {
             total: g.total, correct: g.correct, q1: g.q1, q2: g.q2, score: g.score,
             q1Count: Number(test.q1_count) || 0, w1: Number(test.w1), w2: Number(test.w2),
-            title: test.title, subject1: reg?.subject1 || null,
+            title: test.title, subject1: reg?.subject1 || null, subject2: reg?.subject2 || null, level2: reg?.level2 || null,
             wrong: g.wrong.map(w => ({ q: w.q, given: w.given, right: showKey ? w.right : null })),
             crm: rec ? { matched: rec.matched, fullName: rec.full_name, school: schoolName, cls: body.cls } : null
           }
@@ -211,9 +225,95 @@ Deno.serve(async req => {
       }
 
 
+
+      // ================= 🧒 KIDS MOCK NATIJALARINI YUBORISH (ustoz / nazoratchi) =================
+      case 'mList':
+      case 'mSend':
+      case 'mSave': {
+        const p = await getProctor();
+        if (!p) return json({ ok: false, error: 'Bu bo‘lim ustoz va nazoratchilar uchun. Botda “👮 Nazorat” orqali raqamingizni tasdiqlang.' }, 403);
+        const session = String(body.session || '');
+        const room = String(body.room || '');
+        const rules = await getSetting<any>('mockRules', { q1: 40, q2: 40, w1: 1.5, w2: 1 });
+        const [{ data: rows }, { data: sregs }] = await Promise.all([
+          admin.from('crm_mock_students').select('id,data'),
+          admin.from('crm_mock_registrations').select('id,full_name,room,session,phone,subject1,level,subject2,level2,teacher,status').eq('session', session).neq('status', 'Bekor')
+        ]);
+        const all = (rows || []).map(r => ({ id: Number(r.id), ...(r.data as any) })).filter(m => !session || (m.session || '') === session);
+        // Arizasi bor, lekin natijasi hali kiritilmaganlar ham ro'yxatda (qo'lda kiritish uchun)
+        const haveReg = new Set(all.map(m => Number(m.regId)).filter(Boolean));
+        for (const g of sregs || []) if (!haveReg.has(Number(g.id))) all.push({ id: 700000000 + Number(g.id), fullName: g.full_name, room: g.room, session: g.session, phone: g.phone, regId: g.id, subject1: g.subject1, level: g.level, subject2: g.subject2, level2: g.level2, teacher: g.teacher, q1: 0, q2: 0, score: 0, _new: true });
+        const regIds = [...new Set(all.map(m => Number(m.regId)).filter(Boolean))];
+        const { data: regs } = regIds.length ? await admin.from('crm_mock_registrations').select('id,chat_id,full_name,status,subject1,level,subject2,level2').in('id', regIds) : { data: [] as any[] };
+        const regBy = new Map((regs || []).map((r: any) => [Number(r.id), r]));
+        const hasScore = (m: any) => (Number(m.q1) || 0) + (Number(m.q2) || 0) > 0 || (Number(m.score) || 0) > 0;
+        // O'rinlar: sessiya va xona bo'yicha (bir xil ball — bir xil o'rin)
+        const rankIn = (list: any[]) => { const sorted = [...list].filter(hasScore).sort((a, b) => (Number(b.score) || 0) - (Number(a.score) || 0)); const map = new Map<number, number>(); sorted.forEach((m, i) => map.set(m.id, i && Number(sorted[i - 1].score) === Number(m.score) ? map.get(sorted[i - 1].id)! : i + 1)); return { map, n: sorted.length }; };
+        const sessRank = rankIn(all);
+        const roomRanks = new Map<string, { map: Map<number, number>; n: number }>();
+        [...new Set(all.map(m => m.room || ''))].forEach(rn => roomRanks.set(rn, rankIn(all.filter(m => (m.room || '') === rn))));
+        const list = all.filter(m => !room || (m.room || '') === room).map(m => {
+          const reg = regBy.get(Number(m.regId));
+          return { id: m.id, name: m.fullName, room: m.room || '', q1: Number(m.q1) || 0, q2: Number(m.q2) || 0, score: Number(m.score) || 0,
+            subject1: m.subject1 || reg?.subject1 || 'Matematika', level: m.level || reg?.level || '', subject2: m.subject2 || reg?.subject2 || 'Ingliz tili', level2: m.level2 || reg?.level2 || '',
+            regId: m.regId || null, chat: reg?.chat_id || null, cancelled: reg?.status === 'Bekor', hasScore: hasScore(m), sentAt: m.resultSentAt || null,
+            rank: sessRank.map.get(m.id) || null, rankN: sessRank.n, roomRank: roomRanks.get(m.room || '')?.map.get(m.id) || null, roomN: roomRanks.get(m.room || '')?.n || 0 };
+        }).sort((a, b) => b.score - a.score || String(a.name).localeCompare(String(b.name)));
+        const maxScore = Math.round(((Number(rules.q1) || 40) * (Number(rules.w1) || 1.5) + (Number(rules.q2) || 40) * (Number(rules.w2) || 1)) * 10) / 10;
+        const medal = (r: number | null) => (r === 1 ? '🥇' : r === 2 ? '🥈' : r === 3 ? '🥉' : '🏅');
+        const sIcon = (sub: string) => (/rus/i.test(sub) ? '🇷🇺' : /ingliz/i.test(sub) ? '🇬🇧' : '📐');
+        const textOf = (x: any) =>
+          `🧒 <b>Kids Mock natijasi</b>\n\n👤 <b>${esc(x.name)}</b>${x.regId ? ` · KM-${x.regId}` : ''}\n🗓 ${esc(session || '')}${x.room ? ` · 🚪 ${esc(x.room)}` : ''}\n\n` +
+          `${sIcon(x.subject1)} ${esc(x.subject1)}${x.level ? ` (${esc(x.level)})` : ''}: <b>${x.q1}</b> / ${Number(rules.q1) || 40}\n` +
+          `${sIcon(x.subject2)} ${esc(x.subject2)}${x.level2 ? ` (${esc(x.level2)})` : ''}: <b>${x.q2}</b> / ${Number(rules.q2) || 40}\n\n` +
+          `🏆 Umumiy ball: <b>${x.score}</b> / ${maxScore}\n` +
+          (x.rank ? `${medal(x.rank)} Imtihonda: <b>${x.rank}-o‘rin</b> (${x.rankN} ta ishtirokchi)${x.roomRank ? `\n🚪 Xonada: ${x.roomRank}-o‘rin (${x.roomN} ta)` : ''}\n` : '') +
+          `\n${x.rank && x.rank <= 3 ? '🎉 Tabriklaymiz! Farzandingiz eng yaxshi natija ko‘rsatganlar qatorida!' : '👏 Ishtirokingiz uchun rahmat! Keyingi imtihonda yanada yuqori natija tilaymiz.'}\n\n<i>Registan LC — you belong here! 🧡</i>\nSavollar bo‘lsa: /aloqa`;
+        if (body.action === 'mSave') {
+          const id = Number(body.id);
+          const m = all.find(x => x.id === id);
+          if (!m) return json({ ok: false, error: 'O‘quvchi topilmadi' }, 404);
+          const max1 = Number(rules.q1) || 40, max2 = Number(rules.q2) || 40;
+          const q1 = Math.round(Number(body.q1)), q2 = Math.round(Number(body.q2));
+          if (!Number.isFinite(q1) || !Number.isFinite(q2) || q1 < 0 || q2 < 0 || q1 > max1 || q2 > max2) return json({ ok: false, error: `To‘g‘ri javoblar: 1-fan 0–${max1}, 2-fan 0–${max2}` });
+          const score = Math.round((q1 * (Number(rules.w1) || 1.5) + q2 * (Number(rules.w2) || 1)) * 10) / 10;
+          const { data: cur } = await admin.from('crm_mock_students').select('data').eq('id', id).maybeSingle();
+          const prev: any = cur?.data || {};
+          const changed = Number(prev.q1) !== q1 || Number(prev.q2) !== q2;
+          const { _new, ...base } = m as any;
+          const dataNew = { ...base, ...prev, id, q1, q2, score, source: prev.source || 'miniapp-manual', enteredBy: p.full_name, enteredAt: new Date().toISOString(), ...(changed ? { resultSentAt: null } : {}) };
+          const { error } = await admin.from('crm_mock_students').upsert({ id, data: dataNew });
+          if (error) return json({ ok: false, error: error.message });
+          return json({ ok: true, q1, q2, score, changed });
+        }
+        if (body.action === 'mList') {
+          const sessions = await getSetting<string[]>('mockSessions', ['2026-11 (Noyabr Mock)']);
+          return json({ ok: true, sessions, rooms: [...new Set(all.map(m => m.room || '').filter(Boolean))].sort(), list, maxScore, rules: { q1: Number(rules.q1) || 40, q2: Number(rules.q2) || 40, w1: Number(rules.w1) || 1.5, w2: Number(rules.w2) || 1 },
+            preview: list.find(x => x.hasScore) ? textOf(list.find(x => x.hasScore)) : null,
+            summary: { total: list.length, withScore: list.filter(x => x.hasScore).length, sent: list.filter(x => x.sentAt).length, noChat: list.filter(x => !x.chat).length } });
+        }
+        // mSend: tanlanganlar yoki yuborilmagan (ball bor, Telegram bor) hammasi
+        const ids = Array.isArray(body.ids) && body.ids.length ? new Set(body.ids.map(Number)) : null;
+        const targets = list.filter(x => (ids ? ids.has(x.id) : !x.sentAt || body.force) && x.hasScore && x.chat && !x.cancelled);
+        let sent = 0, failed = 0;
+        for (const x of targets) {
+          const r = await tg(token, 'sendMessage', { chat_id: x.chat, text: textOf(x), parse_mode: 'HTML' }).catch(() => null);
+          if (r?.ok) {
+            sent++;
+            const { data: cur } = await admin.from('crm_mock_students').select('data').eq('id', x.id).maybeSingle();
+            await admin.from('crm_mock_students').update({ data: { ...(cur?.data as any || {}), resultSentAt: new Date().toISOString(), resultSentBy: p.full_name } }).eq('id', x.id);
+          } else failed++;
+          await new Promise(res => setTimeout(res, 45));
+        }
+        const skipped = { noScore: list.filter(x => (ids ? ids.has(x.id) : true) && !x.hasScore).length, noChat: list.filter(x => (ids ? ids.has(x.id) : true) && x.hasScore && !x.chat).length };
+        await notifyAdmin(token, `🧒 Kids Mock natijalari yuborildi: <b>${sent}</b>${failed ? ` · ⚠️ ${failed}` : ''} · ${esc(session)}${room ? ' · ' + esc(room) : ''} · 👩‍🏫 ${esc(p.full_name)}`);
+        return json({ ok: true, sent, failed, skipped });
+      }
+
       // ================= 👮 NAZORATCHILAR =================
       case 'pGrades':
       case 'pLetters':
+      case 'pFile':
       case 'pCheck': {
         const p = await getProctor();
         if (!p) return json({ ok: false, error: 'Nazoratchilar bo‘limiga ruxsat yo‘q. Botda “👮 Nazoratchilar” orqali raqamingizni tasdiqlang.' }, 403);
@@ -227,9 +327,21 @@ Deno.serve(async req => {
           const grade = String(body.grade || '');
           const [{ data: letters }, { data: tests }] = await Promise.all([
             admin.rpc('crm_school_letters', { p_school: school, p_grade: grade }),
-            admin.from('crm_tests').select('code,title,num_questions,num_options').eq('active', true).eq('kind', 'school').contains('grades', [Number(grade)]).order('created_at', { ascending: false }).limit(1)
+            admin.from('crm_tests').select('code,title,num_questions,num_options,q1_count,w1,w2,files').eq('active', true).eq('kind', 'school').contains('grades', [Number(grade)]).order('created_at', { ascending: false }).limit(1)
           ]);
-          return json({ ok: true, classes: ((letters as any[]) || []).map(l => l.class_name), test: (tests || [])[0] || null });
+          const t = (tests || [])[0] as any;
+          // Fayl yo'li mijozga yuborilmaydi — faqat nomlari; yuklab olish pFile orqali
+          const test = t ? { ...t, files: (t.files || []).map((f: any) => ({ name: f.name, size: f.size })) } : null;
+          return json({ ok: true, classes: ((letters as any[]) || []).map(l => l.class_name), test });
+        }
+        if (body.action === 'pFile') {
+          // Testning asl fayli (savollar kitobchasi): 30 daqiqalik vaqtinchalik havola
+          const { data: t } = await admin.from('crm_tests').select('code,files,kind,active').eq('code', String(body.code || '')).maybeSingle();
+          const f = t && t.kind === 'school' && t.active ? (t.files || [])[Number(body.idx)] : null;
+          if (!f) return json({ ok: false, error: 'Fayl topilmadi' });
+          const { data: u, error } = await admin.storage.from('crm-tests').createSignedUrl(f.path, 1800, { download: f.name });
+          if (error || !u) return json({ ok: false, error: 'Havola yaratilmadi' });
+          return json({ ok: true, url: u.signedUrl, name: f.name });
         }
         // pCheck
         const cls = String(body.cls || '');
@@ -239,12 +351,25 @@ Deno.serve(async req => {
         const { data: ts } = await admin.from('crm_tests').select('*').eq('active', true).eq('kind', 'school').contains('grades', [grade]).order('created_at', { ascending: false }).limit(1);
         const test = (ts || [])[0];
         if (!test) return json({ ok: false, error: `${grade}-sinf uchun faol maktab testi yo‘q` });
-        const answers = String(body.answers || '').toUpperCase().replace(/[^A-E*\-]/g, '').slice(0, test.num_questions);
-        if (answers.length !== test.num_questions) return json({ ok: false, error: 'Varaq to‘liq o‘qilmadi' });
         const name = String(body.name || '').trim().replace(/\s+/g, ' ').slice(0, 80);
         if (name.length < 3) return json({ ok: false, error: 'Familiya va ismni yozing' });
         const norm = (t: unknown) => { const d = String(t || '').replace(/\D/g, ''); return d.length >= 9 ? '+998' + d.slice(-9) : null; };
-        const g = gradeAnswers(answers, test);
+        let answers: string | null = null;
+        let g: { total: number; correct: number; q1: number; q2: number; score: number; wrong: { q: number; given: string; right: string }[] };
+        if (body.manual) {
+          // Nazoratchi qo'lda kiritdi: har fan bo'yicha to'g'ri javoblar soni -> ball avtomatik
+          const n = Number(test.num_questions), q1c = Number(test.q1_count) || 0;
+          const max1 = q1c || n, max2 = q1c ? n - q1c : 0;
+          const a = Number(body.manual.q1), b = q1c ? Number(body.manual.q2) : 0;
+          if (!Number.isInteger(a) || a < 0 || a > max1) return json({ ok: false, error: `1-fan: 0 dan ${max1} gacha son` });
+          if (!Number.isInteger(b) || b < 0 || b > max2) return json({ ok: false, error: `2-fan: 0 dan ${max2} gacha son` });
+          const w1 = Number(test.w1) || 1, w2 = Number(test.w2) || 1;
+          g = { total: n, correct: a + b, q1: q1c ? a : 0, q2: b, score: Math.round((q1c ? a * w1 + b * w2 : a * w1) * 10) / 10, wrong: [] };
+        } else {
+          answers = String(body.answers || '').toUpperCase().replace(/[^A-E*\-]/g, '').slice(0, test.num_questions);
+          if (answers.length !== test.num_questions) return json({ ok: false, error: 'Varaq to‘liq o‘qilmadi' });
+          g = gradeAnswers(answers, test);
+        }
         const q1 = Number(test.q1_count) ? g.q1 : g.correct;
         const q2 = Number(test.q1_count) ? g.q2 : 0;
         const { data: sc } = await admin.from('crm_schools').select('data').eq('id', school).maybeSingle();
@@ -256,14 +381,14 @@ Deno.serve(async req => {
         if (error) throw error;
         const rec = (r as any[])?.[0] || null;
         await admin.from('crm_omr_submissions').insert({
-          test_code: test.code, source: 'miniapp-proctor', chat_id: chatId, student_name: name, answers,
+          test_code: test.code, source: body.manual ? 'miniapp-proctor-manual' : 'miniapp-proctor', chat_id: chatId, student_name: name, answers,
           correct: g.correct, q1_correct: g.q1, q2_correct: g.q2, score: g.score,
-          school_id: school, class_name: cls, student_id: rec?.student_id || null, proctor_id: p.id, details: { wrong: g.wrong }
+          school_id: school, class_name: cls, student_id: rec?.student_id || null, proctor_id: p.id, details: { wrong: g.wrong, manual: !!body.manual }
         });
-        await notifyAdmin(token, `👮 ${esc(p.full_name)}: <b>${esc(name)}</b> (${esc(schoolName)}, ${esc(cls)}) · ${esc(test.code)} · ${g.correct}/${g.total} · ${g.score} ball${rec && !rec.matched ? ' · 🆕' : ''}`);
+        await notifyAdmin(token, `👮 ${esc(p.full_name)}: <b>${esc(name)}</b> (${esc(schoolName)}, ${esc(cls)}) · ${esc(test.code)} · ${g.correct}/${g.total} · ${g.score} ball${body.manual ? ' · ✍️ qo‘lda' : ''}${rec && !rec.matched ? ' · 🆕' : ''}`);
         return json({ ok: true, result: {
           total: g.total, correct: g.correct, q1: g.q1, q2: g.q2, score: g.score,
-          q1Count: Number(test.q1_count) || 0, w1: Number(test.w1), w2: Number(test.w2), title: test.title,
+          q1Count: Number(test.q1_count) || 0, w1: Number(test.w1), w2: Number(test.w2), title: test.title, manual: !!body.manual,
           wrong: g.wrong.map(w => ({ q: w.q, given: w.given, right: w.right })),
           crm: rec ? { matched: rec.matched, fullName: rec.full_name, school: schoolName, cls } : null
         } });

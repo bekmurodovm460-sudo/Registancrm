@@ -30,17 +30,18 @@ Deno.serve(async req => {
           drop_pending_updates: true
         });
         const commands = [
-          { command: 'start', description: 'Bosh menyu' },
-          { command: 'javoblar', description: 'Maktab imtihonlari javoblari' },
-          { command: 'top', description: 'TOP-3 sovrindorlar ro‘yxati' },
-          { command: 'natija', description: 'Farzand natijasi va TOP-3 o‘rni' },
-          { command: 'karta', description: 'Yutuqli karta (TOP-3)' },
-          { command: 'tekshir', description: 'Javoblar varaqasini tekshirish' },
-          { command: 'royxat', description: 'Kids Mock’ga yozilish' },
-          { command: 'mening', description: 'Mening arizalarim' },
-          { command: 'aloqa', description: 'Markaz bilan aloqa' },
-          { command: 'yordam', description: 'Yordam' },
-          { command: 'cancel', description: 'Bekor qilish' }
+          { command: 'start', description: '🏠 Bosh menyu' },
+          { command: 'javoblar', description: '🔑 Imtihon javoblari' },
+          { command: 'top', description: '🏆 TOP-3 sovrindorlar' },
+          { command: 'natija', description: '🔍 Farzandim natijasi' },
+          { command: 'karta', description: '🏅 Yutuqli karta' },
+          { command: 'tekshir', description: '📸 Varaqni tekshirish' },
+          { command: 'royxat', description: '🧒 Kids Mock’ga yozilish' },
+          { command: 'mening', description: '📋 Mening arizalarim' },
+          { command: 'ustoz', description: '👩‍🏫 Ustozlar: Kids Mock darajasi' },
+          { command: 'aloqa', description: '📞 Aloqa' },
+          { command: 'yordam', description: 'ℹ️ Yordam' },
+          { command: 'cancel', description: '❌ Bekor qilish' }
         ];
         const cmd = await tg(token, 'setMyCommands', { commands });
         // Admin chatida qo'shimcha /hisobot va /id
@@ -48,7 +49,7 @@ Deno.serve(async req => {
         let adminCmd: any = null;
         if (adminChat) {
           adminCmd = await tg(token, 'setMyCommands', {
-            commands: [{ command: 'hisobot', description: 'Kunlik statistika' }, { command: 'id', description: 'Chat ID' }, ...commands],
+            commands: [{ command: 'hisobot', description: '📊 Kunlik statistika' }, { command: 'id', description: '🆔 Chat ID' }, ...commands],
             scope: { type: 'chat', chat_id: Number(adminChat) || adminChat }
           });
         }
@@ -57,6 +58,29 @@ Deno.serve(async req => {
         const menu = await tg(token, 'setChatMenuButton', { menu_button: { type: 'web_app', text: '📱 Ilova', web_app: { url: miniAppUrl } } });
         if (!r.ok || !cmd.ok) return json({ ok: false, url, error: r.description || cmd.description });
         return json({ ok: true, url, commands: cmd.ok, adminCommands: adminCmd ? adminCmd.ok : null, miniApp: menu.ok ? miniAppUrl : null, miniAppError: menu.ok ? undefined : menu.description });
+      }
+      // ---- Alohida Edutizim boti ----
+      case 'eduStatus': {
+        const t = await getSecret('edu_bot_token');
+        if (!t) return json({ ok: false, error: 'Edutizim boti tokeni kiritilmagan' });
+        const me = await tg(t, 'getMe', {});
+        const wh = await tg(t, 'getWebhookInfo', {});
+        return json({ ok: me.ok, bot: me.result, webhook: wh.result, error: me.ok ? undefined : me.description });
+      }
+      case 'setEduWebhook': {
+        if (role !== 'admin') return json({ ok: false, error: 'Faqat admin' }, 403);
+        const t = await getSecret('edu_bot_token');
+        if (!t) return json({ ok: false, error: 'Edutizim boti tokeni kiritilmagan' });
+        const url = `${SUPABASE_URL}/functions/v1/edu-bot`;
+        const r = await tg(t, 'setWebhook', { url, secret_token: await webhookSecret(t), allowed_updates: ['message', 'callback_query'], drop_pending_updates: true });
+        await tg(t, 'setMyCommands', { commands: [
+          { command: 'start', description: 'Bosh menyu' }, { command: 'kirim', description: 'Kassaga kirim' }, { command: 'chiqim', description: 'Kassadan chiqim' },
+          { command: 'qidir', description: 'O‘quvchini qidirish' }, { command: 'qarz', description: 'Qarzdorlar' }, { command: 'lid', description: 'Yangi lid' },
+          { command: 'hisobot', description: 'Hisobot' }, { command: 'sinxron', description: 'Edutizim sinxroni' }, { command: 'cancel', description: 'Bekor qilish' }
+        ] });
+        await tg(t, 'setMyDescription', { description: 'Registan LC xodimlari uchun: Edutizim kassasiga kirim/chiqim, o‘quvchi balansi, qarzdorlar, lidlar va hisobot. Bot faqat ruxsat berilgan xodimlarga ochiladi.' });
+        await tg(t, 'setMyShortDescription', { short_description: 'Registan LC · Edutizim boshqaruvi (faqat xodimlar)' });
+        return json({ ok: r.ok, url, error: r.ok ? undefined : r.description });
       }
       case 'sendPhoto': {
         const chatId = String(body.chatId || '').trim() || await getSecret('telegram_admin_chat_id');
