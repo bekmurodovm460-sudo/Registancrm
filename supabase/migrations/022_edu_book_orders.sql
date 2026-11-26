@@ -21,3 +21,14 @@ revoke all on crm_edu_book_orders from anon, authenticated;
 grant select on crm_edu_book_orders to authenticated;
 drop policy if exists crm_edu_book_orders_read on crm_edu_book_orders;
 create policy crm_edu_book_orders_read on crm_edu_book_orders for select to authenticated using (crm_role() = 'admin');
+
+-- 023: faqat to'lov qilgan yangi o'quvchilar uchun; top Edutizim kassasidan chiqim qiladi
+alter table crm_edu_book_orders
+  add column if not exists group_id text,
+  add column if not exists students jsonb not null default '[]'::jsonb,
+  add column if not exists unit_price int,
+  add column if not exists out_amount bigint,
+  add column if not exists out_tx text,
+  add column if not exists out_at timestamptz,
+  add column if not exists out_by text;
+create index if not exists crm_edu_book_orders_group on crm_edu_book_orders (group_id);

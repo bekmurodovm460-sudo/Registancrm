@@ -204,6 +204,7 @@ async function kassaTx(base: string, headers: Record<string, string>, b: any) {
     id: x._id, amount: Number(x.amount) || 0, type: x.type || x.shiftTransaction?.type || '',
     category: x.shiftTransaction?.name || x.paymentTransaction?.name || '—', categoryId: x.paymentTransactionId || null,
     subtype: x.shiftTransaction?.subtype || '', method: x.paymentMethod?.name || '', date: x.actualDate || x.createdAt,
+    studentId: x.studentId || x.student?._id || null,
     comment: x.comment || '', person: [x.employee?.firstName, x.employee?.lastName].filter(Boolean).join(' ') || [x.student?.firstName, x.student?.lastName].filter(Boolean).join(' '),
     cancelled: !!(x.cancelledAt || x.isCancelled || x.cancelled || x.state === 'cancelled')
   }));
