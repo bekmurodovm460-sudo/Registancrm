@@ -261,11 +261,32 @@ async function fridayInkassa(force = false) {
   const text = `🏦 <b>Bugun Juma — naqd inkassani bankka topshirish kuni</b>\n\n${report}\n\n<i>Kun davomida yana to‘lov tushsa, summa o‘zgaradi. Batafsil: 💵 Naqd inkassa</i>`;
   const [ids, chat, { data: users }] = await Promise.all([
     getSetting<any[]>('botAdmins', []), getSecret('telegram_admin_chat_id'),
-    admin.from('crm_edu_bot_users').select('tg_id').eq('role', 'top')
+    admin.from('crm_edu_bot_users').select('tg_id').in('role', ['top', 'director'])
   ]);
-  const tops = new Set<string>([...(ids || []).map(String), String(chat || ''), ...(users || []).map(u => String(u.tg_id))].filter(Boolean));
-  for (const id of tops) await tg(token, 'sendMessage', { chat_id: id, text, parse_mode: 'HTML', reply_markup: { inline_keyboard: [[{ text: '💵 Batafsil', callback_data: 'ink:cur' }]] } }).catch(() => {});
+  const grp = await getSetting<number | null>('reportsChatId', null);
+  const tops = new Set<string>([...(ids || []).map(String), String(chat || ''), ...(users || []).map(u => String(u.tg_id)), grp ? String(grp) : ''].filter(Boolean));
+  for (const id of tops) await tg(token, 'sendMessage', { chat_id: id, text, parse_mode: 'HTML', ...(String(id) === String(grp) ? {} : { reply_markup: { inline_keyboard: [[{ text: '💵 Batafsil', callback_data: 'ink:cur' }]] } }) }).catch(() => {});
   return { sent: tops.size };
+}
+
+// 📅 Dushanba va 🗓 oyning 1-sanasi 09:00 dan keyin — rahbarga (va topga) haftalik/oylik yakun (edu-bot yasaydi)
+async function periodicReports(force?: 'week' | 'month') {
+  const tz = 5 * 3600_000, local = new Date(Date.now() + tz);
+  const today = local.toISOString().slice(0, 10);
+  const out: Record<string, unknown> = {};
+  const call = async (kind: 'week' | 'month') => {
+    const r = await fetch(`${SUPABASE_URL}/functions/v1/edu-bot`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-cron-secret': await getSecret('cron_secret') }, body: JSON.stringify({ action: 'autoReport', kind }) });
+    return await r.json().catch(() => ({ ok: false, status: r.status }));
+  };
+  for (const kind of ['week', 'month'] as const) {
+    const due = force === kind || (!force && local.getUTCHours() >= 9 && (kind === 'week' ? local.getUTCDay() === 1 : local.getUTCDate() === 1));
+    if (!due) continue;
+    const key = kind === 'week' ? 'eduWeeklySent' : 'eduMonthlySent';
+    if (!force && (await getSetting<string>(key, '')) === today) continue;
+    await admin.from('crm_settings').upsert({ key, value: today });
+    out[kind] = await call(kind);
+  }
+  return out;
 }
 
 async function dailyReport(force = false) {
@@ -318,9 +339,10 @@ async function dailyReport(force = false) {
     `\nBatafsil: 📅 Davomat · ⚠️ Xavf ostida`;
   const [ids, chat, { data: users }] = await Promise.all([
     getSetting<any[]>('botAdmins', []), getSecret('telegram_admin_chat_id'),
-    admin.from('crm_edu_bot_users').select('tg_id,role,full_name').in('role', ['top', 'senior', 'service'])
+    admin.from('crm_edu_bot_users').select('tg_id,role,full_name').in('role', ['top', 'senior', 'service', 'director'])
   ]);
-  const tops = new Set<string>([...(ids || []).map(String), String(chat || ''), ...(users || []).filter(u => u.role === 'top' || u.role === 'senior').map(u => String(u.tg_id))].filter(Boolean));
+  const grp = await getSetting<number | null>('reportsChatId', null);
+  const tops = new Set<string>([...(ids || []).map(String), String(chat || ''), ...(users || []).filter(u => u.role === 'top' || u.role === 'senior' || u.role === 'director').map(u => String(u.tg_id)), grp ? String(grp) : ''].filter(Boolean));
   const stk = (await getSetting<Record<string, string>>('eduStickerIds', {}))?.hisobot || 'https://raw.githubusercontent.com/bekmurodovm460-sudo/Registancrm/refs/heads/claude/html-site-web-platform-pltyl0/brand/stickers/hisobot.webp';
   for (const id of tops) {
     await tg(token, 'sendSticker', { chat_id: id, sticker: stk }).catch(() => {});
@@ -358,11 +380,16 @@ Deno.serve(async req => {
         const tasks = await taskReminders().catch(e => ({ error: String(e) }));
         const daily = await dailyReport().catch(e => ({ error: String(e) }));
         const inkassa = await fridayInkassa().catch(e => ({ error: String(e) }));
+        const periodic = await periodicReports().catch(e => ({ error: String(e) }));
         // To'xtab qolgan ommaviy xabarlarni davom ettirish
         const stale = new Date(Date.now() - 3 * 60_000).toISOString();
         const { data: stuck } = await admin.from('crm_broadcasts').select('id').in('status', ['queued', 'sending']).lt('updated_at', stale).limit(3);
         for (const b of stuck || []) EdgeRuntime.waitUntil(work(Number(b.id)));
-        return json({ ok: true, reminders, tasks, daily, inkassa, resumed: (stuck || []).length });
+        return json({ ok: true, reminders, tasks, daily, inkassa, periodic, resumed: (stuck || []).length });
+      }
+      case 'periodic': {
+        if (role !== 'cron' && role !== 'admin') return json({ ok: false, error: 'Ruxsat yo‘q' }, 403);
+        return json({ ok: true, ...(await periodicReports(body.kind === 'month' ? 'month' : 'week')) });
       }
       case 'inkassa': {
         if (role !== 'cron' && role !== 'admin') return json({ ok: false, error: 'Ruxsat yo‘q' }, 403);

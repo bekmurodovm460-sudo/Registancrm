@@ -31,6 +31,7 @@ const B_BOOKS = '📚 Kitob buyurtmalari';
 const B_STOCK = '📦 Kitoblar ombori';
 const B_MEDIA = '🎬 Video montaj';
 const B_AI = '🤖 AI yordamchi';
+const B_REPORTS = '📑 Hisobotlar';
 const B_ATT = '📅 Davomat';
 const B_RISK = '⚠️ Xavf ostida';
 const B_TEACH = '👩‍🏫 O‘qituvchilar';
@@ -47,31 +48,33 @@ const B_SKIP = '⏭ O‘tkazib yuborish';
 
 const kb = (rows: string[][]) => ({ keyboard: rows.map(r => r.map(text => ({ text }))), resize_keyboard: true });
 const persist = (rows: string[][], ph = 'Bo‘limni tanlang…') => ({ ...kb(rows), is_persistent: true, input_field_placeholder: ph });
-const MENU = persist([[B_IN, B_OUT], [B_INK, B_EXP], [B_BELL, B_PRICE], [B_NEW, B_MGR], [B_ATT, B_RISK], [B_STATS, B_SCHED], [B_BOOKS, B_STOCK], [B_MEDIA, B_AI], [B_PHONES], [B_DEBT, B_FIND], [B_TEACH, B_TASKS], [B_LEAD, B_ADMIN]]);
-const MENU_SENIOR = persist([[B_ATT, B_RISK], [B_NEW, B_MGR], [B_STATS, B_EXP], [B_INK, B_SCHED], [B_STOCK, B_MEDIA], [B_AI, B_PHONES], [B_BELL, B_PRICE], [B_DEBT, B_FIND], [B_TEACH, B_TASKS], [B_LEAD]]);
+const MENU = persist([[B_IN, B_OUT], [B_INK, B_EXP], [B_BELL, B_PRICE], [B_NEW, B_MGR], [B_ATT, B_RISK], [B_STATS, B_SCHED], [B_BOOKS, B_STOCK], [B_MEDIA, B_AI], [B_REPORTS, B_PHONES], [B_DEBT, B_FIND], [B_TEACH, B_TASKS], [B_LEAD, B_ADMIN]]);
+const MENU_SENIOR = persist([[B_ATT, B_RISK], [B_NEW, B_MGR], [B_STATS, B_EXP], [B_INK, B_SCHED], [B_STOCK, B_MEDIA], [B_AI, B_REPORTS], [B_PHONES], [B_BELL, B_PRICE], [B_DEBT, B_FIND], [B_TEACH, B_TASKS], [B_LEAD]]);
 const MENU_SERVICE = persist([[B_ATT, B_RISK], [B_NEW, B_MY], [B_FIND, B_DEBT], [B_LEAD, B_SCHED], [B_AI, B_PHONES]]);
 const MENU_TEACHER = persist([[B_MY, B_MYTASK], [B_SCHED, B_PHONES], [B_AI]]);
+const MENU_DIRECTOR = persist([[B_REPORTS], [B_STATS, B_EXP], [B_INK, B_ATT], [B_TEACH, B_NEW], [B_RISK, B_STOCK], [B_SCHED, B_AI], [B_PHONES]]);
 const MENU_MEDIA = persist([[B_MEDIA, B_AI], [B_SCHED, B_PHONES]]);
 const MENU_TEACHER_BOOK = persist([[B_MY, B_MYTASK], [B_BOOK, B_SCHED], [B_AI, B_PHONES]]);
 // Bosh sahifadagi bosib tanlanadigan (inline) bo'limlar — rolga qarab
-const GO: Record<string, string> = { kirim: B_IN, chiqim: B_OUT, davomat: B_ATT, xavf: B_RISK, stat: B_STATS, xarajat: B_EXP, inkassa: B_INK, jadval: B_SCHED, raqam: B_PHONES, kitob: B_BOOK, kitoblar: B_BOOKS, ombor: B_STOCK, montaj: B_MEDIA, ai: B_AI, qarz: B_DEBT, qidir: B_FIND, ustoz: B_TEACH, vazifa: B_TASKS, lid: B_LEAD, admin: B_ADMIN, natijam: B_MY, myvazifa: B_MYTASK, bell: B_BELL, narx: B_PRICE, yangi: B_NEW, mgr: B_MGR };
+const GO: Record<string, string> = { kirim: B_IN, chiqim: B_OUT, davomat: B_ATT, xavf: B_RISK, stat: B_STATS, xarajat: B_EXP, inkassa: B_INK, jadval: B_SCHED, raqam: B_PHONES, kitob: B_BOOK, kitoblar: B_BOOKS, ombor: B_STOCK, montaj: B_MEDIA, ai: B_AI, hisobot: B_REPORTS, qarz: B_DEBT, qidir: B_FIND, ustoz: B_TEACH, vazifa: B_TASKS, lid: B_LEAD, admin: B_ADMIN, natijam: B_MY, myvazifa: B_MYTASK, bell: B_BELL, narx: B_PRICE, yangi: B_NEW, mgr: B_MGR };
 const GO_ROWS: Record<string, string[][]> = {
-  top: [['kirim', 'chiqim'], ['inkassa', 'xarajat'], ['bell', 'narx'], ['yangi', 'mgr'], ['davomat', 'xavf'], ['stat', 'jadval'], ['kitoblar', 'ombor'], ['montaj', 'ai'], ['raqam'], ['qarz', 'qidir'], ['ustoz', 'vazifa'], ['lid', 'admin']],
-  senior: [['davomat', 'xavf'], ['yangi', 'mgr'], ['stat', 'xarajat'], ['inkassa', 'jadval'], ['ombor', 'montaj'], ['ai', 'raqam'], ['bell', 'narx'], ['qarz', 'qidir'], ['ustoz', 'vazifa'], ['lid']],
+  top: [['kirim', 'chiqim'], ['inkassa', 'xarajat'], ['bell', 'narx'], ['yangi', 'mgr'], ['davomat', 'xavf'], ['stat', 'jadval'], ['kitoblar', 'ombor'], ['montaj', 'ai'], ['hisobot', 'raqam'], ['qarz', 'qidir'], ['ustoz', 'vazifa'], ['lid', 'admin']],
+  senior: [['davomat', 'xavf'], ['yangi', 'mgr'], ['stat', 'xarajat'], ['inkassa', 'jadval'], ['ombor', 'montaj'], ['ai', 'hisobot'], ['raqam'], ['bell', 'narx'], ['qarz', 'qidir'], ['ustoz', 'vazifa'], ['lid']],
   service: [['davomat', 'xavf'], ['yangi', 'natijam'], ['qidir', 'qarz'], ['lid', 'jadval'], ['ai', 'raqam']],
   teacher: [['natijam', 'myvazifa'], ['jadval', 'raqam'], ['ai']],
   media: [['montaj', 'ai'], ['jadval', 'raqam']],
+  director: [['hisobot'], ['stat', 'xarajat'], ['inkassa', 'davomat'], ['ustoz', 'yangi'], ['xavf', 'ombor'], ['jadval', 'ai'], ['raqam']],
   teacherBook: [['natijam', 'myvazifa'], ['kitob', 'jadval'], ['ai', 'raqam']]
 };
 const homeKb = (r: string, withAcc = false) => ({ inline_keyboard: [...(GO_ROWS[r] || []).map(row => row.map(k => ({ text: GO[k], callback_data: `go:${k}` }))), ...(withAcc ? [[{ text: '🔑 Edutizim akkauntim', callback_data: 'acc' }]] : [])] });
-type Role = 'top' | 'senior' | 'service' | 'teacher' | 'media' | 'pending' | 'blocked' | 'none';
+type Role = 'top' | 'senior' | 'director' | 'service' | 'teacher' | 'media' | 'pending' | 'blocked' | 'none';
 type Ctx = { role: Role; user: any; menu: any; from: any; book?: boolean };
 const als = new AsyncLocalStorage<Ctx>();
 const menu = () => als.getStore()?.menu ?? MENU;
 const role = (): Role => als.getStore()?.role ?? 'none';
 const me = () => als.getStore()?.user;
-const menuFor = (r: Role) => (r === 'top' ? MENU : r === 'senior' ? MENU_SENIOR : r === 'service' ? MENU_SERVICE : r === 'teacher' ? MENU_TEACHER : r === 'media' ? MENU_MEDIA : { remove_keyboard: true });
-const ROLE_NAME: Record<string, string> = { top: '👑 Top menejer', senior: '🧭 Katta menejer', service: '🎧 Servis menejer', teacher: '👩‍🏫 O‘qituvchi', media: '🎬 Media', pending: '⏳ Kutilmoqda', blocked: '⛔ Bloklangan' };
+const menuFor = (r: Role) => (r === 'director' ? MENU_DIRECTOR : r === 'top' ? MENU : r === 'senior' ? MENU_SENIOR : r === 'service' ? MENU_SERVICE : r === 'teacher' ? MENU_TEACHER : r === 'media' ? MENU_MEDIA : { remove_keyboard: true });
+const ROLE_NAME: Record<string, string> = { top: '👑 Top menejer', senior: '🧭 Katta menejer', service: '🎧 Servis menejer', teacher: '👩‍🏫 O‘qituvchi', media: '🎬 Media', director: '👔 Rahbar', pending: '⏳ Kutilmoqda', blocked: '⛔ Bloklangan' };
 const CANCEL_KB = kb([[B_CANCEL]]);
 const SKIP_KB = kb([[B_SKIP], [B_CANCEL]]);
 const BANNER = 'https://raw.githubusercontent.com/bekmurodovm460-sudo/Registancrm/refs/heads/claude/html-site-web-platform-pltyl0/brand/edu-bot-tavsif-1280x720.png';
@@ -1078,6 +1081,85 @@ async function aiAsk(chatId: number, text: string, from: any) {
   for (let i = 0; i < parts.length; i++) await tg(await token(), 'sendMessage', { chat_id: chatId, text: parts[i], ...(i === parts.length - 1 ? extra : {}) });
 }
 
+// =========================================================
+// 📑 Hisobotlar — rahbar uchun yagona joy (avtomatik: kunlik 20:00, haftalik dushanba, oylik 1-sana, Juma inkassa)
+// =========================================================
+async function reportsHub(chatId: number) {
+  await send(chatId,
+    '📑 <b>Hisobotlar</b>\n\n<b>Avtomatik shu chatga keladi:</b>\n🌙 Har kuni 20:00 — kunlik hisobot (kassa, davomat, menejerlar izohi)\n📅 Dushanba 09:00 — o‘tgan hafta yakuni\n🗓 Har oy 1-sanasi 09:00 — o‘tgan oy yakuni\n🏦 Juma 09:00 — bankka topshiriladigan naqd inkassa\n\n<b>Hozir ko‘rish:</b>', {
+      reply_markup: { inline_keyboard: [
+        [ib('🌙 Bugun', 'rp:day'), ib('📅 Bu hafta', 'rp:week')],
+        [ib('🗓 Bu oy', 'rp:month'), ib('🗓 O‘tgan oy', 'rp:pmonth')],
+        [ib('💵 Naqd inkassa', 'ink:cur'), ib('🧾 Xarajatlar', 'ex:week')],
+        [ib('📈 Statistika', 'go:stat'), ib('👩‍🏫 O‘qituvchilar', 'go:ustoz')],
+        [ib('🎧 Menejerlar', 'go:mgr'), ib('⚠️ Xavf ostida', 'go:xavf')]
+      ] }
+    });
+}
+
+type RepP = 'day' | 'week' | 'month' | 'pmonth' | 'pweek' | 'hub';
+/** Markaz yakuniy hisoboti (HTML). Faqat o'qiydi. */
+async function summaryReport(p: RepP): Promise<string> {
+  if (p === 'hub') return '📑 Hisobotlar: /hisobot';
+  const per: Period = p === 'day' ? 'today' : (p as Period);
+  const rr = range(per);
+  const title = { day: '🌙 Kunlik hisobot', week: '📅 Haftalik hisobot', pweek: '📅 Haftalik yakun', month: '🗓 Oylik hisobot', pmonth: '🗓 Oylik yakun' }[p];
+  const L: string[] = [`<b>${title}</b> · ${dmy(rr.from)}–${dmy(rr.to)}`, ''];
+  // 💰 Kassa
+  try {
+    const meta = await edu('kassaMeta');
+    if (!meta.ok) throw new Error(meta.error);
+    const [inc, out, pinc] = await Promise.all([txFor('payIn', rr.from, rr.to, meta.cashboxes || []), txFor('payOut', rr.from, rr.to, meta.cashboxes || []), txFor('payIn', rr.prev.from, rr.prev.to, meta.cashboxes || [])]);
+    const realOut = out.filter((t: any) => !isMoveOut(t));
+    const incIn = inc.filter((t: any) => !/inkassa/i.test(t.method || '') || t.category !== '—');
+    const sIn = incIn.reduce((a: number, t: any) => a + t.amount, 0), sOut = realOut.reduce((a: number, t: any) => a + t.amount, 0);
+    const sPrev = pinc.reduce((a: number, t: any) => a + t.amount, 0);
+    const byM = new Map<string, number>(); incIn.forEach((t: any) => { const k = String(t.method || '—').replace(/\s*"\s*[\d.]+%\s*"\s*/g, '').trim(); byM.set(k, (byM.get(k) || 0) + t.amount); });
+    const cats = new Map<string, number>(); realOut.forEach((t: any) => cats.set(t.category, (cats.get(t.category) || 0) + t.amount));
+    L.push(`💰 <b>Kassa</b>\n   Kirim: <b>${mln(sIn)}</b>${delta(sIn, sPrev)} · ${incIn.length} ta to‘lov\n   ${[...byM.entries()].sort((a, b) => b[1] - a[1]).slice(0, 4).map(([k, v]) => `${esc(k)} ${mln(v)}`).join(' · ')}\n   Xarajat: <b>${mln(sOut)}</b> · Sof: <b>${mln(sIn - sOut)}</b>` +
+      (cats.size ? `\n   Eng katta xarajatlar: ${[...cats.entries()].sort((a, b) => b[1] - a[1]).slice(0, 3).map(([k, v]) => `${esc(k)} ${mln(v)}`).join(', ')}` : ''));
+  } catch (e) { L.push(`💰 Kassa: ⚠️ ${esc((e as Error).message)}`); }
+  // 💵 Inkassa (hafta / oy)
+  if (p !== 'day') {
+    try { const ink = stripHtml(await inkassaReport(edu, p === 'week' ? 'cur' : p === 'pweek' ? 'prev' : p as InkP, Date.now(), true)).split('\n').filter(x => /topshiriladigan|Jami yig|To‘g‘ridan|ko‘chirilgan/.test(x)).map(x => '   ' + x.trim()); if (ink.length) L.push('', '💵 <b>Naqd inkassa</b>', ...ink.map(esc)); } catch { /* ixtiyoriy */ }
+  }
+  // 👥 O'quvchilar va qarz
+  try {
+    const all = await allBalances(); const a = all.filter(s => s.active); const debt = a.filter(s => s.balance < 0);
+    L.push('', `👥 <b>O‘quvchilar</b>\n   Aktiv: <b>${a.length}</b> · qarzdor: ${debt.length} (${mln(-debt.reduce((x, s) => x + s.balance, 0))})`);
+  } catch { /* ixtiyoriy */ }
+  // 🆕 Oy bo'yicha o'sish va konversiya (oy hisobotlarida)
+  if (p === 'month' || p === 'pmonth') {
+    const rep: any = await teacherReport(p === 'month' ? 'm' : 'pm').catch(() => null);
+    const c = rep?.center;
+    if (c) L.push(`   Oy boshida ${c.start} → ${p === 'month' ? 'hozir' : 'oy oxirida'} ${c.now} (${c.delta >= 0 ? '+' : ''}${c.delta})\n   ➕ Kelgan: ${c.joined} · ➖ Ketgan: ${c.left} · 🆕 Yangi: ${c.newStudents}\n   🔁 Konversiya: <b>${c.conversion ?? '—'}%</b> (${c.converted}/${c.trials})`);
+  }
+  // 📅 Davomat (kunlik)
+  if (p === 'day') {
+    try {
+      const ymd = new Date(dayStart(Date.now()) + TZ).toISOString().slice(0, 10);
+      const res = await edu('absences', { fromDate: `${ymd}T00:00:00.000Z`, toDate: `${ymd}T23:59:59.999Z` });
+      const rows = (res.rows || []).filter((x: any) => !x.lessonDate || String(x.lessonDate).slice(0, 10) === ymd);
+      L.push('', `📅 <b>Davomat</b>: kelmaganlar <b>${rows.length}</b> (🔴 sababsiz ${rows.filter((x: any) => x.state === 'unreasonable').length})`);
+    } catch { /* ixtiyoriy */ }
+  }
+  // ⚠️ Xavf va 📦 ombor
+  try { const rk = await edu('absenceRisk', { days: 21 }); if (rk.ok) L.push(`⚠️ Notcoming xavfi: <b>${(rk.rows || []).length}</b> ta (3+ dars: ${(rk.rows || []).filter((x: any) => x.streak >= 3).length})`); } catch { /* */ }
+  try { const { data: st } = await admin.from('crm_edu_book_stock').select('title,qty,min_qty'); const low = (st || []).filter((b: any) => b.qty <= b.min_qty); if (low.length) L.push(`📦 Kam qolgan kitoblar: ${low.slice(0, 5).map((b: any) => `${esc(b.title)} (${b.qty})`).join(', ')}`); } catch { /* */ }
+  L.push('', '<i>Batafsil: 📑 Hisobotlar · 💵 Naqd inkassa · 🧾 Xarajatlar · 👩‍🏫 O‘qituvchilar</i>');
+  return L.join('\n').slice(0, 4000);
+}
+/** Avtomatik hisobot: rahbar(lar) va top menejerlarning shaxsiy chatiga */
+async function sendAutoReport(kind: 'week' | 'month') {
+  const text = await summaryReport(kind === 'week' ? 'pweek' : 'pmonth');
+  const { data: dirs } = await admin.from('crm_edu_bot_users').select('tg_id').eq('role', 'director');
+  const grp = await getSetting<number | null>('reportsChatId', null);
+  const ids = [...new Set([...(dirs || []).map((d: any) => String(d.tg_id)), ...(await topIds()), ...(grp ? [String(grp)] : [])])];
+  let sent = 0;
+  for (const id of ids) { const r = await send(id, text, { reply_markup: { inline_keyboard: [[ib('📑 Hisobotlar', 'rp:hub')]] } }).catch(() => null); if (r?.ok) sent++; }
+  return { sent, recipients: ids.length };
+}
+
 // 🎬 Video montaj Mini App (telefonning o'zida montaj; tayyor video shu chatga keladi)
 async function mediaOpen(chatId: number) {
   const url = await getSetting<string>('eduMontajAppUrl', '');
@@ -1326,6 +1408,7 @@ const CMDS: Record<string, any[]> = {
     C('yangilar', '🆕 Yangi talabalar'), C('natijam', '📊 Mening konversiyam'), C('jadval', '🗓 Dars jadvali (PDF)'), C('raqamlar', '📞 Kerakli raqamlar'), C('qidir', '🔍 O‘quvchini qidirish'), C('qarz', '🔴 Qarzdorlar'), C('lid', '➕ Yangi lid'), C('akkaunt', '🔑 Edutizim akkauntim'), C('cancel', '❌ Bekor qilish')],
   teacher: [C('start', '🏠 Bosh menyu'), C('natijam', '📊 Mening natijam — konversiya'), C('vazifalarim', '📋 Vazifalarim'), C('jadval', '🗓 Dars jadvali (PDF)'), C('kitob', '📚 Kitob olish (guruh bo‘yicha)'), C('raqamlar', '📞 Kerakli raqamlar'), C('akkaunt', '🔑 Edutizim akkauntim'), C('cancel', '❌ Bekor qilish')],
   media: [C('start', '🏠 Bosh menyu'), C('ai', '🤖 AI yordamchi'), C('montaj', '🎬 Video montaj'), C('jadval', '🗓 Dars jadvali (PDF)'), C('raqamlar', '📞 Kerakli raqamlar'), C('cancel', '❌ Bekor qilish')],
+  director: [C('start', '🏠 Bosh menyu'), C('hisobot', '📑 Hisobotlar'), C('statistika', '📈 Aktiv o‘quvchilar va qarz'), C('xarajat', '🧾 Xarajatlar'), C('inkassa', '💵 Naqd inkassa'), C('davomat', '📅 Davomat'), C('oqituvchilar', '👩‍🏫 O‘qituvchilar'), C('ai', '🤖 AI yordamchi'), C('cancel', '❌ Bekor qilish')],
   none: [C('start', '🚀 Boshlash — raqamni yuborish')]
 };
 async function syncCommands(chatId: number | string, r: Role) {
@@ -1340,6 +1423,8 @@ async function resolveUser(from: any): Promise<{ role: Role; user: any }> {
   if (!from?.id) return { role: 'none', user: null };
   if ((await adminIds()).includes(String(from.id))) return { role: 'top', user: { tg_id: from.id, full_name: from.first_name || 'Owner', owner: true } };
   const { data } = await admin.from('crm_edu_bot_users').select('*').eq('tg_id', from.id).maybeSingle();
+  // Rahbar: ruxsatlar katta menejer bilan bir xil (hammasini ko'radi, kassa/SMS o'zgartirmaydi), o'z menyusi va hisobotlari bilan
+  if (data?.role === 'director') return { role: 'senior', user: { ...data, director: true } };
   return { role: (data?.role as Role) || 'none', user: data };
 }
 async function topIds(): Promise<string[]> {
@@ -1364,16 +1449,27 @@ async function askContact(chatId: number, first = '') {
   });
 }
 
+async function directorJoin(chatId: number, from: any, phone: string, emp: any = null) {
+  const name = emp?.name || [from.first_name, from.last_name].filter(Boolean).join(' ') || from.username;
+  await admin.from('crm_edu_bot_users').upsert({ tg_id: from.id, role: 'director', full_name: name, phone: phone || null, employee_id: emp?.id || null, tg_username: from.username || null, updated_at: new Date().toISOString() });
+  await syncCommands(from.id, 'director');
+  await sticker(chatId, 'welcome');
+  await send(chatId, `🎉 Xush kelibsiz, <b>${esc(name)}</b>!\nSiz <b>👔 Rahbar</b> sifatida ulandingiz — ro‘yxatdan o‘tish shart emas.\n\nKunlik (20:00), haftalik (dushanba) va oylik (1-sana) hisobotlar hamda Juma kungi inkassa shu chatga avtomatik keladi. Istalgan hisobotni “📑 Hisobotlar” bo‘limida ochishingiz mumkin.`, { reply_markup: MENU_DIRECTOR });
+  await notifyTops(`👔 <b>Rahbar botga ulandi</b>: ${esc(name)}${from.username ? ' · @' + esc(from.username) : ''}${phone ? ' · ' + esc(phone) : ''}\nEndi barcha hisobotlar uning lichkasiga boradi.`, { reply_markup: { inline_keyboard: [[ib('⛔ Bloklash', `ua:${from.id}:blocked`)]] } });
+}
+
 async function register(chatId: number, m: any) {
   const c = m.contact;
   if (!c || c.user_id !== m.from?.id) return void send(chatId, '📱 Faqat o‘zingizning raqamingizni tugma orqali yuboring.');
   const digits = String(c.phone_number || '').replace(/\D/g, '').slice(-9);
   const emp = (await employeesList()).find((e: any) => e.digits === digits);
   const name = emp?.name || [m.from.first_name, m.from.last_name].filter(Boolean).join(' ');
+  const dirNames = ((await getSetting<string[]>('directorUsernames', [])) || []).map(x => String(x).toLowerCase().replace(/^@/, ''));
+  if (m.from.username && dirNames.includes(String(m.from.username).toLowerCase())) return directorJoin(chatId, m.from, '+998' + digits, emp);
   await admin.from('crm_edu_bot_users').upsert({ tg_id: m.from.id, role: 'pending', full_name: name, phone: '+998' + digits, employee_id: emp?.id || null, tg_username: m.from.username || null, updated_at: new Date().toISOString() });
   await send(chatId, `✅ So‘rovingiz yuborildi.\n👤 ${esc(name)} · +998${digits}${emp ? '\n🗂 Edutizim’da topildi' : ''}\n\nTop menejer rolingizni tasdiqlashi bilan xabar beramiz.`, { reply_markup: { remove_keyboard: true } });
   await notifyTops(`🆕 <b>Botga kirish so‘rovi</b>\n👤 ${esc(name)}${m.from.username ? ' · @' + esc(m.from.username) : ''}\n📱 +998${digits}\n🗂 Edutizim: ${emp ? 'xodim topildi ✅' : 'topilmadi ⚠️'}\n\nRolini tanlang:`, {
-    reply_markup: { inline_keyboard: [[ib('👑 Top', `ua:${m.from.id}:top`), ib('🧭 Katta', `ua:${m.from.id}:senior`), ib('🎧 Servis', `ua:${m.from.id}:service`), ib('👩‍🏫 O‘qituvchi', `ua:${m.from.id}:teacher`)], [ib('🎬 Media', `ua:${m.from.id}:media`), ib('⛔ Rad etish', `ua:${m.from.id}:blocked`)]] }
+    reply_markup: { inline_keyboard: [[ib('👑 Top', `ua:${m.from.id}:top`), ib('🧭 Katta', `ua:${m.from.id}:senior`), ib('🎧 Servis', `ua:${m.from.id}:service`), ib('👩‍🏫 O‘qituvchi', `ua:${m.from.id}:teacher`)], [ib('👔 Rahbar', `ua:${m.from.id}:director`), ib('🎬 Media', `ua:${m.from.id}:media`), ib('⛔ Rad etish', `ua:${m.from.id}:blocked`)]] }
   });
 }
 
@@ -2016,7 +2112,7 @@ async function myStats(chatId: number, which: 'm' | 'pm' = 'm') {
 // =========================================================
 const ACCESS: Record<string, Role[]> = {
   // matn tugmalari
-  [B_IN]: ['top'], [B_OUT]: ['top'], [B_STATS]: ['top', 'senior'], [B_EXP]: ['top', 'senior'], [B_INK]: ['top', 'senior'], [B_SCHED]: ['top', 'senior', 'service', 'teacher', 'media'], [B_PHONES]: ['top', 'senior', 'service', 'teacher', 'media'], [B_BOOK]: ['teacher'], [B_BOOKS]: ['top'], [B_STOCK]: ['top', 'senior'], [B_MEDIA]: ['top', 'senior', 'media'], [B_AI]: ['top', 'senior', 'service', 'teacher', 'media'], [B_TEACH]: ['top', 'senior'], [B_TASKS]: ['top', 'senior'], [B_ADMIN]: ['top'], [B_BELL]: ['top', 'senior'], [B_PRICE]: ['top', 'senior'], [B_NEW]: ['top', 'senior', 'service'], [B_MGR]: ['top', 'senior'],
+  [B_IN]: ['top'], [B_OUT]: ['top'], [B_STATS]: ['top', 'senior'], [B_EXP]: ['top', 'senior'], [B_INK]: ['top', 'senior'], [B_SCHED]: ['top', 'senior', 'service', 'teacher', 'media'], [B_PHONES]: ['top', 'senior', 'service', 'teacher', 'media'], [B_BOOK]: ['teacher'], [B_BOOKS]: ['top'], [B_STOCK]: ['top', 'senior'], [B_MEDIA]: ['top', 'senior', 'media'], [B_REPORTS]: ['top', 'senior'], [B_AI]: ['top', 'senior', 'service', 'teacher', 'media'], [B_TEACH]: ['top', 'senior'], [B_TASKS]: ['top', 'senior'], [B_ADMIN]: ['top'], [B_BELL]: ['top', 'senior'], [B_PRICE]: ['top', 'senior'], [B_NEW]: ['top', 'senior', 'service'], [B_MGR]: ['top', 'senior'],
   [B_ATT]: ['top', 'senior', 'service'], [B_RISK]: ['top', 'senior', 'service'], [B_FIND]: ['top', 'senior', 'service'], [B_DEBT]: ['top', 'senior', 'service'], [B_LEAD]: ['top', 'senior', 'service'],
   [B_MY]: ['teacher', 'service'], [B_MYTASK]: ['teacher']
 };
@@ -2037,7 +2133,10 @@ function cbAllowed(data: string, r: Role) {
 async function startMsg(chatId: number, m: any) {
   const r = role();
   const name = esc(m.from?.first_name || '');
-  const body = r === 'top'
+  const dir = !!me()?.director;
+  const body = dir
+    ? `📑 <b>Hisobotlar</b> — kunlik, haftalik, oylik (avtomatik shu chatga keladi)\n📈 <b>Statistika</b> · 🧾 <b>Xarajatlar</b> · 💵 <b>Naqd inkassa</b>\n📅 <b>Davomat</b> · ⚠️ <b>Xavf ostida</b>\n👩‍🏫 <b>O‘qituvchilar</b> · 🆕 <b>Yangi talabalar</b>\n📦 <b>Kitoblar ombori</b> · 🗓 <b>Dars jadvali</b> · 🤖 <b>AI yordamchi</b>`
+    : r === 'top'
     ? `💰 <b>Kirim / Chiqim</b> — Edutizim kassasi\n🆕 <b>Yangi talabalar</b> · 🎧 <b>Menejerlar</b> konversiyasi\n📅 <b>Davomat</b> — kelmaganlar va menejer izohlari\n⚠️ <b>Xavf ostida</b> — notcoming bo‘lay deganlar\n📈 <b>Statistika</b> · 🧾 <b>Xarajatlar</b> · 💵 <b>Naqd inkassa</b>\n🔴 <b>Qarzdorlar</b> · 🔍 <b>O‘quvchi</b>\n👩‍🏫 <b>O‘qituvchilar</b> — hisobot, konversiya, Excel\n📋 <b>Vazifalar</b> — ustozlarga topshiriq\n⚙️ <b>Boshqaruv</b> — rollar, hisobot, sinxron`
     : r === 'senior'
       ? `📅 <b>Davomat</b> · ⚠️ <b>Xavf ostida</b>\n🆕 <b>Yangi talabalar</b> · 🎧 <b>Menejerlar</b>\n📈 <b>Statistika</b> · 🧾 <b>Xarajatlar</b> · 💵 <b>Naqd inkassa</b>\n🔔 <b>Qo‘ng‘iroqchalar</b> · 💲 <b>Narx nazorati</b> (ko‘rish)\n🔴 <b>Qarzdorlar</b> · 🔍 <b>O‘quvchi</b>\n👩‍🏫 <b>O‘qituvchilar</b> · 📋 <b>Vazifalar</b>\n<i>Kassa, SMS, narx o‘zgartirish va rollar — top menejerda.</i>`
@@ -2048,8 +2147,8 @@ async function startMsg(chatId: number, m: any) {
       : `📊 <b>Mening natijam</b> — aktiv, kelgan, ketgan, konversiya\n📋 <b>Vazifalarim</b> — top menejer topshiriqlari`;
   // 1) salom + doimiy pastki menyu, 2) banner ostida bosib tanlanadigan bo'limlar
   await send(chatId, `👋 Assalomu alaykum, <b>${name}</b>!`, { reply_markup: menu() });
-  const caption = `🏛 <b>Registan · Markaz</b> · ${ROLE_NAME[r] || ''}\n\n${body}\n\nKerakli bo‘limni tanlang 👇`;
-  const hk = homeKb(r === 'teacher' && als.getStore()?.book ? 'teacherBook' : r, !!me()?.phone);
+  const caption = `🏛 <b>Registan · Markaz</b> · ${ROLE_NAME[dir ? 'director' : r] || ''}\n\n${body}\n\nKerakli bo‘limni tanlang 👇`;
+  const hk = homeKb(me()?.director ? 'director' : r === 'teacher' && als.getStore()?.book ? 'teacherBook' : r, !!me()?.phone);
   hk.inline_keyboard.push(...(await attAppRow()));
   const res = await tg(await token(), 'sendPhoto', { chat_id: chatId, photo: BANNER, caption, parse_mode: 'HTML', reply_markup: hk });
   if (!res?.ok) await send(chatId, caption, { reply_markup: hk });
@@ -2057,17 +2156,31 @@ async function startMsg(chatId: number, m: any) {
 
 async function onMessage(m: any) {
   const chatId = m.chat.id as number;
-  if (m.chat.type !== 'private') return;
+  if (m.chat.type !== 'private') {
+    // Hisobotlar guruhi: top menejer guruhda /hisobot_guruh yozsa — avtomatik hisobotlar shu guruhga ham boradi
+    const gcmd = String(m.text || '').trim().split(/\s+/)[0].split('@')[0].toLowerCase();
+    if ((gcmd === '/hisobot_guruh' || gcmd === '/hisobot_guruh_ochir') && role() === 'top') {
+      const off = gcmd.endsWith('_ochir');
+      await admin.from('crm_settings').upsert({ key: 'reportsChatId', value: off ? null : m.chat.id });
+      await send(m.chat.id, off ? '🔕 Avtomatik hisobotlar bu guruhga endi yuborilmaydi.' : '✅ <b>Hisobotlar guruhi</b> ulandi.\nKunlik (20:00), haftalik (dushanba), oylik (1-sana) hisobotlar va Juma kungi inkassa shu guruhga keladi.');
+    }
+    return;
+  }
   const text = String(m.text || '').trim();
   const cmd = text.startsWith('/') ? text.split(/\s+/)[0].split('@')[0].toLowerCase() : '';
   const r = role();
   if (cmd === '/id') return void send(chatId, `ID: <code>${m.from?.id}</code>`);
+  if (r === 'none' && m.from?.username) {
+    // Oldindan ruxsat berilgan rahbar — raqam yubormasdan, faqat Start bosganda ulanadi
+    const dirNames = ((await getSetting<string[]>('directorUsernames', [])) || []).map(x => String(x).toLowerCase().replace(/^@/, ''));
+    if (dirNames.includes(String(m.from.username).toLowerCase())) return directorJoin(chatId, m.from, '');
+  }
   if (r === 'none') return m.contact ? register(chatId, m) : askContact(chatId, m.from?.first_name);
   if (r === 'pending') return void send(chatId, '⏳ So‘rovingiz top menejer tomonidan ko‘rib chiqilmoqda.', { reply_markup: { remove_keyboard: true } });
   if (r === 'blocked') return void send(chatId, '⛔ Botdan foydalanishga ruxsat yo‘q.', { reply_markup: { remove_keyboard: true } });
 
   if (cmd === '/akkaunt' && ['top', 'senior', 'service', 'teacher'].includes(r) && me()?.phone) return accountView(chatId);
-  if (cmd === '/start' || cmd === '/menu') { await Promise.all([setSession(chatId, null), syncCommands(chatId, r)]); return startMsg(chatId, m); }
+  if (cmd === '/start' || cmd === '/menu') { await Promise.all([setSession(chatId, null), syncCommands(chatId, me()?.director ? 'director' : r)]); return startMsg(chatId, m); }
   if (text === B_CANCEL || cmd === '/cancel') { await setSession(chatId, null); return void send(chatId, '❌ Bekor qilindi.', { reply_markup: menu() }); }
   if (ACCESS[text] && !ACCESS[text].includes(r)) return void send(chatId, '⛔ Bu bo‘lim sizning rolingiz uchun yopiq.', { reply_markup: menu() });
   const isTop = r === 'top', isMgr = r === 'top' || r === 'senior', isStaff = isMgr || r === 'service';
@@ -2081,6 +2194,7 @@ async function onMessage(m: any) {
   if (isMgr && (text === B_INK || cmd === '/inkassa')) return inkassa(chatId, 'cur');
   if ((text === B_SCHED || cmd === '/jadval')) return scheduleSend(chatId, false);
   if ((text === B_MEDIA || cmd === '/montaj') && ['top', 'senior', 'media'].includes(r)) return mediaOpen(chatId);
+  if (isMgr && (text === B_REPORTS || cmd === '/hisobot') && !(r === 'senior' && false)) return reportsHub(chatId);
   if (text === B_AI || cmd === '/ai') { const q = text.startsWith('/ai') ? text.slice(3).trim() : ''; if (q) { await setSession(chatId, 'ai', {}); return aiAsk(chatId, q, m.from); } return aiStart(chatId); }
   if (text === B_PHONES || cmd === '/raqamlar') { await setSession(chatId, null); return phonesView(chatId); }
   if (r === 'teacher' && (text === B_BOOK || cmd === '/kitob')) return bookStart(chatId);
@@ -2271,10 +2385,10 @@ async function onCallback(q: any) {
   }
   if (data === 'smok') return smsSend(chatId, q.from);
   // Rollar
-  if (data.startsWith('ua:')) { const [, id, r] = data.split(':'); if (!['top', 'senior', 'service', 'teacher', 'media', 'blocked'].includes(r)) return; return setRole(chatId, Number(id), r as Role, q.from); }
+  if (data.startsWith('ua:')) { const [, id, r] = data.split(':'); if (!['top', 'senior', 'director', 'service', 'teacher', 'media', 'blocked'].includes(r)) return; return setRole(chatId, Number(id), r as Role, q.from); }
   if (data.startsWith('ur:')) {
     const id = data.slice(3);
-    return void send(chatId, 'Yangi rol:', { reply_markup: { inline_keyboard: [[ib('👑 Top', `ua:${id}:top`), ib('🧭 Katta', `ua:${id}:senior`), ib('🎧 Servis', `ua:${id}:service`), ib('👩‍🏫 O‘qituvchi', `ua:${id}:teacher`)], [ib('🎬 Media', `ua:${id}:media`), ib('⛔ Bloklash', `ua:${id}:blocked`)]] } });
+    return void send(chatId, 'Yangi rol:', { reply_markup: { inline_keyboard: [[ib('👑 Top', `ua:${id}:top`), ib('🧭 Katta', `ua:${id}:senior`), ib('🎧 Servis', `ua:${id}:service`), ib('👩‍🏫 O‘qituvchi', `ua:${id}:teacher`)], [ib('👔 Rahbar', `ua:${id}:director`), ib('🎬 Media', `ua:${id}:media`), ib('⛔ Bloklash', `ua:${id}:blocked`)]] } });
   }
   if (data === 'adm:users') return usersPanel(chatId);
   if (data === 'adm:report') return report(chatId);
@@ -2325,6 +2439,8 @@ async function onCallback(q: any) {
   if (data.startsWith('bko:')) return bookOrderAction(chatId, data, q.from);
   if (data.startsWith('bkl:')) return bookLibrary(chatId, data);
   if (data.startsWith('om:')) return stockCallback(chatId, data);
+  if (data === 'rp:hub') return reportsHub(chatId);
+  if (data.startsWith('rp:')) { await typing(chatId); return void send(chatId, await summaryReport(data.slice(3) as any), { reply_markup: { inline_keyboard: [[ib('📑 Boshqa hisobotlar', 'rp:hub')]] } }); }
   if (data === 'ai:new') {
     await admin.from('crm_ai_chats').update({ history: [] }).eq('tg_id', q.from.id);
     await admin.from('crm_ai_media').delete().eq('tg_id', q.from.id);
@@ -2400,7 +2516,7 @@ async function handle(update: any) {
   const from = update.message?.from || update.callback_query?.from;
   const { role: r, user } = await resolveUser(from);
   const book = r === 'teacher' && (await bookGroups(user?.employee_id).catch(() => [])).length > 0;
-  await als.run({ role: r, user, menu: book ? MENU_TEACHER_BOOK : menuFor(r), from, book }, async () => {
+  await als.run({ role: r, user, menu: user?.director ? MENU_DIRECTOR : book ? MENU_TEACHER_BOOK : menuFor(r), from, book }, async () => {
     try {
       if (update.message) await onMessage(update.message);
       else if (update.callback_query) await onCallback(update.callback_query);
@@ -2416,6 +2532,14 @@ Deno.serve(async req => {
   if (req.method !== 'POST') return new Response('ok');
   const t = await token();
   if (!t) return new Response('edu bot token not set', { status: 503 });
+  // Ichki: bot-jobs'dan avtomatik hisobotlar (x-cron-secret)
+  const cronHdr = req.headers.get('x-cron-secret');
+  if (cronHdr) {
+    if (cronHdr !== await getSecret('cron_secret')) return new Response('forbidden', { status: 403 });
+    const b = await req.json().catch(() => ({}));
+    if (b.action === 'autoReport' && (b.kind === 'week' || b.kind === 'month')) return new Response(JSON.stringify({ ok: true, ...(await sendAutoReport(b.kind)) }), { headers: { 'Content-Type': 'application/json' } });
+    return new Response('{"ok":false}', { status: 400 });
+  }
   if (req.headers.get('X-Telegram-Bot-Api-Secret-Token') !== await webhookSecret(t)) return new Response('forbidden', { status: 403 });
   const update = await req.json().catch(() => ({}));
   console.log('edu upd', update.message ? `msg ${update.message.chat?.id} ${String(update.message.text || '').slice(0, 30)}` : update.callback_query ? `cb ${update.callback_query.from?.id} ${update.callback_query.data}` : '');
