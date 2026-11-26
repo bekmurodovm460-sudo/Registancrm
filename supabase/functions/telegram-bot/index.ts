@@ -1039,19 +1039,26 @@ async function matchEduStudent(phone: string, name: string): Promise<{ id: strin
 async function startTeacher(chatId: number, userId?: number) {
   const t = await getTeacher(userId);
   if (t?.status === 'blocked') return void send(chatId, '⛔ Ustozlar bo‘limiga kirish yopilgan. Administratorga murojaat qiling: /aloqa', { reply_markup: MENU });
+  if (t?.status === 'pending') return void send(chatId, '⏳ So‘rovingiz administrator tasdig‘ini kutmoqda.', { reply_markup: MENU });
   if (t) { await setSession(chatId, null); return teacherHome(chatId, t); }
   await setSession(chatId, 't_contact', {});
   await send(chatId,
     '👩‍🏫 <b>Ustozlar bo‘limi</b>\n\nBu yerda o‘quvchilaringizning Kids Mock darajasini (🟢 Oson / 🔴 Qiyin) belgilaysiz.\n\n' +
-    'Ulanish uchun <b>Edutizim’dagi raqamingizni</b> pastdagi tugma orqali yuboring 👇', {
-      reply_markup: { keyboard: [[{ text: '📱 Raqamni yuborish', request_contact: true }], [{ text: BTN_CANCEL }]], resize_keyboard: true, one_time_keyboard: true }
+    'Ulanish uchun <b>Edutizim’dagi raqamingizni</b> yuboring:\n' +
+    '• pastdagi <b>📱 Raqamni yuborish</b> tugmasini bosing (tugma ko‘rinmasa, yozish joyi yonidagi ⌨️ belgisini bosing), yoki\n' +
+    '• raqamni qo‘lda yozing: <b>+998 90 123 45 67</b> — bu holda administrator tasdiqlaydi.', {
+      reply_markup: { keyboard: [[{ text: '📱 Raqamni yuborish', request_contact: true }], [{ text: BTN_CANCEL }]], resize_keyboard: true, is_persistent: true, input_field_placeholder: '+998 90 123 45 67' }
     });
 }
 
 async function linkTeacher(chatId: number, m: any) {
-  if (!m.contact) return void send(chatId, 'Pastdagi “📱 Raqamni yuborish” tugmasini bosing yoki ❌ Bekor qilish.');
-  if (m.contact.user_id !== m.from?.id) return void send(chatId, 'Faqat <b>o‘zingizning</b> raqamingizni yuboring (pastdagi tugma orqali).');
-  const digits = String(m.contact.phone_number || '').replace(/\D/g, '').slice(-9);
+  // Kontakt tugmasi orqali — Telegram raqamni tasdiqlaydi (avtomatik ulanadi).
+  // Qo'lda yozilgan raqam — admin tasdiqlaguncha kutadi.
+  const typed = !m.contact;
+  const raw = m.contact ? String(m.contact.phone_number || '') : String(m.text || '');
+  const digits = raw.replace(/\D/g, '').slice(-9);
+  if (typed && (digits.length !== 9 || raw.replace(/\D/g, '').length > 12)) return void send(chatId, '📱 Raqamni yuboring: pastdagi tugma orqali yoki qo‘lda yozing, masalan <b>+998 90 123 45 67</b>.');
+  if (m.contact && m.contact.user_id !== m.from?.id) return void send(chatId, 'Faqat <b>o‘zingizning</b> raqamingizni yuboring.');
   const old = await getTeacher(m.from.id);
   if (old?.status === 'blocked') { await setSession(chatId, null); return void send(chatId, '⛔ Kirish yopilgan. /aloqa', { reply_markup: MENU }); }
   await send(chatId, '⏳ Edutizim’dan tekshirilmoqda…', { reply_markup: { remove_keyboard: true } });
@@ -1065,10 +1072,16 @@ async function linkTeacher(chatId: number, m: any) {
     await notifyAdmin(`👩‍🏫 Imtihon botiga ustoz bo‘lib ulanmoqchi: ${esc(m.from?.first_name || '')} · +998${digits} — Edutizim xodimlarida topilmadi.`);
     return void send(chatId, `❌ <b>+998${digits}</b> raqami Edutizim xodimlari ro‘yxatida topilmadi.\nEdutizim’dagi raqamingiz shu raqam bilan bir xil ekanini tekshiring yoki administratorga yozing: /aloqa`, { reply_markup: MENU });
   }
-  const t: Teacher = { tg_id: m.from.id, chat_id: chatId, edu_teacher_id: emp.id, full_name: emp.name, phone: '+998' + digits, status: 'active', session: old?.session || null };
-  await admin.from('crm_exam_teachers').upsert({ ...t, updated_at: new Date().toISOString() });
   const subjects = [...new Set(links.map(l => l.subject!))];
   const n = new Set(links.map(l => l.student_id)).size;
+  const verified = !typed || (old?.status === 'active' && old.edu_teacher_id === emp.id);
+  const t: Teacher = { tg_id: m.from.id, chat_id: chatId, edu_teacher_id: emp.id, full_name: emp.name, phone: '+998' + digits, status: verified ? 'active' : 'pending', session: old?.session || null };
+  await admin.from('crm_exam_teachers').upsert({ ...t, updated_at: new Date().toISOString() });
+  if (!verified) {
+    await notifyAdmin(`👩‍🏫 Ustoz tasdiq kutmoqda: <b>${esc(emp.name)}</b> · +998${digits} (qo‘lda yozilgan) · ${esc(subjects.join(', ') || 'Kids Mock fani yo‘q')} · ${n} o‘quvchi\nTelegram: ${esc(m.from?.first_name || '')}${m.from?.username ? ' @' + esc(m.from.username) : ''} · ID ${m.from.id}`,
+      { inline_keyboard: [[ib('✅ Tasdiqlash', `tu:${m.from.id}`), ib('🚫 Rad etish', `tb:${m.from.id}`)]] });
+    return void send(chatId, `⏳ <b>${esc(emp.name)}</b>, so‘rovingiz administratorga yuborildi. Tasdiqlangach shu yerga xabar keladi.`, { reply_markup: MENU });
+  }
   await notifyAdmin(`👩‍🏫 Imtihon botiga ustoz ulandi: <b>${esc(emp.name)}</b> · ${esc(subjects.join(', ') || 'Kids Mock fani yo‘q')} · ${n} o‘quvchi`, { inline_keyboard: [[ib('🚫 Bloklash', `tb:${m.from.id}`)]] });
   await send(chatId, `✅ <b>${esc(emp.name)}</b>, siz ustoz sifatida ulandingiz!`, { reply_markup: MENU });
   return teacherHome(chatId, t);
@@ -1420,7 +1433,9 @@ async function routeCallback(q: any) {
     if (chatId !== adminChat && !owners.map(Number).includes(Number(q.from?.id))) return;
     const { data: bt } = await admin.from('crm_exam_teachers').update({ status: 'active', updated_at: new Date().toISOString() }).eq('tg_id', Number(data.slice(3))).select('full_name').maybeSingle();
     if (q.message?.message_id) await tg(await token(), 'editMessageReplyMarkup', { chat_id: chatId, message_id: q.message.message_id, reply_markup: { inline_keyboard: [[ib('🚫 Bloklash', `tb:${data.slice(3)}`)]] } }).catch(() => {});
-    return void send(chatId, `✅ Ustoz qayta faollashtirildi: ${esc(bt?.full_name || data.slice(3))}`);
+    const { data: tt } = await admin.from('crm_exam_teachers').select('*').eq('tg_id', Number(data.slice(3))).maybeSingle();
+    if (tt) { await send(tt.chat_id, `✅ <b>${esc(tt.full_name)}</b>, siz ustoz sifatida tasdiqlandingiz!`, { reply_markup: MENU }); await teacherHome(tt.chat_id, tt as Teacher); }
+    return void send(chatId, `✅ Ustoz tasdiqlandi: ${esc(bt?.full_name || data.slice(3))}`);
   }
   if (data.startsWith('tm:') || data.startsWith('tp:') || data.startsWith('tl:') || data === 'tse' || data.startsWith('tss:')) {
     const t = await getTeacher(q.from?.id);

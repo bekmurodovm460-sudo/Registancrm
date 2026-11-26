@@ -5,7 +5,7 @@ create table if not exists crm_exam_teachers (
   edu_teacher_id text not null,
   full_name text not null,
   phone text,
-  status text not null default 'active' check (status in ('active', 'blocked')),
+  status text not null default 'active' check (status in ('active', 'pending', 'blocked')),
   session text,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
