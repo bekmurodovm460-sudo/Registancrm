@@ -14,11 +14,12 @@ const B_OUT = '💸 Chiqim';
 const B_REPORT = '📊 Hisobot';
 const B_SYNC = '🔄 Sinxron';
 const B_STATS = '📈 Statistika';
+const B_EXP = '🧾 Xarajatlar';
 const B_CANCEL = '❌ Bekor qilish';
 const B_SKIP = '⏭ O‘tkazib yuborish';
 
 const kb = (rows: string[][]) => ({ keyboard: rows.map(r => r.map(text => ({ text }))), resize_keyboard: true });
-const MENU = { ...kb([[B_IN, B_OUT], [B_STATS, B_DEBT], [B_FIND, B_LEAD], [B_REPORT, B_SYNC]]), is_persistent: true, input_field_placeholder: 'Amalni tanlang…' };
+const MENU = { ...kb([[B_IN, B_OUT], [B_STATS, B_EXP], [B_DEBT, B_FIND], [B_LEAD, B_REPORT], [B_SYNC]]), is_persistent: true, input_field_placeholder: 'Amalni tanlang…' };
 const CANCEL_KB = kb([[B_CANCEL]]);
 const SKIP_KB = kb([[B_SKIP], [B_CANCEL]]);
 const BANNER = 'https://raw.githubusercontent.com/bekmurodovm460-sudo/Registancrm/refs/heads/claude/html-site-web-platform-pltyl0/brand/edu-bot-tavsif-1280x720.png';
@@ -193,6 +194,97 @@ async function stats(chatId: number) {
 }
 
 // ---------------------------------------------------------
+// 🧾 Xarajatlar statistikasi (kategoriya bo'yicha, haftalik / oylik)
+// ---------------------------------------------------------
+const TZ = 5 * 3600_000; // Asia/Tashkent
+const DAY = 86400_000;
+const dayStart = (ms: number) => Math.floor((ms + TZ) / DAY) * DAY - TZ;
+type Period = 'today' | 'week' | 'pweek' | 'month' | 'pmonth';
+const P_LABEL: Record<Period, string> = { today: 'Bugun', week: 'Bu hafta', pweek: 'O‘tgan hafta', month: 'Bu oy', pmonth: 'O‘tgan oy' };
+function range(p: Period, now = Date.now()): { from: number; to: number; prev: { from: number; to: number } } {
+  const d0 = dayStart(now);
+  const dow = (new Date(d0 + TZ).getUTCDay() + 6) % 7; // Dushanba = 0
+  const w0 = d0 - dow * DAY;
+  const t = new Date(now + TZ);
+  const m0 = Date.UTC(t.getUTCFullYear(), t.getUTCMonth(), 1) - TZ;
+  const pm0 = Date.UTC(t.getUTCFullYear(), t.getUTCMonth() - 1, 1) - TZ;
+  const ppm0 = Date.UTC(t.getUTCFullYear(), t.getUTCMonth() - 2, 1) - TZ;
+  switch (p) {
+    case 'today': return { from: d0, to: now, prev: { from: d0 - DAY, to: d0 - 1 } };
+    case 'week': return { from: w0, to: now, prev: { from: w0 - 7 * DAY, to: w0 - 1 } };
+    case 'pweek': return { from: w0 - 7 * DAY, to: w0 - 1, prev: { from: w0 - 14 * DAY, to: w0 - 7 * DAY - 1 } };
+    case 'month': return { from: m0, to: now, prev: { from: pm0, to: m0 - 1 } };
+    case 'pmonth': return { from: pm0, to: m0 - 1, prev: { from: ppm0, to: pm0 - 1 } };
+  }
+}
+const dmy = (ms: number) => { const d = new Date(ms + TZ); return `${String(d.getUTCDate()).padStart(2, '0')}.${String(d.getUTCMonth() + 1).padStart(2, '0')}`; };
+const bar = (part: number, whole: number) => { const n = whole ? Math.round((part / whole) * 10) : 0; return '▰'.repeat(n) + '▱'.repeat(10 - n); };
+const delta = (cur: number, prev: number) => !prev ? '' : cur >= prev ? ` · ▲ ${pct(cur - prev, prev)}%` : ` · ▼ ${pct(prev - cur, prev)}%`;
+
+async function txFor(type: 'payIn' | 'payOut', from: number, to: number, cashboxes: any[]) {
+  const res = await Promise.all(cashboxes.map(c => edu('kassaTx', { cashboxId: c.id, type, dateFrom: new Date(from).toISOString(), dateTo: new Date(to).toISOString() })));
+  const err = res.find(r => !r.ok);
+  if (err) throw new Error(err.error || 'Edutizim xatosi');
+  return res.flatMap(r => r.tx || []).filter((t: any) => !t.cancelled && t.type === type);
+}
+
+async function expenses(chatId: number, p: Period = 'week') {
+  await typing(chatId);
+  const meta = await edu('kassaMeta');
+  if (!meta.ok) return void send(chatId, `⚠️ Edutizim kassasi: ${esc(meta.error)}`, { reply_markup: MENU });
+  const r = range(p);
+  let cur: any[], prev: any[], inc: any[];
+  try {
+    [cur, prev, inc] = await Promise.all([
+      txFor('payOut', r.from, r.to, meta.cashboxes || []),
+      txFor('payOut', r.prev.from, r.prev.to, meta.cashboxes || []),
+      txFor('payIn', r.from, r.to, meta.cashboxes || [])
+    ]);
+  } catch (e) { return void send(chatId, `⚠️ Kassa tarixini olib bo‘lmadi: ${esc((e as Error).message)}`, { reply_markup: MENU }); }
+  const total = cur.reduce((a, t) => a + t.amount, 0);
+  const prevTotal = prev.reduce((a, t) => a + t.amount, 0);
+  const incTotal = inc.reduce((a, t) => a + t.amount, 0);
+  const cats = new Map<string, { sum: number; n: number; prev: number; tx: any[] }>();
+  cur.forEach(t => { const c = cats.get(t.category) || { sum: 0, n: 0, prev: 0, tx: [] }; c.sum += t.amount; c.n++; c.tx.push(t); cats.set(t.category, c); });
+  prev.forEach(t => { const c = cats.get(t.category); if (c) c.prev += t.amount; });
+  const list = [...cats.entries()].sort((a, b) => b[1].sum - a[1].sum);
+  const salary = cur.filter(t => t.subtype === 'employee' || /oylik|avans|bonus/i.test(t.category)).reduce((a, t) => a + t.amount, 0);
+  const label = `${P_LABEL[p]} (${dmy(r.from)}–${dmy(r.to)})`;
+  // Kategoriya tafsiloti uchun sessiyaga (har kategoriyadan 15 ta eng katta amal)
+  await setSession(chatId, 'exp', { p, label, cats: list.slice(0, 20).map(([name, c]) => ({ name, sum: c.sum, n: c.n, tx: c.tx.sort((a: any, b: any) => b.amount - a.amount).slice(0, 15).map((t: any) => ({ a: t.amount, d: t.date, c: String(t.comment || '').slice(0, 80), w: t.person || '', m: t.method })) })) });
+  const catLines = list.slice(0, 15).map(([name, c], i) =>
+    `<b>${i + 1}. ${esc(name)}</b> — ${mln(c.sum)} · ${pct(c.sum, total)}%${c.prev ? delta(c.sum, c.prev) : ''}\n   ${bar(c.sum, total)} ${c.n} ta`).join('\n');
+  const biggest = [...cur].sort((a, b) => b.amount - a.amount).slice(0, 5)
+    .map(t => `• ${dmy(new Date(t.date).getTime())} · ${esc(t.category)} — <b>${sum(t.amount)}</b>${t.comment ? `\n   <i>${esc(String(t.comment).slice(0, 70))}</i>` : ''}`).join('\n');
+  const text = !cur.length ? `🧾 <b>Xarajatlar · ${label}</b>\n\nBu davrda chiqim yo‘q.` :
+    `🧾 <b>Xarajatlar · ${label}</b>\n\n` +
+    `💸 Jami: <b>${mln(total)}</b> · ${cur.length} ta amal\n` +
+    `↔️ Oldingi davr: ${mln(prevTotal)}${delta(total, prevTotal)}\n` +
+    `👥 Ish haqi (oylik/avans/bonus): ${mln(salary)} · 🏢 Boshqa: ${mln(total - salary)}\n` +
+    `💰 Kirim: ${mln(incTotal)} · 📊 Sof (kirim − chiqim): <b>${mln(incTotal - total)}</b>\n\n` +
+    `<b>Kategoriyalar:</b>\n${catLines}${list.length > 15 ? `\n… yana ${list.length - 15} ta` : ''}\n\n` +
+    `<b>Eng katta 5 xarajat:</b>\n${biggest}`;
+  const periods: Period[] = ['today', 'week', 'pweek', 'month', 'pmonth'];
+  const rows: any[] = [
+    periods.slice(0, 3).map(x => ib((x === p ? '• ' : '') + P_LABEL[x], `ex:${x}`)),
+    periods.slice(3).map(x => ib((x === p ? '• ' : '') + P_LABEL[x], `ex:${x}`))
+  ];
+  const catBtns = list.slice(0, 8).map(([name], i) => ib(`🔎 ${name.slice(0, 26)}`, `exc:${i}`));
+  for (let i = 0; i < catBtns.length; i += 2) rows.push(catBtns.slice(i, i + 2));
+  await send(chatId, text.slice(0, 4000), { reply_markup: { inline_keyboard: rows } });
+}
+
+async function expenseCategory(chatId: number, idx: number) {
+  const s = await getSession(chatId);
+  const c = s.step === 'exp' ? (s.data.cats || [])[idx] : null;
+  if (!c) return expenses(chatId, (s.data?.p as Period) || 'week');
+  const lines = c.tx.map((t: any) => `• ${dmy(new Date(t.d).getTime())} — <b>${sum(t.a)}</b>${t.w ? ` · ${esc(t.w)}` : ''}${t.m ? ` · ${esc(t.m)}` : ''}${t.c ? `\n   <i>${esc(t.c)}</i>` : ''}`).join('\n');
+  await send(chatId, `🔎 <b>${esc(c.name)}</b> · ${esc(s.data.label)}\nJami: <b>${mln(c.sum)}</b> · ${c.n} ta amal\n\n${lines}${c.n > c.tx.length ? `\n… eng katta ${c.tx.length} tasi ko‘rsatildi` : ''}`.slice(0, 4000), {
+    reply_markup: { inline_keyboard: [[ib('⬅️ Kategoriyalarga qaytish', `ex:${s.data.p}`)]] }
+  });
+}
+
+// ---------------------------------------------------------
 // ➕ Lid
 // ---------------------------------------------------------
 async function leadCourse(chatId: number, d: any) {
@@ -337,7 +429,7 @@ async function onMessage(m: any) {
   if (cmd === '/start' || cmd === '/menu' || text === B_CANCEL || cmd === '/cancel') {
     await setSession(chatId, null);
     if (cmd === '/start') {
-      const caption = `👋 Assalomu alaykum, <b>${esc(m.from?.first_name || '')}</b>!\n\n💼 <b>Registan Globus · Moliya</b>\n\n💰 <b>Kirim</b> — o‘quvchi to‘lovi, boshqa tushumlar\n💸 <b>Chiqim</b> — xarajatlar (kanstovar, arenda…)\n🔍 <b>O‘quvchi</b> — balans, guruh, to‘lov qabul qilish\n🔴 <b>Qarzdorlar</b> — eng katta qarzlar\n➕ <b>Lid</b> — Edutizim’ga yangi mijoz\n📈 <b>Statistika</b> — aktiv o‘quvchilar va qarzdorlik\n📊 <b>Hisobot</b> · 🔄 <b>Sinxron</b>\n\nPastdagi tugmalardan tanlang 👇`;
+      const caption = `👋 Assalomu alaykum, <b>${esc(m.from?.first_name || '')}</b>!\n\n💼 <b>Registan Globus · Moliya</b>\n\n💰 <b>Kirim</b> — o‘quvchi to‘lovi, boshqa tushumlar\n💸 <b>Chiqim</b> — xarajatlar (kanstovar, arenda…)\n🔍 <b>O‘quvchi</b> — balans, guruh, to‘lov qabul qilish\n🔴 <b>Qarzdorlar</b> — eng katta qarzlar\n➕ <b>Lid</b> — Edutizim’ga yangi mijoz\n📈 <b>Statistika</b> — aktiv o‘quvchilar va qarzdorlik\n🧾 <b>Xarajatlar</b> — kategoriya bo‘yicha, haftalik / oylik\n📊 <b>Hisobot</b> · 🔄 <b>Sinxron</b>\n\nPastdagi tugmalardan tanlang 👇`;
       const r = await tg(await token(), 'sendPhoto', { chat_id: chatId, photo: BANNER, caption, parse_mode: 'HTML', reply_markup: MENU });
       if (!r?.ok) await send(chatId, caption, { reply_markup: MENU });
       return;
@@ -350,6 +442,8 @@ async function onMessage(m: any) {
   if (text === B_FIND || cmd === '/qidir') { await setSession(chatId, 'find', {}); return void send(chatId, '🔍 O‘quvchining ismi yoki telefon raqamini yozing:', { reply_markup: CANCEL_KB }); }
   if (text === B_DEBT || cmd === '/qarz') return debtors(chatId);
   if (text === B_STATS || cmd === '/statistika') return stats(chatId);
+  if (text === B_EXP || cmd === '/xarajat') return expenses(chatId, 'week');
+  if (cmd === '/xarajat_oy') return expenses(chatId, 'month');
   if (text === B_LEAD || cmd === '/lid') { await setSession(chatId, 'lead_name', {}); return void send(chatId, '➕ <b>Yangi lid</b>\n\n👤 Familiya va ismini yozing:', { reply_markup: CANCEL_KB }); }
   if (text === B_REPORT || cmd === '/hisobot') return report(chatId);
   if (text === B_SYNC || cmd === '/sinxron') return sync(chatId);
@@ -398,6 +492,8 @@ async function onCallback(q: any) {
   if (data === 'x') { await setSession(chatId, null); return void send(chatId, '❌ Bekor qilindi.', { reply_markup: MENU }); }
   if (data === 'dbt:active' || data === 'dbt:all') return debtors(chatId, data === 'dbt:all' ? 'all' : 'active');
   if (data === 'st:sync') { await sync(chatId); return stats(chatId); }
+  if (data.startsWith('ex:')) return expenses(chatId, data.slice(3) as Period);
+  if (data.startsWith('exc:')) return expenseCategory(chatId, Number(data.slice(4)));
   if (data.startsWith('pay:')) {
     const st = (s.data.found || [])[Number(data.slice(4))];
     if (!st) return void send(chatId, 'Qaytadan qidiring.', { reply_markup: MENU });

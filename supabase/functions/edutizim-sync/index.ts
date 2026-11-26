@@ -201,10 +201,11 @@ async function kassaTx(base: string, headers: Record<string, string>, b: any) {
     if (list.length < 100 || (total !== null && items.length >= total)) break;
   }
   const tx = items.map((x: any) => ({
-    id: x._id, amount: Number(x.amount) || 0, type: x.type || x.paymentTransaction?.type || '',
-    category: x.paymentTransaction?.name || x.paymentTransactionName || '—', categoryId: x.paymentTransaction?._id || x.paymentTransactionId || null,
-    method: x.paymentMethod?.name || '', date: x.actualDate || x.createdAt, comment: x.comment || '',
-    cancelled: !!(x.isCancelled || x.cancelled || x.state === 'cancelled'), state: x.state || ''
+    id: x._id, amount: Number(x.amount) || 0, type: x.type || x.shiftTransaction?.type || '',
+    category: x.shiftTransaction?.name || x.paymentTransaction?.name || '—', categoryId: x.paymentTransactionId || null,
+    subtype: x.shiftTransaction?.subtype || '', method: x.paymentMethod?.name || '', date: x.actualDate || x.createdAt,
+    comment: x.comment || '', person: [x.employee?.firstName, x.employee?.lastName].filter(Boolean).join(' ') || [x.student?.firstName, x.student?.lastName].filter(Boolean).join(' '),
+    cancelled: !!(x.cancelledAt || x.isCancelled || x.cancelled || x.state === 'cancelled')
   }));
   return { ok: true, total: total ?? tx.length, count: tx.length, tx, ...(b.raw ? { raw: rawSample } : {}) };
 }
