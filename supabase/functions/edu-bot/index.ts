@@ -434,6 +434,7 @@ async function execute(chatId: number, d: any, from: any) {
   if (!r.ok) return void send(chatId, `⚠️ Kassaga yozilmadi: ${esc(r.error)}\n\n${summary(d)}`, { reply_markup: menu() });
   const rows: any[] = [];
   if (r.id) rows.push([ib('↩️ Bu amalni bekor qilish', `kx:${r.id}`)]);
+  await sticker(chatId, 'bajarildi');
   await send(chatId, `✅ <b>Kassaga yozildi</b>\n\n${summary(d)}`, rows.length ? { reply_markup: { inline_keyboard: rows } } : { reply_markup: menu() });
   await notifyOthers(`${d.kind === 'in' ? '💰 Kirim' : '💸 Chiqim'}: ${esc(d.type?.name)} · <b>${sum(d.amount)}</b>${d.student ? ' · ' + esc(d.student.name) : ''}${d.comment ? ' · ' + esc(d.comment) : ''} · ${esc(by)}`, from?.id);
 }
@@ -444,6 +445,28 @@ async function execute(chatId: number, d: any, from: any) {
 // =========================================================
 // 👥 Foydalanuvchilar va rollar
 // =========================================================
+// 🎨 Bo'lim stikerlari (brand/stickers/*.webp), file_id keshlanadi
+const STICKER_BASE = 'https://raw.githubusercontent.com/bekmurodovm460-sudo/Registancrm/refs/heads/claude/html-site-web-platform-pltyl0/brand/stickers/';
+const stickerIds = new Map<string, string>();
+async function sticker(chatId: number | string, key: string) {
+  try {
+    if (!stickerIds.size) { const saved = await cached<Record<string, string>>('eduStickerIds', {}, 600_000); Object.entries(saved || {}).forEach(([k, v]) => stickerIds.set(k, v)); }
+    const r = await tg(await token(), 'sendSticker', { chat_id: chatId, sticker: stickerIds.get(key) || `${STICKER_BASE}${key}.webp` });
+    const fid = r?.result?.sticker?.file_id;
+    if (fid && stickerIds.get(key) !== fid) {
+      stickerIds.set(key, fid);
+      await admin.from('crm_settings').upsert({ key: 'eduStickerIds', value: Object.fromEntries(stickerIds) });
+    }
+  } catch { /* stiker ixtiyoriy */ }
+}
+const STICKER_OF: Record<string, string> = {
+  [B_IN]: 'kirim', [B_OUT]: 'chiqim', [B_ATT]: 'davomat', [B_RISK]: 'xavf', [B_STATS]: 'statistika', [B_EXP]: 'xarajat',
+  [B_DEBT]: 'qarz', [B_FIND]: 'qidir', [B_TEACH]: 'oqituvchi', [B_TASKS]: 'vazifa', [B_LEAD]: 'lid', [B_ADMIN]: 'boshqaruv',
+  [B_MY]: 'natijam', [B_MYTASK]: 'vazifa',
+  '/kirim': 'kirim', '/chiqim': 'chiqim', '/davomat': 'davomat', '/xavf': 'xavf', '/statistika': 'statistika', '/xarajat': 'xarajat', '/xarajat_oy': 'xarajat',
+  '/qarz': 'qarz', '/qidir': 'qidir', '/oqituvchilar': 'oqituvchi', '/vazifalar': 'vazifa', '/lid': 'lid', '/boshqaruv': 'boshqaruv', '/natijam': 'natijam', '/vazifalarim': 'vazifa'
+};
+
 // "Menu" tugmasidagi buyruqlar — rolga qarab, ikonkali
 const C = (command: string, description: string) => ({ command, description });
 const CMDS: Record<string, any[]> = {
@@ -483,6 +506,7 @@ async function employeesList() {
 }
 
 async function askContact(chatId: number, first = '') {
+  await sticker(chatId, 'welcome');
   await send(chatId, `👋 Assalomu alaykum${first ? ', <b>' + esc(first) + '</b>' : ''}!\n\n💼 <b>Registan Globus · Moliya</b> — xodimlar boti.\nKirish uchun pastdagi tugma orqali <b>telefon raqamingizni</b> yuboring. Top menejer tasdiqlagach bot ochiladi.`, {
     reply_markup: { keyboard: [[{ text: '📱 Raqamni yuborish', request_contact: true }]], resize_keyboard: true, one_time_keyboard: true }
   });
@@ -507,6 +531,7 @@ async function setRole(chatId: number, tgId: number, newRole: Role, by: any) {
   await send(chatId, `✅ ${esc(u.full_name)} — ${ROLE_NAME[newRole]}${newRole === 'teacher' && !u.employee_id ? '\n⚠️ Edutizim’da o‘qituvchi topilmadi (telefon mos emas) — “Mening natijam” ishlamaydi.' : ''}`);
   if (newRole === 'blocked') { await syncCommands(tgId, 'none'); return void send(tgId, '⛔ Botga kirish rad etildi.', { reply_markup: { remove_keyboard: true } }); }
   await syncCommands(tgId, newRole);
+  await sticker(tgId, 'welcome');
   await send(tgId, `🎉 Tasdiqlandingiz: <b>${ROLE_NAME[newRole]}</b>\n\nPastdagi tugmalardan foydalaning 👇`, { reply_markup: menuFor(newRole) });
 }
 
@@ -751,6 +776,7 @@ async function taskItemSave(chatId: number, s: Session, text: string, from: any)
   await setSession(chatId, null);
   await send(chatId, `✅ Saqlandi${r.ok ? ' (Edutizim kartasiga ham yozildi)' : ''}: ${esc(x.name)}`, { reply_markup: menu() });
   if (allDone) {
+    await sticker(chatId, 'bajarildi');
     await send(chatId, '🎉 Vazifa to‘liq bajarildi. Rahmat!');
     await notifyTops(`✅ <b>${esc(t.teacher_name)}</b> vazifani bajardi: ${esc(t.title)} (${items.length} ta)`, { reply_markup: { inline_keyboard: [[ib('📋 Ko‘rish', `tk:${t.id}`)]] } });
     return;
@@ -829,6 +855,8 @@ async function onMessage(m: any) {
   if (text === B_CANCEL || cmd === '/cancel') { await setSession(chatId, null); return void send(chatId, '❌ Bekor qilindi.', { reply_markup: menu() }); }
   if (ACCESS[text] && !ACCESS[text].includes(r)) return void send(chatId, '⛔ Bu bo‘lim sizning rolingiz uchun yopiq.', { reply_markup: menu() });
   const isTop = r === 'top', isStaff = r === 'top' || r === 'service';
+  const stKey = STICKER_OF[text] || STICKER_OF[cmd];
+  if (stKey) await sticker(chatId, stKey);
   if (isTop && (text === B_IN || cmd === '/kirim')) return kassaStart(chatId, 'in');
   if (isTop && (text === B_OUT || cmd === '/chiqim')) return kassaStart(chatId, 'out');
   if (isTop && (text === B_STATS || cmd === '/statistika')) return stats(chatId);

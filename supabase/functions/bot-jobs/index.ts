@@ -296,7 +296,11 @@ async function dailyReport(force = false) {
     admin.from('crm_edu_bot_users').select('tg_id,role,full_name').in('role', ['top', 'service'])
   ]);
   const tops = new Set<string>([...(ids || []).map(String), String(chat || ''), ...(users || []).filter(u => u.role === 'top').map(u => String(u.tg_id))].filter(Boolean));
-  for (const id of tops) await tg(token, 'sendMessage', { chat_id: id, text, parse_mode: 'HTML' }).catch(() => {});
+  const stk = (await getSetting<Record<string, string>>('eduStickerIds', {}))?.hisobot || 'https://raw.githubusercontent.com/bekmurodovm460-sudo/Registancrm/refs/heads/claude/html-site-web-platform-pltyl0/brand/stickers/hisobot.webp';
+  for (const id of tops) {
+    await tg(token, 'sendSticker', { chat_id: id, sticker: stk }).catch(() => {});
+    await tg(token, 'sendMessage', { chat_id: id, text, parse_mode: 'HTML' }).catch(() => {});
+  }
   // Servis menejerlarga — faqat o'zida izohsiz qolganlar (Edutizim'dagi mas'ul menejer ismi bo'yicha)
   let serviceSent = 0;
   for (const u of (users || []).filter(u => u.role === 'service')) {
