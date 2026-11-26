@@ -210,6 +210,34 @@ async function kassaTx(base: string, headers: Record<string, string>, b: any) {
   return { ok: true, total: total ?? tx.length, count: tx.length, tx, ...(b.raw ? { raw: rawSample } : {}) };
 }
 
+// Faqat o'qish: ruxsat etilgan ro'yxat endpointlari (davomat, izohlar, o'qituvchi analitikasi...)
+const READ_PATHS = new Set([
+  '/attendance-histoy-pagin', '/comments-pagin', '/analitics/student/teacher', '/analitics/teacher/students',
+  '/teacher-students-pagin', '/hr/employees-pagin', '/group-pagin', '/shift-bells-pagin', '/student-list/students-pagin',
+  '/courses-pagin', '/reasons/attendance', '/analitics/headcount'
+]);
+async function eduRead(base: string, headers: Record<string, string>, b: any) {
+  const path = String(b.path || '');
+  if (!READ_PATHS.has(path)) return { ok: false, error: 'Ruxsat etilmagan yo‘l' };
+  const limit = Math.min(Number(b.limit) || 100, 200);
+  const maxPages = Math.min(Number(b.pages) || 1, 60);
+  const items: any[] = [];
+  let total: number | null = null, raw = '', extra: any = null;
+  for (let page = Number(b.page) || 1, n = 0; n < maxPages; page++, n++) {
+    const res = await fetch(`${base}${path}`, { method: b.method === 'get' ? 'GET' : 'POST', headers, body: b.method === 'get' ? undefined : JSON.stringify({ ...(b.body || {}), page, limit }) });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) return { ok: false, status: res.status, error: `${res.status} ${body?.message || ''}`.trim(), raw: JSON.stringify(body).slice(0, 600) };
+    if (n === 0 && b.raw) raw = JSON.stringify(body).slice(0, Number(b.raw) > 1 ? Number(b.raw) : 3000);
+    const d = body?.data;
+    const list: any[] = Array.isArray(d) ? d : Array.isArray(d?.data) ? d.data : [];
+    if (typeof d?.total === 'number') total = d.total;
+    if (n === 0 && d && !Array.isArray(d)) { const { data: _x, ...rest } = d; extra = rest; }
+    items.push(...list);
+    if (list.length < limit || (total !== null && items.length >= total)) break;
+  }
+  return { ok: true, total: total ?? items.length, count: items.length, items: b.noItems ? undefined : items, extra, ...(b.raw ? { raw } : {}) };
+}
+
 async function kassaCancel(base: string, headers: Record<string, string>, b: any) {
   if (!b.transactionId) return { ok: false, error: 'transactionId kerak' };
   const res = await fetch(`${base}/cashbox/transaction/cancel`, { method: 'POST', headers, body: JSON.stringify({ transactionId: b.transactionId }) });
@@ -239,7 +267,7 @@ Deno.serve(async req => {
     const branches = auth.branches.map((b: any) => ({ id: String(b._id), name: b.name }));
     if (body.action === 'test') return json({ ok: true, branches });
     // 'cron' roli = ichki chaqiruv (pg_cron yoki Telegram bot admin bo'limi, x-cron-secret bilan)
-    if (['meta', 'pushLead', 'kassaMeta', 'kassaPay', 'kassaCancel', 'kassaTx'].includes(body.action)) {
+    if (['meta', 'pushLead', 'kassaMeta', 'kassaPay', 'kassaCancel', 'kassaTx', 'read'].includes(body.action)) {
       const br = body.branchId ? branches.find(b => b.id === body.branchId) : branches[0];
       if (!br) throw new Error('Filial topilmadi');
       const headers = { ...baseHeaders(site), Authorization: `Bearer ${auth.token}`, branch: br.id };
@@ -250,6 +278,7 @@ Deno.serve(async req => {
         return json(await kassaPay(base, headers, body));
       }
       if (body.action === 'kassaTx') return json(await kassaTx(base, headers, body));
+      if (body.action === 'read') return json(await eduRead(base, headers, body));
       if (body.action === 'kassaCancel') {
         if (role !== 'cron' && role !== 'admin') return json({ ok: false, error: 'Faqat admin' }, 403);
         return json(await kassaCancel(base, headers, body));
