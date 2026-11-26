@@ -278,10 +278,12 @@ async function expenses(chatId: number, p: Period = 'week') {
   try {
     [cur, prev, inc] = await Promise.all([
       txFor('payOut', r.from, r.to, meta.cashboxes || []),
-      txFor('payOut', r.prev.from, r.prev.to, meta.cashboxes || []),
+      txFor('payOut', r.prev.from, r.prev.to, meta.cashboxes || []).then(x => x.filter(t => !isMoveOut(t))),
       txFor('payIn', r.from, r.to, meta.cashboxes || [])
     ]);
   } catch (e) { return void send(chatId, `⚠️ Kassa tarixini olib bo‘lmadi: ${esc((e as Error).message)}`, { reply_markup: menu() }); }
+  const movesOut = cur.filter(isMoveOut);
+  cur = cur.filter(t => !isMoveOut(t));
   const total = cur.reduce((a, t) => a + t.amount, 0);
   const prevTotal = prev.reduce((a, t) => a + t.amount, 0);
   const incTotal = inc.reduce((a, t) => a + t.amount, 0);
@@ -302,7 +304,8 @@ async function expenses(chatId: number, p: Period = 'week') {
     `💸 Jami: <b>${mln(total)}</b> · ${cur.length} ta amal\n` +
     `↔️ Oldingi davr: ${mln(prevTotal)}${delta(total, prevTotal)}\n` +
     `👥 Ish haqi (oylik/avans/bonus): ${mln(salary)} · 🏢 Boshqa: ${mln(total - salary)}\n` +
-    `💰 Kirim: ${mln(incTotal)} · 📊 Sof (kirim − chiqim): <b>${mln(incTotal - total)}</b>\n\n` +
+    `💰 Kirim: ${mln(incTotal)} · 📊 Sof (kirim − chiqim): <b>${mln(incTotal - total)}</b>\n` +
+    (movesOut.length ? `🔁 Naqd Inkassa’ga ko‘chirma: ${mln(movesOut.reduce((a, t) => a + t.amount, 0))} · ${movesOut.length} marta <i>(xarajatga qo‘shilmadi)</i>\n` : '') + '\n' +
     `<b>Kategoriyalar:</b>\n${catLines}${list.length > 15 ? `\n… yana ${list.length - 15} ta` : ''}\n\n` +
     `<b>Eng katta 5 xarajat:</b>\n${biggest}`;
   const periods: Period[] = ['today', 'week', 'pweek', 'month', 'pmonth'];
@@ -334,8 +337,21 @@ async function inkTx(from: number, to: number) {
   const res = await Promise.all((meta.cashboxes || []).map((c: any) => edu('kassaTx', { cashboxId: c.id, dateFrom: new Date(from).toISOString(), dateTo: new Date(to).toISOString() })));
   const err = res.find((r: any) => !r.ok);
   if (err) throw new Error(err.error || 'Edutizim xatosi');
-  return res.flatMap((r: any) => r.tx || []).filter((t: any) => !t.cancelled && isInk(t.method));
+  const all = res.flatMap((r: any) => r.tx || []).filter((t: any) => !t.cancelled);
+  // Ko'chirma: "Naqd"dan chiqim + bir vaqtda (≤10 s) xuddi shu summada "Naqd Inkassa"ga kirim
+  const outs = all.filter((t: any) => t.type === 'payOut' && !isInk(t.method) && /naqd/i.test(t.method));
+  const used = new Set<any>();
+  const ink = all.filter((t: any) => isInk(t.method));
+  ink.forEach((t: any) => {
+    if (t.type !== 'payIn') return;
+    const tm = new Date(t.date).getTime();
+    const o = outs.find((x: any) => !used.has(x) && x.amount === t.amount && Math.abs(new Date(x.date).getTime() - tm) <= 10_000);
+    if (o) { used.add(o); t.moved = true; }
+  });
+  return ink;
 }
+// Xarajatlardan chiqariladi: kategoriyasiz "Naqd" chiqim — bu Naqd Inkassa'ga ko'chirma, xarajat emas
+const isMoveOut = (t: any) => t.type === 'payOut' && (!t.category || t.category === '—') && !t.subtype && !t.person && /naqd/i.test(t.method || '') && !isInk(t.method);
 type InkP = 'week' | 'pweek' | 'month' | 'pmonth' | 'w8';
 async function inkassa(chatId: number, p: InkP = 'week') {
   await typing(chatId);
@@ -345,43 +361,47 @@ async function inkassa(chatId: number, p: InkP = 'week') {
   try { tx = await inkTx(r.from, r.to); } catch (e) { return void send(chatId, `⚠️ Kassa tarixini olib bo‘lmadi: ${esc((e as Error).message)}`, { reply_markup: menu() }); }
   const ins = tx.filter(t => t.type === 'payIn'), outs = tx.filter(t => t.type === 'transfer' || t.type === 'payOut');
   const inSum = ins.reduce((a, t) => a + t.amount, 0), outSum = outs.reduce((a, t) => a + t.amount, 0);
+  const moved = ins.filter(t => t.moved), direct = ins.filter(t => !t.moved);
+  const movedSum = moved.reduce((a, t) => a + t.amount, 0), directSum = inSum - movedSum;
   const label = p === 'w8' ? `Oxirgi 8 hafta (${dmy(r.from)}–${dmy(r.to)})` : `${P_LABEL[p]} (${dmy(r.from)}–${dmy(r.to)})`;
   const bal = inSum - outSum;
   const lines = [
     `💵 <b>Naqd inkassa · ${label}</b>`, '',
-    `📥 Kirim: <b>${mln(inSum)}</b> · ${ins.length} ta to‘lov`,
+    `📥 Jami kirim: <b>${mln(inSum)}</b>`,
+    `   🧑‍🎓 To‘g‘ridan-to‘g‘ri to‘lovlar: <b>${mln(directSum)}</b> · ${direct.length} ta`,
+    `   🔁 Naqddan ko‘chirilgan: <b>${mln(movedSum)}</b> · ${moved.length} marta`,
     `📤 Topshirilgan: <b>${mln(outSum)}</b> · ${outs.length} marta`,
     `⚖️ Qoldiq (kirim − topshirilgan): <b>${mln(bal)}</b>${bal > 0 ? ' — hali topshirilmagan' : bal < 0 ? ' — davrdan oldingi qoldiq ham topshirilgan' : ' ✅'}`
   ];
   if (p === 'w8') {
-    const weeks = new Map<number, { i: number; o: number; n: number }>();
+    const weeks = new Map<number, { i: number; o: number; n: number; m: number }>();
     const wk = (ms: number) => { const d = dayKey(ms); const dow = (new Date(d + TZ).getUTCDay() + 6) % 7; return d - dow * DAY; };
-    for (let w = r.from; w <= now; w += 7 * DAY) weeks.set(wk(w), { i: 0, o: 0, n: 0 });
-    tx.forEach(t => { const k = wk(new Date(t.date).getTime()); const x = weeks.get(k) || { i: 0, o: 0, n: 0 }; if (t.type === 'payIn') { x.i += t.amount; x.n++; } else x.o += t.amount; weeks.set(k, x); });
+    for (let w = r.from; w <= now; w += 7 * DAY) weeks.set(wk(w), { i: 0, o: 0, n: 0, m: 0 });
+    tx.forEach(t => { const k = wk(new Date(t.date).getTime()); const x = weeks.get(k) || { i: 0, o: 0, n: 0, m: 0 }; if (t.type === 'payIn') { x.i += t.amount; x.n++; if (t.moved) x.m += t.amount; } else x.o += t.amount; weeks.set(k, x); });
     const max = Math.max(1, ...[...weeks.values()].map(x => x.i));
-    lines.push('', '<b>Haftalar bo‘yicha (kirim · topshirildi):</b>');
+    lines.push('', '<b>Haftalar bo‘yicha (kirim · shundan ko‘chirma · topshirildi):</b>');
     [...weeks.entries()].sort((a, b) => b[0] - a[0]).forEach(([k, x]) =>
-      lines.push(`${dmy(k)}–${dmy(k + 6 * DAY)} · <b>${mln(x.i)}</b> · ${mln(x.o)}${x.i !== x.o ? ` · ⚖️ ${mln(x.i - x.o)}` : ''}\n   ${bar(x.i, max)} ${x.n} ta`));
+      lines.push(`${dmy(k)}–${dmy(k + 6 * DAY)} · <b>${mln(x.i)}</b> · 🔁 ${mln(x.m)} · ${mln(x.o)}${x.i !== x.o ? ` · ⚖️ ${mln(x.i - x.o)}` : ''}\n   ${bar(x.i, max)} ${x.n} ta`));
   } else {
     // Ustozlar bo'yicha (to'lov izohida yozilgan)
     const by = new Map<string, { s: number; n: number }>();
-    ins.forEach(t => { const k = ustozOf(t.comment); const x = by.get(k) || { s: 0, n: 0 }; x.s += t.amount; x.n++; by.set(k, x); });
+    direct.forEach(t => { const k = ustozOf(t.comment); const x = by.get(k) || { s: 0, n: 0 }; x.s += t.amount; x.n++; by.set(k, x); });
     const list = [...by.entries()].sort((a, b) => b[1].s - a[1].s);
     if (list.length) {
-      lines.push('', '<b>👩‍🏫 Ustozlar bo‘yicha (izohdan):</b>');
-      list.slice(0, 15).forEach(([k, x], i) => lines.push(`${i + 1}. ${esc(k)} — <b>${mln(x.s)}</b> · ${x.n} ta · ${pct(x.s, inSum)}%`));
+      lines.push('', '<b>👩‍🏫 To‘lovlar ustozlar bo‘yicha (izohdan):</b>');
+      list.slice(0, 15).forEach(([k, x], i) => lines.push(`${i + 1}. ${esc(k)} — <b>${mln(x.s)}</b> · ${x.n} ta · ${pct(x.s, directSum)}%`));
     }
     // Kunlar bo'yicha
-    const days = new Map<number, { i: number; o: number }>();
-    tx.forEach(t => { const k = dayKey(new Date(t.date).getTime()); const x = days.get(k) || { i: 0, o: 0 }; if (t.type === 'payIn') x.i += t.amount; else x.o += t.amount; days.set(k, x); });
+    const days = new Map<number, { i: number; o: number; m: number }>();
+    tx.forEach(t => { const k = dayKey(new Date(t.date).getTime()); const x = days.get(k) || { i: 0, o: 0, m: 0 }; if (t.type === 'payIn') { x.i += t.amount; if (t.moved) x.m += t.amount; } else x.o += t.amount; days.set(k, x); });
     if (days.size) {
       lines.push('', '<b>📅 Kunlar bo‘yicha (kirim · topshirildi):</b>');
       [...days.entries()].sort((a, b) => a[0] - b[0]).forEach(([k, x]) =>
-        lines.push(`${WD[(new Date(k + TZ).getUTCDay() + 6) % 7]} ${dmy(k)} · ${mln(x.i)} · ${mln(x.o)}${x.i !== x.o ? ` ⚠️ ${mln(x.i - x.o)}` : ' ✅'}`));
+        lines.push(`${WD[(new Date(k + TZ).getUTCDay() + 6) % 7]} ${dmy(k)} · ${mln(x.i)}${x.m ? ` (🔁 ${mln(x.m)})` : ''} · ${mln(x.o)}${x.i !== x.o ? ` ⚠️ ${mln(x.i - x.o)}` : ' ✅'}`));
     }
-    const pays = [...ins].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    const pays = [...direct].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
     if (pays.length) {
-      lines.push('', `<b>🧾 To‘lovlar${pays.length > 20 ? ' (oxirgi 20)' : ''}:</b>`);
+      lines.push('', `<b>🧾 To‘g‘ridan-to‘g‘ri to‘lovlar${pays.length > 20 ? ' (oxirgi 20)' : ''}:</b>`);
       pays.slice(0, 20).forEach(t => lines.push(`• ${dmy(new Date(t.date).getTime())} · ${esc(t.person || t.category || '—')} — <b>${sum(t.amount)}</b>${ustozOf(t.comment) !== 'Izohsiz' ? ` · <i>${esc(ustozOf(t.comment))}</i>` : ''}`));
     }
   }
