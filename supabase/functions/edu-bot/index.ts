@@ -26,18 +26,20 @@ const B_TASKS = '📋 Vazifalar';
 const B_ADMIN = '⚙️ Boshqaruv';
 const B_MY = '📊 Mening natijam';
 const B_MYTASK = '📋 Vazifalarim';
+const B_BELL = '🔔 Qo‘ng‘iroqchalar';
+const B_PRICE = '💲 Narx nazorati';
 const B_CANCEL = '❌ Bekor qilish';
 const B_SKIP = '⏭ O‘tkazib yuborish';
 
 const kb = (rows: string[][]) => ({ keyboard: rows.map(r => r.map(text => ({ text }))), resize_keyboard: true });
 const persist = (rows: string[][], ph = 'Bo‘limni tanlang…') => ({ ...kb(rows), is_persistent: true, input_field_placeholder: ph });
-const MENU = persist([[B_IN, B_OUT], [B_ATT, B_RISK], [B_STATS, B_EXP], [B_DEBT, B_FIND], [B_TEACH, B_TASKS], [B_LEAD, B_ADMIN]]);
+const MENU = persist([[B_IN, B_OUT], [B_BELL, B_PRICE], [B_ATT, B_RISK], [B_STATS, B_EXP], [B_DEBT, B_FIND], [B_TEACH, B_TASKS], [B_LEAD, B_ADMIN]]);
 const MENU_SERVICE = persist([[B_ATT, B_RISK], [B_FIND, B_DEBT], [B_LEAD]]);
 const MENU_TEACHER = persist([[B_MY, B_MYTASK]]);
 // Bosh sahifadagi bosib tanlanadigan (inline) bo'limlar — rolga qarab
-const GO: Record<string, string> = { kirim: B_IN, chiqim: B_OUT, davomat: B_ATT, xavf: B_RISK, stat: B_STATS, xarajat: B_EXP, qarz: B_DEBT, qidir: B_FIND, ustoz: B_TEACH, vazifa: B_TASKS, lid: B_LEAD, admin: B_ADMIN, natijam: B_MY, myvazifa: B_MYTASK };
+const GO: Record<string, string> = { kirim: B_IN, chiqim: B_OUT, davomat: B_ATT, xavf: B_RISK, stat: B_STATS, xarajat: B_EXP, qarz: B_DEBT, qidir: B_FIND, ustoz: B_TEACH, vazifa: B_TASKS, lid: B_LEAD, admin: B_ADMIN, natijam: B_MY, myvazifa: B_MYTASK, bell: B_BELL, narx: B_PRICE };
 const GO_ROWS: Record<string, string[][]> = {
-  top: [['kirim', 'chiqim'], ['davomat', 'xavf'], ['stat', 'xarajat'], ['qarz', 'qidir'], ['ustoz', 'vazifa'], ['lid', 'admin']],
+  top: [['kirim', 'chiqim'], ['bell', 'narx'], ['davomat', 'xavf'], ['stat', 'xarajat'], ['qarz', 'qidir'], ['ustoz', 'vazifa'], ['lid', 'admin']],
   service: [['davomat', 'xavf'], ['qidir', 'qarz'], ['lid']],
   teacher: [['natijam', 'myvazifa']]
 };
@@ -474,7 +476,7 @@ async function sticker(chatId: number | string, key: string) {
 const STICKER_OF: Record<string, string> = {
   [B_IN]: 'kirim', [B_OUT]: 'chiqim', [B_ATT]: 'davomat', [B_RISK]: 'xavf', [B_STATS]: 'statistika', [B_EXP]: 'xarajat',
   [B_DEBT]: 'qarz', [B_FIND]: 'qidir', [B_TEACH]: 'oqituvchi', [B_TASKS]: 'vazifa', [B_LEAD]: 'lid', [B_ADMIN]: 'boshqaruv',
-  [B_MY]: 'natijam', [B_MYTASK]: 'vazifa',
+  [B_MY]: 'natijam', [B_MYTASK]: 'vazifa', [B_BELL]: 'qongiroq', [B_PRICE]: 'narx', '/qongiroq': 'qongiroq', '/narx': 'narx',
   '/kirim': 'kirim', '/chiqim': 'chiqim', '/davomat': 'davomat', '/xavf': 'xavf', '/statistika': 'statistika', '/xarajat': 'xarajat', '/xarajat_oy': 'xarajat',
   '/qarz': 'qarz', '/qidir': 'qidir', '/oqituvchilar': 'oqituvchi', '/vazifalar': 'vazifa', '/lid': 'lid', '/boshqaruv': 'boshqaruv', '/natijam': 'natijam', '/vazifalarim': 'vazifa'
 };
@@ -716,6 +718,118 @@ async function smsSend(chatId: number, from: any) {
   if (r.sent) await notifyOthers(`📩 Qarzdorlarga SMS: ${r.sent} ta${r.failed ? ` (xato ${r.failed})` : ''} · ${esc(by)}`, from?.id);
 }
 
+
+// =========================================================
+// 🔔 Kassa qo'ng'iroqchalari va 💲 narx nazorati (faqat top)
+// =========================================================
+async function bellsView(chatId: number) {
+  await typing(chatId);
+  const r = await edu('bells');
+  if (!r.ok) return void send(chatId, `⚠️ Edutizim: ${esc(r.error)}`, { reply_markup: menu() });
+  const list = r.bells || [];
+  if (!list.length) return void send(chatId, '🔔 Kassada qo‘ng‘iroqcha yo‘q — hammasi toza ✅', { reply_markup: menu() });
+  await setSession(chatId, 'bells', { list });
+  const price = list.filter((b: any) => b.type === 'price'), left = list.filter((b: any) => b.type === 'left');
+  const L = (b: any) => list.indexOf(b) + 1;
+  const txt = `🔔 <b>Kassa qo‘ng‘iroqchalari: ${list.length}</b>\n` +
+    (price.length ? `\n💲 <b>Narxi o‘zgarganlar (${price.length})</b>\n${price.map((b: any) => `${L(b)}. ${esc(b.name)} · ${esc(b.group)}\n   ${sum(b.oldPrice)} → <b>${sum(b.newPrice)}</b>`).join('\n')}\n` : '') +
+    (left.length ? `\n🚪 <b>Guruhdan chiqqanlar (${left.length})</b>\n${left.map((b: any) => `${L(b)}. ${esc(b.name)} · ${esc(b.group)}${b.leftAt ? ` · ${dmy(new Date(b.leftAt).getTime())}` : ''}${b.reason ? `\n   <i>${esc(String(b.reason).slice(0, 60))}</i>` : ''}`).join('\n')}\n` : '') +
+    `\nTekshirib, to‘g‘ri bo‘lsa tozalang; narx xato o‘zgargan bo‘lsa — eski narxga qaytaring 👇`;
+  const btns = list.slice(0, 30).map((b: any, i: number) => ib(`${b.type === 'price' ? '💲' : '🚪'} ${i + 1}. ${b.name.slice(0, 20)}`, `bl:${i}`));
+  const rows: any[] = [];
+  for (let i = 0; i < btns.length; i += 2) rows.push(btns.slice(i, i + 2));
+  rows.push([ib('🧹 Hammasini tozalash', 'bda')]);
+  await sendLong(chatId, txt, { reply_markup: { inline_keyboard: rows } });
+}
+async function bellDetail(chatId: number, i: number) {
+  const s = await getSession(chatId);
+  const b = s.data.list?.[i];
+  if (!b) return bellsView(chatId);
+  const rows: any[] = [[ib('✅ To‘g‘ri — tozalash', `bd:${i}`)]];
+  if (b.type === 'price' && b.oldPrice) rows.push([ib(`↩️ Eski narxga qaytarish (${sum(b.oldPrice)})`, `bo:${i}`)]);
+  rows.push([ib('⬅️ Ro‘yxatga', 'bls')]);
+  await send(chatId, `${b.type === 'price' ? '💲 <b>Narx o‘zgargan</b>' : '🚪 <b>Guruhdan chiqqan</b>'}\n\n👤 ${esc(b.name)} · ${esc(b.phone)}\n👥 ${esc(b.group)}` +
+    (b.type === 'price' ? `\n💲 ${sum(b.oldPrice)} → <b>${sum(b.newPrice)}</b>` : `${b.leftAt ? `\n📆 Chiqqan: ${dmy(new Date(b.leftAt).getTime())}` : ''}${b.reason ? `\n📝 ${esc(b.reason)}` : ''}`), { reply_markup: { inline_keyboard: rows } });
+}
+async function bellAction(chatId: number, i: number, revert: boolean, from: any) {
+  const s = await getSession(chatId);
+  const b = s.data.list?.[i];
+  if (!b) return bellsView(chatId);
+  const by = from?.username ? '@' + from.username : (from?.first_name || '');
+  if (revert) {
+    const r = await edu('changePrice', { studentId: b.studentId, groupId: b.groupId, price: b.oldPrice, by });
+    if (!r.ok) return void send(chatId, `⚠️ Narx qaytarilmadi: ${esc(r.error)}`, { reply_markup: menu() });
+  }
+  const d = await edu('bellDelete', { id: b.id, by });
+  await send(chatId, d.ok ? `✅ ${revert ? `Narx ${sum(b.oldPrice)} ga qaytarildi va q` : 'Q'}o‘ng‘iroqcha tozalandi: ${esc(b.name)}` : `⚠️ Tozalanmadi: ${esc(d.error)}`, { reply_markup: menu() });
+  if (revert) await notifyOthers(`↩️ Narx qaytarildi: ${esc(b.name)} · ${esc(b.group)} · ${sum(b.newPrice)} → ${sum(b.oldPrice)} · ${esc(by)}`, from?.id);
+  return bellsView(chatId);
+}
+async function bellsClearAll(chatId: number, from: any) {
+  const s = await getSession(chatId);
+  const list = s.data.list || [];
+  let ok = 0;
+  for (const b of list) if ((await edu('bellDelete', { id: b.id, by: from?.first_name || '' })).ok) ok++;
+  await send(chatId, `🧹 Tozalandi: ${ok}/${list.length}`, { reply_markup: menu() });
+}
+
+let auditCache: { at: number; rows: any[] } | null = null;
+async function priceGroups(force = false) {
+  if (!force && auditCache && Date.now() - auditCache.at < 300_000) return auditCache.rows;
+  const r = await edu('priceAudit');
+  if (!r.ok) throw new Error(r.error || 'Edutizim xatosi');
+  const by = new Map<string, any>();
+  for (const x of r.rows || []) {
+    const g = by.get(x.groupId) || { groupId: x.groupId, group: x.group, teacher: x.teacher, expected: x.expected, coursePrice: x.coursePrice, size: x.groupSize, normCount: x.normCount, rows: [] };
+    g.rows.push(x); by.set(x.groupId, g);
+  }
+  auditCache = { at: Date.now(), rows: [...by.values()].sort((a, b) => b.rows.length - a.rows.length) };
+  return auditCache.rows;
+}
+async function priceView(chatId: number, force = false) {
+  await typing(chatId);
+  await send(chatId, '⏳ Narxlar tekshirilmoqda (20–30 soniya)…');
+  let groups: any[];
+  try { groups = await priceGroups(force); } catch (e) { return void send(chatId, `⚠️ ${esc((e as Error).message)}`, { reply_markup: menu() }); }
+  const total = groups.reduce((a, g) => a + g.rows.length, 0);
+  if (!total) return void send(chatId, '💲 Barcha aktiv o‘quvchilar guruh narxida ✅', { reply_markup: menu() });
+  const lines = groups.map((g, gi) => `<b>${gi + 1}. ${esc(g.group)}</b> · ${esc(firstName(g.teacher))}\n   me’yor: <b>${sum(g.expected)}</b> (${g.normCount}/${g.size})${g.coursePrice ? ` · kurs: ${sum(g.coursePrice)}` : ''}${g.normCount * 2 <= g.size ? ' · ⚠️ me’yor aniq emas' : ''}\n` +
+    g.rows.map((x: any) => `   • ${esc(x.name)} — ${sum(x.price)} (${x.price > g.expected ? '+' : '−'}${sum(Math.abs(x.price - g.expected))})${x.discount ? ' 🏷' : ''}`).join('\n')).join('\n');
+  const btns = groups.slice(0, 30).map((g, gi) => ib(`👥 ${gi + 1}. ${g.group.slice(0, 22)} (${g.rows.length})`, `pgr:${gi}`));
+  const rows: any[] = [];
+  for (let i = 0; i < btns.length; i += 2) rows.push(btns.slice(i, i + 2));
+  rows.push([ib('🔄 Qayta tekshirish', 'prf')]);
+  await sendLong(chatId, `💲 <b>Narx nazorati</b>\nGuruhdoshlaridan boshqa narxda o‘qiyotganlar: <b>${total}</b> ta (${groups.length} guruh)\n<i>Me’yor — guruhda ko‘pchilik to‘laydigan narx. 🏷 — ismida chegirma belgisi bor. Eski narxda qolganlar ataylab bo‘lishi mumkin — tekshirib to‘g‘irlang.</i>\n\n${lines}`, { reply_markup: { inline_keyboard: rows } });
+}
+async function priceGroupView(chatId: number, gi: number) {
+  const g = (await priceGroups())[gi];
+  if (!g) return priceView(chatId);
+  const rows: any[] = g.rows.slice(0, 30).map((x: any, si: number) => [ib(`${si + 1}. ${x.name.slice(0, 20)}: ${sum(x.price)} → ${sum(g.expected)}`, `pfx:${gi}:${si}`)]);
+  if (g.coursePrice && g.coursePrice !== g.expected) rows.push([ib(`Kurs narxiga (${sum(g.coursePrice)}) hammasini`, `pgc:${gi}`)]);
+  rows.push([ib(`✅ Hammasini me’yorga (${sum(g.expected)})`, `pga:${gi}`)], [ib('⬅️ Ro‘yxatga', 'prl')]);
+  await send(chatId, `👥 <b>${esc(g.group)}</b> · ${esc(g.teacher)}\nMe’yor: <b>${sum(g.expected)}</b> (${g.normCount}/${g.size} o‘quvchi)${g.coursePrice ? ` · kurs narxi: ${sum(g.coursePrice)}` : ''}\n\nO‘quvchini bosib narxini to‘g‘irlang 👇`, { reply_markup: { inline_keyboard: rows } });
+}
+async function priceConfirm(chatId: number, gi: number, si: number | 'all', target: 'norm' | 'course') {
+  const g = (await priceGroups())[gi];
+  if (!g) return priceView(chatId);
+  const price = target === 'course' ? g.coursePrice : g.expected;
+  const list = si === 'all' ? g.rows : [g.rows[si]].filter(Boolean);
+  await setSession(chatId, 'price_fix', { items: list.map((x: any) => ({ studentId: x.studentId, groupId: x.groupId, name: x.name, from: x.price })), price, group: g.group });
+  await send(chatId, `💲 <b>Tasdiqlash</b>\n👥 ${esc(g.group)}\n${list.map((x: any) => `• ${esc(x.name)}: ${sum(x.price)} → <b>${sum(price)}</b>`).join('\n')}\n\nEdutizim’da narx darhol o‘zgaradi.`, { reply_markup: { inline_keyboard: [[ib(`✅ Ha, o‘zgartirish (${list.length})`, 'pok'), ib('❌ Yo‘q', 'x')]] } });
+}
+async function priceApply(chatId: number, from: any) {
+  const s = await getSession(chatId);
+  if (s.step !== 'price_fix') return void send(chatId, 'Amal eskirgan.', { reply_markup: menu() });
+  await setSession(chatId, null);
+  const by = from?.username ? '@' + from.username : (from?.first_name || '');
+  let ok = 0; const errs: string[] = [];
+  for (const x of s.data.items) { const r = await edu('changePrice', { studentId: x.studentId, groupId: x.groupId, price: s.data.price, by }); r.ok ? ok++ : errs.push(`${x.name}: ${r.error}`); }
+  auditCache = null;
+  if (ok) await sticker(chatId, 'bajarildi');
+  await send(chatId, `${ok ? '✅' : '⚠️'} Narx o‘zgartirildi: <b>${ok}/${s.data.items.length}</b> → ${sum(s.data.price)}${errs.length ? `\n${esc(errs.slice(0, 3).join('\n'))}` : ''}`, { reply_markup: menu() });
+  if (ok) await notifyOthers(`💲 Narx to‘g‘rilandi: ${esc(s.data.group)} · ${ok} ta → ${sum(s.data.price)} · ${esc(by)}`, from?.id);
+}
+
 async function riskView(chatId: number) {
   await typing(chatId);
   const r = await edu('absenceRisk', { days: 21 });
@@ -934,7 +1048,7 @@ async function myStats(chatId: number, which: 'm' | 'pm' = 'm') {
 // =========================================================
 const ACCESS: Record<string, Role[]> = {
   // matn tugmalari
-  [B_IN]: ['top'], [B_OUT]: ['top'], [B_STATS]: ['top'], [B_EXP]: ['top'], [B_TEACH]: ['top'], [B_TASKS]: ['top'], [B_ADMIN]: ['top'],
+  [B_IN]: ['top'], [B_OUT]: ['top'], [B_STATS]: ['top'], [B_EXP]: ['top'], [B_TEACH]: ['top'], [B_TASKS]: ['top'], [B_ADMIN]: ['top'], [B_BELL]: ['top'], [B_PRICE]: ['top'],
   [B_ATT]: ['top', 'service'], [B_RISK]: ['top', 'service'], [B_FIND]: ['top', 'service'], [B_DEBT]: ['top', 'service'], [B_LEAD]: ['top', 'service'],
   [B_MY]: ['teacher'], [B_MYTASK]: ['teacher']
 };
@@ -990,6 +1104,8 @@ async function onMessage(m: any) {
   if (isTop && (text === B_TEACH || cmd === '/oqituvchilar')) return teachersView(chatId, 'm');
   if (isTop && (text === B_TASKS || cmd === '/vazifalar')) return tasksTop(chatId);
   if (isTop && (text === B_ADMIN || cmd === '/boshqaruv')) return adminPanel(chatId);
+  if (isTop && (text === B_BELL || cmd === '/qongiroq')) return bellsView(chatId);
+  if (isTop && (text === B_PRICE || cmd === '/narx')) return priceView(chatId);
   if (isTop && (text === B_REPORT || cmd === '/hisobot')) return report(chatId);
   if (isTop && (text === B_SYNC || cmd === '/sinxron')) return sync(chatId);
   if (isStaff && (text === B_ATT || cmd === '/davomat')) return attendanceView(chatId, 'today');
@@ -1064,6 +1180,20 @@ async function onCallback(q: any) {
     return onMessage({ chat: { id: chatId, type: 'private' }, from: q.from, text: GO[data.slice(3)] });
   }
   if (data === 'home') return startMsg(chatId, { from: q.from });
+  // Qo'ng'iroqchalar va narx
+  if (data === 'bls') return bellsView(chatId);
+  if (data.startsWith('bl:') && s.step === 'bells') return bellDetail(chatId, Number(data.slice(3)));
+  if (data.startsWith('bd:') && s.step === 'bells') return bellAction(chatId, Number(data.slice(3)), false, q.from);
+  if (data.startsWith('bo:') && s.step === 'bells') return bellAction(chatId, Number(data.slice(3)), true, q.from);
+  if (data === 'bda' && s.step === 'bells') return void send(chatId, `🧹 ${s.data.list?.length || 0} ta qo‘ng‘iroqchani tozalaymizmi?`, { reply_markup: { inline_keyboard: [[ib('✅ Ha', 'bdy'), ib('❌ Yo‘q', 'x')]] } });
+  if (data === 'bdy' && s.step === 'bells') return bellsClearAll(chatId, q.from);
+  if (data === 'prl') return priceView(chatId);
+  if (data === 'prf') return priceView(chatId, true);
+  if (data.startsWith('pgr:')) return priceGroupView(chatId, Number(data.slice(4)));
+  if (data.startsWith('pfx:')) { const [, gi, si] = data.split(':'); return priceConfirm(chatId, Number(gi), Number(si), 'norm'); }
+  if (data.startsWith('pga:')) return priceConfirm(chatId, Number(data.slice(4)), 'all', 'norm');
+  if (data.startsWith('pgc:')) return priceConfirm(chatId, Number(data.slice(4)), 'all', 'course');
+  if (data === 'pok') return priceApply(chatId, q.from);
   // SMS
   if (data === 'sms') return smsStart(chatId);
   if (data.startsWith('sm1:') && s.step === 'find') { const st = s.data.found?.[Number(data.slice(4))]; if (st) return smsStart(chatId, [{ id: st.id, name: st.name, balance: st.balance }]); }
