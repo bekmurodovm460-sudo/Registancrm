@@ -4,6 +4,8 @@
 // Kirish: CRM → 🤖 Telegram Bot → "Bot adminlari" (Telegram ID) yoki admin chat ID.
 // Edutizim bilan ishlash edutizim-sync funksiyasi orqali (x-cron-secret, ichki chaqiruv).
 // =========================================================
+import Anthropic from 'npm:@anthropic-ai/sdk@1.8.0';
+import { betaTool } from 'npm:@anthropic-ai/sdk@1.8.0/helpers/beta/json-schema';
 import { daysLabel, schedulePdf, toLessons } from '../_shared/schedule.ts';
 import { inkassaReport, isMoveOut, P_INK, type InkP } from '../_shared/inkassa.ts';
 import { admin, getSecret, getSetting, SUPABASE_URL, tg, webhookSecret } from '../_shared/common.ts';
@@ -28,6 +30,7 @@ const B_BOOK = '📚 Kitob buyurtma';
 const B_BOOKS = '📚 Kitob buyurtmalari';
 const B_STOCK = '📦 Kitoblar ombori';
 const B_MEDIA = '🎬 Video montaj';
+const B_AI = '🤖 AI yordamchi';
 const B_ATT = '📅 Davomat';
 const B_RISK = '⚠️ Xavf ostida';
 const B_TEACH = '👩‍🏫 O‘qituvchilar';
@@ -44,21 +47,21 @@ const B_SKIP = '⏭ O‘tkazib yuborish';
 
 const kb = (rows: string[][]) => ({ keyboard: rows.map(r => r.map(text => ({ text }))), resize_keyboard: true });
 const persist = (rows: string[][], ph = 'Bo‘limni tanlang…') => ({ ...kb(rows), is_persistent: true, input_field_placeholder: ph });
-const MENU = persist([[B_IN, B_OUT], [B_INK, B_EXP], [B_BELL, B_PRICE], [B_NEW, B_MGR], [B_ATT, B_RISK], [B_STATS, B_SCHED], [B_BOOKS, B_STOCK], [B_MEDIA, B_PHONES], [B_DEBT, B_FIND], [B_TEACH, B_TASKS], [B_LEAD, B_ADMIN]]);
-const MENU_SENIOR = persist([[B_ATT, B_RISK], [B_NEW, B_MGR], [B_STATS, B_EXP], [B_INK, B_SCHED], [B_STOCK, B_MEDIA], [B_PHONES], [B_BELL, B_PRICE], [B_DEBT, B_FIND], [B_TEACH, B_TASKS], [B_LEAD]]);
-const MENU_SERVICE = persist([[B_ATT, B_RISK], [B_NEW, B_MY], [B_FIND, B_DEBT], [B_LEAD, B_SCHED], [B_PHONES]]);
-const MENU_TEACHER = persist([[B_MY, B_MYTASK], [B_SCHED, B_PHONES]]);
-const MENU_MEDIA = persist([[B_MEDIA], [B_SCHED, B_PHONES]]);
-const MENU_TEACHER_BOOK = persist([[B_MY, B_MYTASK], [B_BOOK, B_SCHED], [B_PHONES]]);
+const MENU = persist([[B_IN, B_OUT], [B_INK, B_EXP], [B_BELL, B_PRICE], [B_NEW, B_MGR], [B_ATT, B_RISK], [B_STATS, B_SCHED], [B_BOOKS, B_STOCK], [B_MEDIA, B_AI], [B_PHONES], [B_DEBT, B_FIND], [B_TEACH, B_TASKS], [B_LEAD, B_ADMIN]]);
+const MENU_SENIOR = persist([[B_ATT, B_RISK], [B_NEW, B_MGR], [B_STATS, B_EXP], [B_INK, B_SCHED], [B_STOCK, B_MEDIA], [B_AI, B_PHONES], [B_BELL, B_PRICE], [B_DEBT, B_FIND], [B_TEACH, B_TASKS], [B_LEAD]]);
+const MENU_SERVICE = persist([[B_ATT, B_RISK], [B_NEW, B_MY], [B_FIND, B_DEBT], [B_LEAD, B_SCHED], [B_AI, B_PHONES]]);
+const MENU_TEACHER = persist([[B_MY, B_MYTASK], [B_SCHED, B_PHONES], [B_AI]]);
+const MENU_MEDIA = persist([[B_MEDIA, B_AI], [B_SCHED, B_PHONES]]);
+const MENU_TEACHER_BOOK = persist([[B_MY, B_MYTASK], [B_BOOK, B_SCHED], [B_AI, B_PHONES]]);
 // Bosh sahifadagi bosib tanlanadigan (inline) bo'limlar — rolga qarab
-const GO: Record<string, string> = { kirim: B_IN, chiqim: B_OUT, davomat: B_ATT, xavf: B_RISK, stat: B_STATS, xarajat: B_EXP, inkassa: B_INK, jadval: B_SCHED, raqam: B_PHONES, kitob: B_BOOK, kitoblar: B_BOOKS, ombor: B_STOCK, montaj: B_MEDIA, qarz: B_DEBT, qidir: B_FIND, ustoz: B_TEACH, vazifa: B_TASKS, lid: B_LEAD, admin: B_ADMIN, natijam: B_MY, myvazifa: B_MYTASK, bell: B_BELL, narx: B_PRICE, yangi: B_NEW, mgr: B_MGR };
+const GO: Record<string, string> = { kirim: B_IN, chiqim: B_OUT, davomat: B_ATT, xavf: B_RISK, stat: B_STATS, xarajat: B_EXP, inkassa: B_INK, jadval: B_SCHED, raqam: B_PHONES, kitob: B_BOOK, kitoblar: B_BOOKS, ombor: B_STOCK, montaj: B_MEDIA, ai: B_AI, qarz: B_DEBT, qidir: B_FIND, ustoz: B_TEACH, vazifa: B_TASKS, lid: B_LEAD, admin: B_ADMIN, natijam: B_MY, myvazifa: B_MYTASK, bell: B_BELL, narx: B_PRICE, yangi: B_NEW, mgr: B_MGR };
 const GO_ROWS: Record<string, string[][]> = {
-  top: [['kirim', 'chiqim'], ['inkassa', 'xarajat'], ['bell', 'narx'], ['yangi', 'mgr'], ['davomat', 'xavf'], ['stat', 'jadval'], ['kitoblar', 'ombor'], ['montaj', 'raqam'], ['qarz', 'qidir'], ['ustoz', 'vazifa'], ['lid', 'admin']],
-  senior: [['davomat', 'xavf'], ['yangi', 'mgr'], ['stat', 'xarajat'], ['inkassa', 'jadval'], ['ombor', 'montaj'], ['raqam'], ['bell', 'narx'], ['qarz', 'qidir'], ['ustoz', 'vazifa'], ['lid']],
-  service: [['davomat', 'xavf'], ['yangi', 'natijam'], ['qidir', 'qarz'], ['lid', 'jadval'], ['raqam']],
-  teacher: [['natijam', 'myvazifa'], ['jadval', 'raqam']],
-  media: [['montaj'], ['jadval', 'raqam']],
-  teacherBook: [['natijam', 'myvazifa'], ['kitob', 'jadval'], ['raqam']]
+  top: [['kirim', 'chiqim'], ['inkassa', 'xarajat'], ['bell', 'narx'], ['yangi', 'mgr'], ['davomat', 'xavf'], ['stat', 'jadval'], ['kitoblar', 'ombor'], ['montaj', 'ai'], ['raqam'], ['qarz', 'qidir'], ['ustoz', 'vazifa'], ['lid', 'admin']],
+  senior: [['davomat', 'xavf'], ['yangi', 'mgr'], ['stat', 'xarajat'], ['inkassa', 'jadval'], ['ombor', 'montaj'], ['ai', 'raqam'], ['bell', 'narx'], ['qarz', 'qidir'], ['ustoz', 'vazifa'], ['lid']],
+  service: [['davomat', 'xavf'], ['yangi', 'natijam'], ['qidir', 'qarz'], ['lid', 'jadval'], ['ai', 'raqam']],
+  teacher: [['natijam', 'myvazifa'], ['jadval', 'raqam'], ['ai']],
+  media: [['montaj', 'ai'], ['jadval', 'raqam']],
+  teacherBook: [['natijam', 'myvazifa'], ['kitob', 'jadval'], ['ai', 'raqam']]
 };
 const homeKb = (r: string, withAcc = false) => ({ inline_keyboard: [...(GO_ROWS[r] || []).map(row => row.map(k => ({ text: GO[k], callback_data: `go:${k}` }))), ...(withAcc ? [[{ text: '🔑 Edutizim akkauntim', callback_data: 'acc' }]] : [])] });
 type Role = 'top' | 'senior' | 'service' | 'teacher' | 'media' | 'pending' | 'blocked' | 'none';
@@ -761,6 +764,305 @@ async function stockApply(chatId: number, s: any, text: string) {
   return stockView(chatId);
 }
 
+// =========================================================
+// 🤖 AI yordamchi — Claude (Anthropic API). Faqat o'qiydigan vositalar (rolga qarab) +
+// AI montaj: suhbatga yuborilgan rasm/videolardan montaj rejasi → 🎬 Mini App o'zi yig'adi
+// =========================================================
+const AI_MODEL = 'claude-opus-5-5';
+let aiClient: Anthropic | null = null, aiKeyUsed = '';
+async function aiClientGet() {
+  const key = await getSecret('anthropic_api_key');
+  if (!key) return null;
+  if (!aiClient || key !== aiKeyUsed) { aiClient = new Anthropic({ apiKey: key, baseURL: 'https://api.anthropic.com', maxRetries: 2, timeout: 120_000 }); aiKeyUsed = key; }
+  return aiClient;
+}
+const stripHtml = (t: string) => String(t || '').replace(/<[^>]+>/g, '').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
+const WD_UZ = ['Yakshanba', 'Dushanba', 'Seshanba', 'Chorshanba', 'Payshanba', 'Juma', 'Shanba'];
+function b64(bytes: Uint8Array) { let s = ''; for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode(...bytes.subarray(i, i + 0x8000)); return btoa(s); }
+async function tgFileBytes(fileId: string): Promise<Uint8Array | null> {
+  const t = await token();
+  const f = await tg(t, 'getFile', { file_id: fileId });
+  if (!f?.ok) return null;
+  const r = await fetch(`https://api.telegram.org/file/bot${t}/${f.result.file_path}`);
+  return r.ok ? new Uint8Array(await r.arrayBuffer()) : null;
+}
+async function pendingMedia(tgId: number) {
+  const since = new Date(Date.now() - 3 * 3600_000).toISOString();
+  const { data } = await admin.from('crm_ai_media').select('*').eq('tg_id', tgId).gte('created_at', since).order('created_at', { ascending: true }).limit(20);
+  return data || [];
+}
+
+const AI_SYSTEM = `Siz "Registan · Markaz" Telegram botidagi AI yordamchisiz. Registan LC (Qarshi, Globus filiali) o'quv markazi xodimlariga yordam berasiz: top va katta menejer, servis menejerlar, o'qituvchilar va media xodimlari.
+
+Qoidalar:
+- Foydalanuvchi qaysi tilda yozsa, o'sha tilda javob bering (odatda o'zbek tilida, lotin yozuvida).
+- Javob Telegram'da oddiy matn sifatida ko'rinadi: markdown, jadval, ** yoki # ishlatmang. Qisqa qatorlar, kerak bo'lsa emoji va "•" ro'yxat.
+- Raqamlar (o'quvchilar, qarz, kassa, davomat, ustozlar, kitoblar, jadval) faqat vositalardan olinadi — o'zingizdan to'qimang. Vosita xato bersa, shuni ochiq ayting.
+- Vositalar faqat o'qiydi. Kassaga kirim/chiqim, SMS, narx o'zgartirish, rol berish kabi amallarni siz qila olmaysiz — bot menyusidagi tegishli tugmani ko'rsating.
+- Shaxsiy ma'lumotlarni (telefon, qarz) faqat so'ralganda va kerakli qismini bering.
+- Foydalanuvchiga vositada bo'lmagan bo'lim kerak bo'lsa, buni ochiq ayting va menyudagi tugmani tavsiya qiling.
+
+Montaj (create_montage vositasi bor bo'lsa):
+- Foydalanuvchi rasm/video yuborib reels, story, post yoki video so'rasa — create_montage chaqiring. Media raqamlari xabarda "[Media N]" bo'lib keladi, rasmlarni ko'rib mazmuniga mos tartib tanlang.
+- Odatiy: 9:16 format, rasm 2.5–4 soniya, video bo'lagi 3–8 soniya, jami 15–45 soniya (so'ralmasa). Har klip matni 2–6 so'z, jozibali, xatosiz. Intro sarlavhasi qisqa; outro'da markaz shiori. O'tish: fade yoki slide.
+- Post matni (caption) va 5–8 ta mos heshteg ham yozing.
+- Vosita chaqirilgandan keyin foydalanuvchiga "🎬 Montajni ochish" tugmasini bosib, ko'rib chiqib "Tayyorlash"ni bosishni ayting. Musiqani Mini App ichida o'zi tanlaydi.
+- Media yuborilmagan bo'lsa, avval rasm yoki video yuborishni so'rang.`;
+
+function aiTools(r: Role, tgId: number, ctx: { project?: string; caption?: string }) {
+  const u = me();
+  const T: any[] = [];
+  const mgr = r === 'top' || r === 'senior', staff = mgr || r === 'service';
+  T.push(betaTool({
+    name: 'dars_jadvali', description: 'Markazning dars jadvali: guruhlar, soat, xona, ustoz, o‘quvchilar soni. O‘qituvchiga faqat o‘z guruhlari qaytadi.',
+    inputSchema: { type: 'object', properties: { kun: { type: 'string', description: 'bugun, ertaga yoki hafta kuni nomi (Dushanba…Shanba); bo‘sh bo‘lsa — butun hafta' } }, additionalProperties: false },
+    run: async ({ kun }) => {
+      const { data } = await admin.from('crm_edu_groups').select('id,name,data');
+      let ls = toLessons(data || []);
+      if (r === 'teacher') ls = ls.filter(l => l.teacherId === u?.employee_id);
+      const now = new Date(Date.now() + TZ);
+      const k = String(kun || '').toLowerCase();
+      let wd = -1;
+      if (k.startsWith('bugun')) wd = now.getUTCDay(); else if (k.startsWith('ertaga')) wd = (now.getUTCDay() + 1) % 7;
+      else { const i = WD_UZ.findIndex(w => k && w.toLowerCase().startsWith(k.slice(0, 3))); if (i >= 0) wd = i; }
+      if (wd >= 0) ls = ls.filter(l => l.days.includes(wd + 1));
+      return JSON.stringify({ kun: wd >= 0 ? WD_UZ[wd] : 'butun hafta', guruhlar: ls.sort((a, b) => a.start.localeCompare(b.start)).map(l => ({ guruh: l.name, kunlar: daysLabel(l.days), soat: `${l.start}-${l.end}`, xona: l.room, ustoz: l.teacher, kurs: [l.course, l.sub].filter(Boolean).join(' · '), oquvchi: l.students })) });
+    }
+  }));
+  if (staff) {
+    T.push(betaTool({
+      name: 'oquvchi_qidirish', description: 'Edutizim’dan o‘quvchini ism yoki telefon bo‘yicha topish: guruhlari, balans (manfiy — qarz).',
+      inputSchema: { type: 'object', properties: { soz: { type: 'string', description: 'ism, familiya yoki telefon' } }, required: ['soz'], additionalProperties: false },
+      run: async ({ soz }) => JSON.stringify((await eduFind(String(soz))).slice(0, 8).map((x: any) => ({ ism: x.name, telefon: x.phone, guruhlar: x.groups, balans: x.balance })))
+    }));
+    T.push(betaTool({
+      name: 'davomat', description: 'Edutizim davomati: kelmagan o‘quvchilar (sababli/sababsiz), guruh, ustoz, mas’ul menejer.',
+      inputSchema: { type: 'object', properties: { kun: { type: 'string', enum: ['bugun', 'kecha'] } }, required: ['kun'], additionalProperties: false },
+      run: async ({ kun }) => {
+        const d0 = dayStart(Date.now()) - (kun === 'kecha' ? DAY : 0);
+        const ymd = new Date(d0 + TZ).toISOString().slice(0, 10);
+        const res = await edu('absences', { fromDate: `${ymd}T00:00:00.000Z`, toDate: `${ymd}T23:59:59.999Z` });
+        if (!res.ok) return JSON.stringify({ xato: res.error });
+        const rows = (res.rows || []).filter((x: any) => !x.lessonDate || String(x.lessonDate).slice(0, 10) === ymd);
+        return JSON.stringify({ sana: ymd, jami: rows.length, kelmaganlar: rows.slice(0, 80).map((x: any) => ({ ism: x.name, holat: x.state === 'unreasonable' ? 'sababsiz' : 'sababli', guruh: x.group, ustoz: x.teacher, menejer: x.manager, balans: x.balance })) });
+      }
+    }));
+    T.push(betaTool({
+      name: 'xavf_ostida', description: 'Ketma-ket 2-3+ dars qoldirgan (notcoming xavfi) o‘quvchilar.',
+      inputSchema: { type: 'object', properties: {}, additionalProperties: false },
+      run: async () => { const res = await edu('absenceRisk', { days: 21 }); return JSON.stringify(res.ok ? (res.rows || []).slice(0, 60).map((x: any) => ({ ism: x.name, ketma_ket: x.streak, guruh: x.group, ustoz: x.teacher, menejer: x.manager })) : { xato: res.error }); }
+    }));
+  }
+  if (mgr) {
+    T.push(betaTool({
+      name: 'markaz_statistikasi', description: 'Aktiv o‘quvchilar soni, qarzdorlar soni va jami qarz, oldindan to‘laganlar.',
+      inputSchema: { type: 'object', properties: {}, additionalProperties: false },
+      run: async () => {
+        const all = await allBalances(); const a = all.filter(s => s.active); const debt = a.filter(s => s.balance < 0);
+        return JSON.stringify({ aktiv: a.length, aktiv_qarzdorlar: debt.length, aktiv_qarz_jami: -debt.reduce((x, s) => x + s.balance, 0), oldindan_tolagan: a.filter(s => s.balance > 0).length, nofaol_qarz_jami: -all.filter(s => !s.active && s.balance < 0).reduce((x, s) => x + s.balance, 0) });
+      }
+    }));
+    T.push(betaTool({
+      name: 'kassa_xarajatlari', description: 'Edutizim kassasi: davr bo‘yicha xarajatlar (kategoriyalar), kirim jami. Naqd inkassaga ko‘chirmalar xarajat emas.',
+      inputSchema: { type: 'object', properties: { davr: { type: 'string', enum: ['today', 'week', 'pweek', 'month', 'pmonth'] } }, required: ['davr'], additionalProperties: false },
+      run: async ({ davr }) => {
+        const meta = await edu('kassaMeta'); if (!meta.ok) return JSON.stringify({ xato: meta.error });
+        const rr = range(davr as Period);
+        const [out, inc] = await Promise.all([txFor('payOut', rr.from, rr.to, meta.cashboxes || []), txFor('payIn', rr.from, rr.to, meta.cashboxes || [])]);
+        const real = out.filter((t: any) => !isMoveOut(t));
+        const cats = new Map<string, number>(); real.forEach((t: any) => cats.set(t.category, (cats.get(t.category) || 0) + t.amount));
+        return JSON.stringify({ davr: `${dmy(rr.from)}–${dmy(rr.to)}`, xarajat_jami: real.reduce((a: number, t: any) => a + t.amount, 0), kirim_jami: inc.reduce((a: number, t: any) => a + t.amount, 0), kategoriyalar: [...cats.entries()].sort((a, b) => b[1] - a[1]).slice(0, 15).map(([k, v]) => ({ kategoriya: k, summa: v })) });
+      }
+    }));
+    T.push(betaTool({
+      name: 'naqd_inkassa', description: '“Naqd Inkassa” (Shanba–Juma davri, Juma kuni bankka): yig‘ilgan, to‘lovlar, naqddan ko‘chirma.',
+      inputSchema: { type: 'object', properties: { davr: { type: 'string', enum: ['cur', 'prev', 'month', 'pmonth'] } }, required: ['davr'], additionalProperties: false },
+      run: async ({ davr }) => stripHtml(await inkassaReport(edu, davr as InkP, Date.now(), true))
+    }));
+    T.push(betaTool({
+      name: 'ustozlar_hisoboti', description: 'Oy bo‘yicha o‘qituvchilar va markaz: oy boshi→hozir aktiv, kelgan, ketgan, konversiya.',
+      inputSchema: { type: 'object', properties: { oy: { type: 'string', enum: ['m', 'pm'], description: 'm — bu oy, pm — o‘tgan oy' } }, required: ['oy'], additionalProperties: false },
+      run: async ({ oy }) => {
+        const rep: any = await teacherReport(oy); if (!rep.ok) return JSON.stringify({ xato: rep.error });
+        return JSON.stringify({ davr: rep.label, markaz: rep.center, ustozlar: (rep.teachers || []).map((t: any) => ({ ism: t.name, oy_boshi: t.start, hozir: t.now, kelgan: t.joined?.length, ketgan: t.left?.length, konversiya: t.conversion })) });
+      }
+    }));
+    T.push(betaTool({
+      name: 'kitoblar_ombori', description: 'Kitoblar ombori qoldig‘i va faol kitob buyurtmalari.',
+      inputSchema: { type: 'object', properties: {}, additionalProperties: false },
+      run: async () => {
+        const [{ data: st }, { data: ord }] = await Promise.all([admin.from('crm_edu_book_stock').select('subject,title,qty,min_qty'), admin.from('crm_edu_book_orders').select('id,subject,book,qty,status,teacher_name').in('status', ['pending', 'approved'])]);
+        return JSON.stringify({ ombor: st || [], faol_buyurtmalar: ord || [] });
+      }
+    }));
+  }
+  if (r === 'teacher' && u?.employee_id) {
+    T.push(betaTool({
+      name: 'mening_natijam', description: 'O‘qituvchining o‘z natijasi: aktiv, kelgan, ketgan, konversiya.',
+      inputSchema: { type: 'object', properties: { oy: { type: 'string', enum: ['m', 'pm'] } }, required: ['oy'], additionalProperties: false },
+      run: async ({ oy }) => { const rep: any = await teacherReport(oy, u.employee_id); const t = (rep.teachers || []).find((x: any) => x.teacherId === u.employee_id); return JSON.stringify(t ? { davr: rep.label, oy_boshi: t.start, hozir: t.now, kelgan: t.joined.length, ketgan: t.left.length, konversiya: t.conversion, guruhlar: t.groups } : { xato: 'ma’lumot topilmadi' }); }
+    }));
+  }
+  if (['top', 'senior', 'media'].includes(r)) {
+    T.push(betaTool({
+      name: 'create_montage',
+      description: 'Foydalanuvchi yuborgan media (rasm/video) dan video montaj loyihasini tuzadi. Mini App bu rejani o‘zi yig‘adi; foydalanuvchi ko‘rib chiqib eksport qiladi.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          format: { type: 'string', enum: ['916', '11', '169'], description: '916 — Reels/Stories, 11 — Post, 169 — YouTube' },
+          transition: { type: 'string', enum: ['none', 'fade', 'slide', 'zoom'] },
+          intro_title: { type: 'string', description: 'Intro sarlavhasi (bo‘sh — introsiz)' },
+          intro_subtitle: { type: 'string' },
+          outro_text: { type: 'string', description: 'Outro qo‘shimcha qatori: telefon yoki manzil (ixtiyoriy)' },
+          outro: { type: 'boolean', description: 'Outro (logotip + shior) bo‘lsinmi' },
+          clips: {
+            type: 'array', minItems: 1, maxItems: 20,
+            items: {
+              type: 'object',
+              properties: {
+                media: { type: 'integer', description: '[Media N] raqami' },
+                seconds: { type: 'number', description: 'Davomiylik, soniya' },
+                trim_start: { type: 'number', description: 'Video uchun boshlanish soniyasi' },
+                text: { type: 'string', description: 'Ekrandagi qisqa matn (ixtiyoriy)' },
+                text_position: { type: 'string', enum: ['top', 'mid', 'bot'] },
+                zoom: { type: 'boolean', description: 'Rasm uchun kattalashish effekti' }
+              },
+              required: ['media'], additionalProperties: false
+            }
+          },
+          caption: { type: 'string', description: 'Post matni va heshteglar' }
+        },
+        required: ['format', 'clips'], additionalProperties: false
+      },
+      run: async (inp) => {
+        const media = await pendingMedia(tgId);
+        if (!media.length) return 'XATO: foydalanuvchi hali media yubormagan. Undan rasm yoki video yuborishni so‘rang.';
+        const bad = inp.clips.filter((c: any) => !media[c.media - 1]);
+        if (bad.length) return `XATO: mavjud media raqamlari 1–${media.length}. Noto‘g‘ri: ${bad.map((c: any) => c.media).join(', ')}`;
+        const files = media.map((m: any) => ({ file_id: m.file_id, kind: m.kind, duration: m.duration, width: m.width, height: m.height }));
+        const plan = { ...inp, clips: inp.clips.map((c: any) => ({ ...c, media: c.media - 1 })) };
+        const { data, error } = await admin.from('crm_ai_projects').insert({ tg_id: tgId, plan, files }).select('id').single();
+        if (error || !data) return 'XATO: loyiha saqlanmadi';
+        ctx.project = data.id; ctx.caption = inp.caption || '';
+        const total = inp.clips.reduce((a: number, c: any) => a + (Number(c.seconds) || 3), 0);
+        return `Loyiha yaratildi: ${inp.clips.length} klip, taxminan ${Math.round(total)} soniya. Foydalanuvchiga “🎬 Montajni ochish” tugmasini bosishni ayting.`;
+      }
+    }));
+  }
+  return T;
+}
+
+async function aiStart(chatId: number) {
+  const key = await getSecret('anthropic_api_key');
+  await setSession(chatId, 'ai', {});
+  const r = role();
+  const ex = r === 'media' ? '• “Yangi guruh ochilgani haqida post yozib ber”\n• Rasm/video yuboring: “15 soniyalik reels qil”'
+    : r === 'teacher' ? '• “Bugun qaysi darslarim bor?”\n• “Shu oy konversiyam qanday?”'
+    : r === 'service' ? '• “Bugun kim kelmadi va sababi?”\n• “Ali Valiyevning balansi qancha?”'
+    : '• “Bu hafta eng katta xarajatlar qaysi?”\n• “Juma kuni bankka qancha topshiriladi?”\n• “Qaysi ustozning konversiyasi past?”\n• Rasm/video yuboring: “Reels qil”';
+  await send(chatId, `🤖 <b>AI yordamchi</b> (Claude)\n\nSavolingizni oddiy so‘z bilan yozing. Markaz ma’lumotlarini o‘zi tekshirib javob beradi.\n\n<b>Masalan:</b>\n${ex}${key ? '' : '\n\n⚠️ Claude API kaliti hali kiritilmagan — top menejer CRM → 🤖 Telegram Bot → “Claude AI yordamchi” bo‘limida kiritadi.'}\n\nChiqish: ❌ Bekor qilish yoki menyudagi istalgan tugma.`, {
+    reply_markup: { inline_keyboard: [[ib('🧹 Yangi suhbat', 'ai:new')]] }
+  });
+  await send(chatId, '✍️ Savolingizni yozing…', { reply_markup: CANCEL_KB });
+}
+
+async function aiMedia(chatId: number, m: any) {
+  const r = role();
+  if (!['top', 'senior', 'media'].includes(r)) return void send(chatId, 'Media bilan montaj faqat top, katta menejer va media xodimlari uchun.');
+  let row: any = null;
+  if (m.photo?.length) {
+    const big = m.photo[m.photo.length - 1];
+    const vis = [...m.photo].reverse().find((p: any) => Math.max(p.width, p.height) <= 1280) || m.photo[0];
+    row = { kind: 'photo', file_id: big.file_id, vision_file_id: vis.file_id, width: big.width, height: big.height, file_size: big.file_size || null };
+  } else if (m.video || (m.document && /^video\//.test(m.document.mime_type || ''))) {
+    const v = m.video || m.document;
+    if ((v.file_size || 0) > 20 * 1024 * 1024) return void send(chatId, '⚠️ Video 20 MB dan katta — Telegram bot uni yuklab ololmaydi. Qisqaroq yoki siqilgan holda yuboring.');
+    row = { kind: 'video', file_id: v.file_id, vision_file_id: v.thumbnail?.file_id || v.thumb?.file_id || null, width: v.width || null, height: v.height || null, duration: v.duration || null, file_size: v.file_size || null };
+  } else if (m.document && /^image\//.test(m.document.mime_type || '')) {
+    const d = m.document;
+    if ((d.file_size || 0) > 20 * 1024 * 1024) return void send(chatId, '⚠️ Rasm 20 MB dan katta.');
+    row = { kind: 'photo', file_id: d.file_id, vision_file_id: d.thumbnail?.file_id || d.file_id, file_size: d.file_size || null };
+  }
+  if (!row) return;
+  const list = await pendingMedia(m.from.id);
+  if (list.length >= 20) return void send(chatId, '⚠️ 20 tagacha media. “🧹 Yangi suhbat” bilan tozalang.');
+  await admin.from('crm_ai_media').insert({ tg_id: m.from.id, ...row });
+  if (m.caption) return aiAsk(chatId, m.caption, m.from);
+  // Albom bo'lib kelsa — har biriga javob bermaslik uchun faqat birinchisiga
+  if (!m.media_group_id || !list.some((x: any) => Date.now() - new Date(x.created_at).getTime() < 4000))
+    await send(chatId, `📎 Qabul qilindi (${list.length + 1} ta media). Endi nima qilishni yozing, masalan: “20 soniyalik reels, mavzu — yangi IELTS guruhi”.`);
+}
+
+async function aiAsk(chatId: number, text: string, from: any) {
+  const client = await aiClientGet();
+  if (!client) return void send(chatId, '⚠️ Claude API kaliti kiritilmagan. Top menejer CRM → 🤖 Telegram Bot → “Claude AI yordamchi” bo‘limida kiritadi.', { reply_markup: menu() });
+  const r = role();
+  const today = new Date(Date.now() + TZ).toISOString().slice(0, 10);
+  const limit = Number(await getSetting<number>('aiDailyLimit', 60)) || 60;
+  const { data: chat } = await admin.from('crm_ai_chats').select('*').eq('tg_id', from.id).maybeSingle();
+  const count = chat?.day === today ? chat.day_count : 0;
+  if (count >= limit) return void send(chatId, `⏳ Bugungi AI so‘rovlar chegarasi tugadi (${limit} ta). Ertaga qayta urinib ko‘ring.`);
+  const history: any[] = Array.isArray(chat?.history) ? chat.history : [];
+  // Yangi xabar: sana/rol + media (rasmlar Claude'ga ko'rinadi) + matn
+  const media = await pendingMedia(from.id);
+  const content: any[] = [{ type: 'text', text: `[Bugun: ${today.split('-').reverse().join('.')}, ${WD_UZ[new Date(Date.now() + TZ).getUTCDay()]} · Foydalanuvchi: ${me()?.full_name || from.first_name || ''} · Rol: ${ROLE_NAME[r] || r}]` }];
+  if (['top', 'senior', 'media'].includes(r) && media.length) {
+    for (let i = 0; i < media.length; i++) {
+      const mm = media[i];
+      content.push({ type: 'text', text: `[Media ${i + 1}] ${mm.kind === 'video' ? `video${mm.duration ? `, ${mm.duration} s` : ''}` : 'rasm'}${mm.width ? `, ${mm.width}×${mm.height}` : ''}` });
+      if (i < 10 && mm.vision_file_id) {
+        const bytes = await tgFileBytes(mm.vision_file_id).catch(() => null);
+        if (bytes && bytes.length < 4_500_000) content.push({ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: b64(bytes) } });
+      }
+    }
+  }
+  content.push({ type: 'text', text });
+  const messages: any[] = [...history.slice(-12), { role: 'user', content }];
+  // "yozmoqda…" — javob tayyorlanguncha
+  const typingTimer = setInterval(() => { typing(chatId).catch(() => {}); }, 4500);
+  await typing(chatId);
+  const ctx: { project?: string; caption?: string } = {};
+  let reply = '';
+  let usage = { input: 0, output: 0 };
+  try {
+    const final: any = await client.beta.messages.toolRunner({
+      model: AI_MODEL,
+      max_tokens: 16000,
+      betas: ['server-side-fallback-2026-07-01'],
+      fallbacks: 'default',
+      output_config: { effort: 'medium' },
+      system: [{ type: 'text', text: AI_SYSTEM, cache_control: { type: 'ephemeral' } }],
+      tools: aiTools(r, from.id, ctx),
+      messages,
+      max_iterations: 8
+    }).runUntilDone();
+    usage = { input: final.usage?.input_tokens || 0, output: final.usage?.output_tokens || 0 };
+    reply = (final.content || []).filter((b: any) => b.type === 'text').map((b: any) => b.text).join('\n').trim();
+    if (final.stop_reason === 'refusal') reply = 'Kechirasiz, bu so‘rovga javob bera olmayman. Savolni boshqacha yozib ko‘ring.';
+    if (!reply) reply = ctx.project ? '🎬 Montaj loyihasi tayyor.' : 'Javob bo‘sh qaytdi — savolni boshqacha yozib ko‘ring.';
+  } catch (e) {
+    clearInterval(typingTimer);
+    const msg = e instanceof Anthropic.AuthenticationError ? 'Claude API kaliti noto‘g‘ri yoki bekor qilingan — CRM’da yangilang.'
+      : e instanceof Anthropic.PermissionDeniedError ? 'Claude akkauntida bu modelga ruxsat yo‘q yoki balans yetarli emas.'
+      : e instanceof Anthropic.RateLimitError ? 'Claude hozir band (limit). Bir daqiqadan so‘ng qayta yozing.'
+      : e instanceof Anthropic.APIError ? `Claude xatosi (${e.status}). Birozdan so‘ng urinib ko‘ring.`
+      : 'Claude bilan bog‘lanib bo‘lmadi. Birozdan so‘ng urinib ko‘ring.';
+    console.error('ai error', e);
+    return void send(chatId, `⚠️ ${msg}`);
+  }
+  clearInterval(typingTimer);
+  const newHist = [...history, { role: 'user', content: media.length && ['top', 'senior', 'media'].includes(r) ? `[${media.length} ta media yuborilgan] ${text}` : text }, { role: 'assistant', content: reply }].slice(-12);
+  await admin.from('crm_ai_chats').upsert({ tg_id: from.id, history: newHist, day: today, day_count: count + 1, input_tokens: (chat?.input_tokens || 0) + usage.input, output_tokens: (chat?.output_tokens || 0) + usage.output, updated_at: new Date().toISOString() });
+  const extra: any = {};
+  if (ctx.project) {
+    const url = await getSetting<string>('eduMontajAppUrl', '');
+    if (url) extra.reply_markup = { inline_keyboard: [[{ text: '🎬 Montajni ochish', web_app: { url: `${url}?p=${ctx.project}` } }]] };
+  }
+  const parts = reply.match(/[\s\S]{1,3900}(?=\n|$)|[\s\S]{1,3900}/g) || [reply];
+  for (let i = 0; i < parts.length; i++) await tg(await token(), 'sendMessage', { chat_id: chatId, text: parts[i], ...(i === parts.length - 1 ? extra : {}) });
+}
+
 // 🎬 Video montaj Mini App (telefonning o'zida montaj; tayyor video shu chatga keladi)
 async function mediaOpen(chatId: number) {
   const url = await getSetting<string>('eduMontajAppUrl', '');
@@ -997,7 +1299,7 @@ const C = (command: string, description: string) => ({ command, description });
 const CMDS: Record<string, any[]> = {
   top: [C('start', '🏠 Bosh menyu'), C('davomat', '📅 Davomat — kelmaganlar va izohlar'), C('xavf', '⚠️ Xavf ostida — notcoming'),
     C('kirim', '💰 Kassaga kirim'), C('chiqim', '💸 Kassadan chiqim'), C('statistika', '📈 Aktiv o‘quvchilar va qarz'),
-    C('xarajat', '🧾 Xarajatlar — haftalik'), C('xarajat_oy', '🗓 Xarajatlar — oylik'), C('inkassa', '💵 Naqd inkassa — Juma bankka'), C('jadval', '🗓 Dars jadvali (PDF)'), C('kitoblar', '📚 Kitob buyurtmalari'), C('ombor', '📦 Kitoblar ombori'), C('montaj', '🎬 Video montaj'), C('raqamlar', '📞 Kerakli raqamlar'), C('qarz', '🔴 Qarzdorlar'),
+    C('xarajat', '🧾 Xarajatlar — haftalik'), C('xarajat_oy', '🗓 Xarajatlar — oylik'), C('inkassa', '💵 Naqd inkassa — Juma bankka'), C('jadval', '🗓 Dars jadvali (PDF)'), C('kitoblar', '📚 Kitob buyurtmalari'), C('ombor', '📦 Kitoblar ombori'), C('montaj', '🎬 Video montaj'), C('ai', '🤖 AI yordamchi'), C('raqamlar', '📞 Kerakli raqamlar'), C('qarz', '🔴 Qarzdorlar'),
     C('qidir', '🔍 O‘quvchini qidirish'), C('oqituvchilar', '👩‍🏫 O‘qituvchilar hisoboti va Excel'), C('yangilar', '🆕 Yangi talabalar'), C('menejerlar', '🎧 Menejerlar konversiyasi'), C('vazifalar', '📋 Ustozlar vazifalari'),
     C('lid', '➕ Yangi lid'), C('boshqaruv', '⚙️ Rollar, hisobot, sinxron'), C('akkaunt', '🔑 Edutizim akkauntim'), C('cancel', '❌ Bekor qilish')],
   senior: [C('start', '🏠 Bosh menyu'), C('davomat', '📅 Davomat — kelmaganlar va izohlar'), C('xavf', '⚠️ Xavf ostida — notcoming'),
@@ -1008,7 +1310,7 @@ const CMDS: Record<string, any[]> = {
   service: [C('start', '🏠 Bosh menyu'), C('davomat', '📅 Davomat — kelmaganlar va izohlar'), C('xavf', '⚠️ Xavf ostida — notcoming'),
     C('yangilar', '🆕 Yangi talabalar'), C('natijam', '📊 Mening konversiyam'), C('jadval', '🗓 Dars jadvali (PDF)'), C('raqamlar', '📞 Kerakli raqamlar'), C('qidir', '🔍 O‘quvchini qidirish'), C('qarz', '🔴 Qarzdorlar'), C('lid', '➕ Yangi lid'), C('akkaunt', '🔑 Edutizim akkauntim'), C('cancel', '❌ Bekor qilish')],
   teacher: [C('start', '🏠 Bosh menyu'), C('natijam', '📊 Mening natijam — konversiya'), C('vazifalarim', '📋 Vazifalarim'), C('jadval', '🗓 Dars jadvali (PDF)'), C('kitob', '📚 Kitob olish (guruh bo‘yicha)'), C('raqamlar', '📞 Kerakli raqamlar'), C('akkaunt', '🔑 Edutizim akkauntim'), C('cancel', '❌ Bekor qilish')],
-  media: [C('start', '🏠 Bosh menyu'), C('montaj', '🎬 Video montaj'), C('jadval', '🗓 Dars jadvali (PDF)'), C('raqamlar', '📞 Kerakli raqamlar'), C('cancel', '❌ Bekor qilish')],
+  media: [C('start', '🏠 Bosh menyu'), C('ai', '🤖 AI yordamchi'), C('montaj', '🎬 Video montaj'), C('jadval', '🗓 Dars jadvali (PDF)'), C('raqamlar', '📞 Kerakli raqamlar'), C('cancel', '❌ Bekor qilish')],
   none: [C('start', '🚀 Boshlash — raqamni yuborish')]
 };
 async function syncCommands(chatId: number | string, r: Role) {
@@ -1699,17 +2001,17 @@ async function myStats(chatId: number, which: 'm' | 'pm' = 'm') {
 // =========================================================
 const ACCESS: Record<string, Role[]> = {
   // matn tugmalari
-  [B_IN]: ['top'], [B_OUT]: ['top'], [B_STATS]: ['top', 'senior'], [B_EXP]: ['top', 'senior'], [B_INK]: ['top', 'senior'], [B_SCHED]: ['top', 'senior', 'service', 'teacher', 'media'], [B_PHONES]: ['top', 'senior', 'service', 'teacher', 'media'], [B_BOOK]: ['teacher'], [B_BOOKS]: ['top'], [B_STOCK]: ['top', 'senior'], [B_MEDIA]: ['top', 'senior', 'media'], [B_TEACH]: ['top', 'senior'], [B_TASKS]: ['top', 'senior'], [B_ADMIN]: ['top'], [B_BELL]: ['top', 'senior'], [B_PRICE]: ['top', 'senior'], [B_NEW]: ['top', 'senior', 'service'], [B_MGR]: ['top', 'senior'],
+  [B_IN]: ['top'], [B_OUT]: ['top'], [B_STATS]: ['top', 'senior'], [B_EXP]: ['top', 'senior'], [B_INK]: ['top', 'senior'], [B_SCHED]: ['top', 'senior', 'service', 'teacher', 'media'], [B_PHONES]: ['top', 'senior', 'service', 'teacher', 'media'], [B_BOOK]: ['teacher'], [B_BOOKS]: ['top'], [B_STOCK]: ['top', 'senior'], [B_MEDIA]: ['top', 'senior', 'media'], [B_AI]: ['top', 'senior', 'service', 'teacher', 'media'], [B_TEACH]: ['top', 'senior'], [B_TASKS]: ['top', 'senior'], [B_ADMIN]: ['top'], [B_BELL]: ['top', 'senior'], [B_PRICE]: ['top', 'senior'], [B_NEW]: ['top', 'senior', 'service'], [B_MGR]: ['top', 'senior'],
   [B_ATT]: ['top', 'senior', 'service'], [B_RISK]: ['top', 'senior', 'service'], [B_FIND]: ['top', 'senior', 'service'], [B_DEBT]: ['top', 'senior', 'service'], [B_LEAD]: ['top', 'senior', 'service'],
   [B_MY]: ['teacher', 'service'], [B_MYTASK]: ['teacher']
 };
 function cbAllowed(data: string, r: Role) {
   const p = data.split(':')[0];
   const top = ['kt', 'ks', 'km', 'kb', 'ok', 'kx', 'pay', 'ex', 'exc', 'st', 'ua', 'ur', 'urs', 'adm', 'trp', 'txl', 'tnew', 'tt', 'tp', 'td', 'tc'];
-  const svc = ['sch', 'ph', 'att', 'ac', 'rc', 'dbt', 'lc', 'lf', 'x', 'ch', 'fn', 'fnw', 'nst', 'mys'];
-  const tch = ['sch', 'ph', 'bkt', 'tk', 'ti', 'my', 'x'];
+  const svc = ['ai', 'sch', 'ph', 'att', 'ac', 'rc', 'dbt', 'lc', 'lf', 'x', 'ch', 'fn', 'fnw', 'nst', 'mys'];
+  const tch = ['ai', 'sch', 'ph', 'bkt', 'tk', 'ti', 'my', 'x'];
   if (['go', 'home', 'acc', 'acl', 'acu'].includes(p)) return ['top', 'senior', 'service', 'teacher', 'media'].includes(r);
-  if (r === 'media') return ['ph', 'sch'].includes(p);
+  if (r === 'media') return ['ai', 'ph', 'sch'].includes(p);
   if (r === 'top') return true;
   if (r === 'senior') return !['bko', 'bkl', 'bkt', 'kt', 'ks', 'km', 'kb', 'ok', 'kx', 'pay', 'ua', 'ur', 'urs', 'adm', 'sms', 'sm1', 'sma', 'smt', 'smx', 'smi', 'smok', 'bd', 'bo', 'bda', 'bdy', 'pfx', 'pga', 'pgc', 'pok', 'tc'].includes(p);
   if (r === 'service') return svc.includes(p);
@@ -1764,6 +2066,7 @@ async function onMessage(m: any) {
   if (isMgr && (text === B_INK || cmd === '/inkassa')) return inkassa(chatId, 'cur');
   if ((text === B_SCHED || cmd === '/jadval')) return scheduleSend(chatId, false);
   if ((text === B_MEDIA || cmd === '/montaj') && ['top', 'senior', 'media'].includes(r)) return mediaOpen(chatId);
+  if (text === B_AI || cmd === '/ai') { const q = text.startsWith('/ai') ? text.slice(3).trim() : ''; if (q) { await setSession(chatId, 'ai', {}); return aiAsk(chatId, q, m.from); } return aiStart(chatId); }
   if (text === B_PHONES || cmd === '/raqamlar') { await setSession(chatId, null); return phonesView(chatId); }
   if (r === 'teacher' && (text === B_BOOK || cmd === '/kitob')) return bookStart(chatId);
   if (isTop && (text === B_BOOKS || cmd === '/kitoblar')) return bookOrdersTop(chatId);
@@ -1826,6 +2129,10 @@ async function onMessage(m: any) {
       if (r !== 'teacher') break;
       await send(chatId, '✅', { reply_markup: menu() });
       return bookConfirm(chatId, { ...s.data, note: text === B_SKIP ? '' : text.slice(0, 300) });
+    case 'ai':
+      if (m.photo || m.video || m.document) return aiMedia(chatId, m);
+      if (!text) return;
+      return aiAsk(chatId, text, m.from);
     case 'om_qty':
       if (!isTop) break;
       return stockApply(chatId, s, text);
@@ -2003,6 +2310,12 @@ async function onCallback(q: any) {
   if (data.startsWith('bko:')) return bookOrderAction(chatId, data, q.from);
   if (data.startsWith('bkl:')) return bookLibrary(chatId, data);
   if (data.startsWith('om:')) return stockCallback(chatId, data);
+  if (data === 'ai:new') {
+    await admin.from('crm_ai_chats').update({ history: [] }).eq('tg_id', q.from.id);
+    await admin.from('crm_ai_media').delete().eq('tg_id', q.from.id);
+    await setSession(chatId, 'ai', {});
+    return void send(chatId, '🧹 Yangi suhbat boshlandi. Savolingizni yozing yoki rasm/video yuboring.', { reply_markup: CANCEL_KB });
+  }
   if (data === 'sch:a') return scheduleSend(chatId, false, true);
   if (data.startsWith('exc:')) return expenseCategory(chatId, Number(data.slice(4)));
   if (data.startsWith('pay:')) {

@@ -180,9 +180,7 @@ $('strip').addEventListener('click', e => {
   const c = e.target.closest('.clip'); if (!c) return;
   haptic(); S.sel = Number(c.dataset.i); renderStrip(); openEditor(); seekTo(startOf(S.sel) + 0.05);
 });
-$('file').onchange = async e => {
-  const files = [...e.target.files].slice(0, 20 - S.clips.length);
-  for (const f of files) {
+async function addMedia(f) {
     const url = URL.createObjectURL(f);
     if (f.type.startsWith('video')) {
       const v = document.createElement('video'); v.src = url; v.playsInline = true; v.preload = 'auto'; v.crossOrigin = 'anonymous';
@@ -194,7 +192,10 @@ $('file').onchange = async e => {
       const im = new Image(); im.src = url; await new Promise(r => { im.onload = r; im.onerror = r; });
       S.clips.push({ type: 'image', el: im, url, thumb: url, dur: 3, zoom: true, text: '', pos: 'bot' });
     }
-  }
+}
+$('file').onchange = async e => {
+  const files = [...e.target.files].slice(0, 20 - S.clips.length);
+  for (const f of files) await addMedia(f);
   e.target.value = '';
   if (S.sel < 0 && S.clips.length) S.sel = 0;
   haptic('medium'); renderStrip(); openEditor(); draw(S.t);
@@ -447,7 +448,47 @@ $('export').onclick = async () => {
     try { tgw?.disableClosingConfirmation?.(); } catch {}
   }
 };
+// 🤖 AI montaj loyihasi (?p=<id>): fayllarni yuklab, rejani qo'llash
+const setChip = (id, key, val) => document.querySelectorAll(`#${id} .chip`).forEach(b => b.classList.toggle('on', b.dataset[key] === val));
+async function loadProject(pid) {
+  $('prog').style.display = 'block';
+  setStatus('🤖 AI montaj yuklanmoqda…', 5);
+  try {
+    const pr = await api({ action: 'aiProject', id: pid });
+    if (!pr.ok) throw new Error(pr.error);
+    const plan = pr.plan || {}, files = pr.files || [];
+    const blobs = [];
+    for (let i = 0; i < files.length; i++) {
+      setStatus(`⬇️ Media yuklanmoqda… ${i + 1}/${files.length}`, 5 + Math.round((i / files.length) * 80));
+      const r = await fetch(API, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'aiFile', id: pid, i, initData: tgw?.initData || '' }) });
+      if (!r.ok || /json/.test(r.headers.get('content-type') || '')) { const j = await r.json().catch(() => ({})); throw new Error(j.error || 'Fayl yuklanmadi'); }
+      blobs[i] = await r.blob();
+    }
+    S.clips = [];
+    for (const c of plan.clips || []) {
+      const b = blobs[c.media]; if (!b) continue;
+      const before = S.clips.length;
+      await addMedia(b);
+      const clip = S.clips[before]; if (!clip) continue;
+      if (clip.type === 'video') { clip.a = Math.max(0, Math.min(clip.len - 0.5, Number(c.trim_start) || 0)); clip.b = Math.min(clip.len, clip.a + (Number(c.seconds) || Math.min(6, clip.len))); }
+      else { clip.dur = Math.max(1, Math.min(10, Number(c.seconds) || 3)); clip.zoom = c.zoom !== false; }
+      clip.text = c.text || ''; clip.pos = ['top', 'mid', 'bot'].includes(c.text_position) ? c.text_position : 'bot';
+    }
+    if (FMT[plan.format]) { S.fmt = plan.format; setChip('formats', 'f', plan.format); }
+    if (['none', 'fade', 'slide', 'zoom'].includes(plan.transition)) { S.trans = plan.transition; setChip('trans', 't', plan.transition); }
+    $('intro').checked = !!plan.intro_title; if (plan.intro_title) { $('iTitle').value = plan.intro_title; $('iSub').value = plan.intro_subtitle || ''; }
+    $('outro').checked = plan.outro !== false; if (plan.outro_text) $('oText').value = plan.outro_text;
+    $('introBox').classList.toggle('hidden', !$('intro').checked); $('outroBox').classList.toggle('hidden', !$('outro').checked);
+    S.sel = S.clips.length ? 0 : -1;
+    resize(); renderStrip(); openEditor(); seekTo(0);
+    setStatus(`🤖 AI montaj tayyor: ${S.clips.length} klip · ${fmt(total())}. Ko‘rib chiqing (▶️), kerak bo‘lsa o‘zgartiring, musiqa qo‘shing va “Tayyorlash”ni bosing.`, 100);
+    try { tgw?.HapticFeedback?.notificationOccurred('success'); } catch {}
+  } catch (e) {
+    setStatus('⚠️ AI loyihasi yuklanmadi: ' + (e.message || e), 100);
+  }
+}
 resize(); renderStrip();
+{ const pid = new URLSearchParams(location.search).get('p') || tgw?.initDataUnsafe?.start_param; if (pid && /^[0-9a-f-]{36}$/i.test(pid)) loadProject(pid); }
 </script>
 </body>
 </html>

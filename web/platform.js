@@ -25,6 +25,21 @@ async function invoke(fn, body) {
   return data;
 }
 
+async function crmSaveAiKey(remove = false) {
+  const el = document.getElementById('ai-key');
+  const v = remove ? '' : (el?.value || '').trim();
+  if (!remove && !/^sk-ant-/.test(v)) return showToast('Kalit “sk-ant-” bilan boshlanadi', '⚠️');
+  try { await setSecret('anthropic_api_key', v); } catch (e) { return showToast(e.message, '⚠️'); }
+  if (el) el.value = '';
+  showToast(remove ? 'Claude kaliti o‘chirildi' : 'Claude kaliti saqlandi', '✅');
+  crmAiKeyStatus();
+}
+window.crmSaveAiKey = crmSaveAiKey;
+async function crmAiKeyStatus() {
+  const box = document.getElementById('ai-key-status'); if (!box) return;
+  const st = await secretStatus().catch(() => ({}));
+  box.innerHTML = st.anthropic_api_key ? '✅ Kalit kiritilgan' : '⚪ Kalit kiritilmagan — AI yordamchi o‘chiq';
+}
 async function setSecret(key, value) {
   const { error } = await sb().rpc('crm_set_secret', { p_key: key, p_value: value });
   if (error) throw error;
@@ -1337,6 +1352,16 @@ async function renderTelegramTab() {
         <textarea id="tg-bot-admins" rows="3" class="${input} w-full font-mono mt-1" placeholder="123456789 Maqsud">${esc((state.botAdmins || []).join('\n'))}</textarea></label>
       <p class="text-[10px] text-slate-400">ID’ni bilish: ruxsatsiz odam botga /start yozsa, bot uning ID’sini ko‘rsatadi. Admin chat ID egasi ham avtomatik admin.</p>
       <button onclick="crmSaveBotAdmins()" class="${btn('[#F2642A]')} mt-2">💾 Adminlarni saqlash</button>
+      <div class="mt-4 pt-3 border-t border-slate-200">
+        <div class="text-sm font-black text-slate-800">🤖 Claude AI yordamchi</div>
+        <p class="text-[11px] text-slate-500 mb-2">Botdagi “🤖 AI yordamchi” uchun Anthropic API kaliti (platform.claude.com → API Keys). Kalit faqat serverda saqlanadi, brauzerga qaytarilmaydi.</p>
+        <div id="ai-key-status" class="text-xs mb-2">⏳</div>
+        <div class="flex flex-wrap gap-2 text-xs">
+          <input id="ai-key" type="password" autocomplete="off" placeholder="sk-ant-..." class="${input} flex-1 min-w-[200px] font-mono">
+          <button onclick="crmSaveAiKey()" class="${btn('slate-900')}">💾 Saqlash</button>
+          <button onclick="crmSaveAiKey(true)" class="${btn('rose-600')}">🗑 O‘chirish</button>
+        </div>
+      </div>
     `) : ''}
     ${card(`
       <div class="text-sm font-black text-slate-800 mb-1">📞 /aloqa matni</div>
@@ -1360,7 +1385,7 @@ async function renderTelegramTab() {
     `) : ''}
   </div>`;
   crmTgStatus();
-  if (isAdmin()) { crmBcCount(); crmBcHistory(); crmEduBotStatus(); }
+  if (isAdmin()) { crmBcCount(); crmBcHistory(); crmEduBotStatus(); crmAiKeyStatus(); }
 }
 window.renderTelegramTab = renderTelegramTab;
 

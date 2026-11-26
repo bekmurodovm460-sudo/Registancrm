@@ -157,6 +157,21 @@ Deno.serve(async req => {
       if (error || !data) return json({ ok: false, error: error?.message || 'Yuklash havolasi olinmadi' });
       return json({ ok: true, path, url: data.signedUrl, token: data.token });
     }
+    // 🤖 AI montaj loyihasi: reja + fayllar (Telegram'dan, 20 MB gacha)
+    if (body.action === 'aiProject' || body.action === 'aiFile') {
+      if (!MEDIA_ROLES.includes(role)) return json({ ok: false, error: 'Ruxsat yo‘q' }, 403);
+      const { data: pr } = await admin.from('crm_ai_projects').select('*').eq('id', String(body.id || '')).maybeSingle();
+      if (!pr || Number(pr.tg_id) !== Number(user.id)) return json({ ok: false, error: 'Loyiha topilmadi' }, 404);
+      if (body.action === 'aiProject') return json({ ok: true, plan: pr.plan, files: (pr.files || []).map((f: any) => ({ kind: f.kind, duration: f.duration, width: f.width, height: f.height })) });
+      const f = (pr.files || [])[Number(body.i)];
+      if (!f) return json({ ok: false, error: 'Fayl topilmadi' }, 404);
+      const gf = await tg(token, 'getFile', { file_id: f.file_id });
+      if (!gf?.ok) return json({ ok: false, error: 'Telegram: ' + (gf?.description || 'fayl olinmadi') });
+      const fr = await fetch(`https://api.telegram.org/file/bot${token}/${gf.result.file_path}`);
+      if (!fr.ok || !fr.body) return json({ ok: false, error: 'Fayl yuklanmadi' });
+      const ct = f.kind === 'video' ? (String(gf.result.file_path).endsWith('.mov') ? 'video/quicktime' : 'video/mp4') : 'image/jpeg';
+      return new Response(fr.body, { headers: { ...cors, 'Content-Type': ct, 'Cache-Control': 'private, max-age=3600' } });
+    }
     if (body.action === 'mediaSend') {
       if (!MEDIA_ROLES.includes(role)) return json({ ok: false, error: 'Ruxsat yo‘q' }, 403);
       const path = String(body.path || '');
