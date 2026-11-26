@@ -364,6 +364,39 @@ async function teacherReport(base: string, headers: Record<string, string>, b: a
   return { ok: true, fromDate: b.fromDate, toDate: b.toDate, teachers };
 }
 
+// 📩 SMS: Edutizim integratsiyasi orqali (Eskiz va h.k.)
+async function smsMeta(base: string, headers: Record<string, string>, raw = false) {
+  const [integ, dev, tpl] = await Promise.all([
+    postJson(base, headers, '/integrations', { isActive: true, service: 'sms' }).catch(e => ({ error: String(e) })),
+    postJson(base, headers, '/sms-devices', { state: 'active' }).catch(e => ({ error: String(e) })),
+    postJson(base, headers, '/sms-templates-pagin', { page: 1, limit: 50 }).catch(e => ({ error: String(e) }))
+  ]);
+  const L = (o: any) => (Array.isArray(o?.data) ? o.data : Array.isArray(o?.data?.data) ? o.data.data : []);
+  return {
+    integrations: L(integ).map((x: any) => ({ id: x._id, name: x.name || x.type || x.provider || 'SMS', type: x.type || x.provider || '' })),
+    devices: L(dev).map((x: any) => ({ id: x._id, name: x.name || x.phoneNumber || 'Qurilma' })),
+    templates: L(tpl).map((x: any) => ({ id: x._id, name: x.name || x.title || '', content: x.content || x.text || '' })),
+    ...(raw ? { raw: { integ: JSON.stringify(integ).slice(0, 800), dev: JSON.stringify(dev).slice(0, 500), tpl: JSON.stringify(tpl).slice(0, 1200) } } : {})
+  };
+}
+// Bir xil matn — bitta so'rov; shaxsiy matn (ism/qarz) — har biriga alohida
+async function sendSms(base: string, headers: Record<string, string>, b: any) {
+  const target = { toStudent: b.to !== 'parent', toParent: b.to === 'parent' || b.to === 'both' };
+  const common = { integrationId: b.integrationId || null, ...(b.smsDeviceIds?.length ? { smsDeviceIds: b.smsDeviceIds } : {}), ...target };
+  const msgs: { ids: string[]; content: string }[] = Array.isArray(b.messages) ? b.messages.map((m: any) => ({ ids: [m.studentId], content: String(m.content || '').slice(0, 900) }))
+    : [{ ids: (b.studentIds || []).slice(0, 500), content: String(b.content || '').slice(0, 900) }];
+  let sent = 0, failed = 0; const errors: string[] = [];
+  for (let i = 0; i < msgs.length; i += 5) {
+    await Promise.all(msgs.slice(i, i + 5).map(async m => {
+      if (!m.ids.length || !m.content) return;
+      try { const r = await postJson(base, headers, '/sms', { ...common, studentIds: m.ids, content: m.content }); if (r?.code && r.code !== 0) throw new Error(r.message); sent += m.ids.length; }
+      catch (e) { failed += m.ids.length; if (errors.length < 3) errors.push(String((e as Error).message || e).slice(0, 160)); }
+    }));
+  }
+  await admin.from('crm_sync_log').insert({ source: 'edutizim-sms', ok: failed === 0, message: `SMS: ${sent} yuborildi, ${failed} xato · ${b.by || ''}`.slice(0, 300), stats: { sent, failed, errors, to: b.to, sample: msgs[0]?.content?.slice(0, 200) } });
+  return { ok: sent > 0 && failed === 0, sent, failed, errors };
+}
+
 async function kassaCancel(base: string, headers: Record<string, string>, b: any) {
   if (!b.transactionId) return { ok: false, error: 'transactionId kerak' };
   const res = await fetch(`${base}/cashbox/transaction/cancel`, { method: 'POST', headers, body: JSON.stringify({ transactionId: b.transactionId }) });
@@ -393,7 +426,7 @@ Deno.serve(async req => {
     const branches = auth.branches.map((b: any) => ({ id: String(b._id), name: b.name }));
     if (body.action === 'test') return json({ ok: true, branches });
     // 'cron' roli = ichki chaqiruv (pg_cron yoki Telegram bot admin bo'limi, x-cron-secret bilan)
-    if (['meta', 'pushLead', 'kassaMeta', 'kassaPay', 'kassaCancel', 'kassaTx', 'read', 'employees', 'absences', 'absenceRisk', 'commentsFor', 'comment', 'teacherReport'].includes(body.action)) {
+    if (['meta', 'pushLead', 'kassaMeta', 'kassaPay', 'kassaCancel', 'kassaTx', 'read', 'employees', 'absences', 'absenceRisk', 'commentsFor', 'comment', 'teacherReport', 'smsMeta', 'sendSms'].includes(body.action)) {
       const br = body.branchId ? branches.find(b => b.id === body.branchId) : branches[0];
       if (!br) throw new Error('Filial topilmadi');
       const headers = { ...baseHeaders(site), Authorization: `Bearer ${auth.token}`, branch: br.id };
@@ -410,6 +443,11 @@ Deno.serve(async req => {
       if (body.action === 'absenceRisk') return json({ ok: true, rows: await absenceRisk(base, headers, Number(body.days) || 21) });
       if (body.action === 'commentsFor') return json({ ok: true, comments: await commentsFor(base, headers, body.studentIds || [], Math.min(Number(body.limit) || 5, 20)) });
       if (body.action === 'teacherReport') return json(await teacherReport(base, headers, body));
+      if (body.action === 'smsMeta') return json({ ok: true, ...(await smsMeta(base, headers, !!body.raw)) });
+      if (body.action === 'sendSms') {
+        if (role !== 'cron' && role !== 'admin') return json({ ok: false, error: 'Ruxsat yo‘q' }, 403);
+        return json(await sendSms(base, headers, body));
+      }
       if (body.action === 'comment') {
         if (role !== 'cron' && role !== 'admin') return json({ ok: false, error: 'Ruxsat yo‘q' }, 403);
         const text = String(body.text || '').trim().slice(0, 1000);
