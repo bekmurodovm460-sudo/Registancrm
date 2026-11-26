@@ -1,0 +1,24 @@
+[build]
+  publish = "web"
+
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+
+# CRM'ni boshqa saytlarga joylashni taqiqlash (Mini App esa Telegram ichida ochiladi)
+[[headers]]
+  for = "/"
+  [headers.values]
+    X-Frame-Options = "DENY"
+
+[[headers]]
+  for = "/index.html"
+  [headers.values]
+    X-Frame-Options = "DENY"
+
+[[headers]]
+  for = "/*.js"
+  [headers.values]
+    Cache-Control = "public, max-age=300"
