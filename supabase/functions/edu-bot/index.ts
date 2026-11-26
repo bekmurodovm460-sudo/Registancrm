@@ -23,6 +23,9 @@ const B_STATS = '📈 Statistika';
 const B_EXP = '🧾 Xarajatlar';
 const B_INK = '💵 Naqd inkassa';
 const B_SCHED = '🗓 Dars jadvali';
+const B_PHONES = '📞 Kerakli raqamlar';
+const B_BOOK = '📚 Kitob buyurtma';
+const B_BOOKS = '📚 Kitob buyurtmalari';
 const B_ATT = '📅 Davomat';
 const B_RISK = '⚠️ Xavf ostida';
 const B_TEACH = '👩‍🏫 O‘qituvchilar';
@@ -39,21 +42,23 @@ const B_SKIP = '⏭ O‘tkazib yuborish';
 
 const kb = (rows: string[][]) => ({ keyboard: rows.map(r => r.map(text => ({ text }))), resize_keyboard: true });
 const persist = (rows: string[][], ph = 'Bo‘limni tanlang…') => ({ ...kb(rows), is_persistent: true, input_field_placeholder: ph });
-const MENU = persist([[B_IN, B_OUT], [B_INK, B_EXP], [B_BELL, B_PRICE], [B_NEW, B_MGR], [B_ATT, B_RISK], [B_STATS, B_SCHED], [B_DEBT, B_FIND], [B_TEACH, B_TASKS], [B_LEAD, B_ADMIN]]);
-const MENU_SENIOR = persist([[B_ATT, B_RISK], [B_NEW, B_MGR], [B_STATS, B_EXP], [B_INK, B_SCHED], [B_BELL, B_PRICE], [B_DEBT, B_FIND], [B_TEACH, B_TASKS], [B_LEAD]]);
-const MENU_SERVICE = persist([[B_ATT, B_RISK], [B_NEW, B_MY], [B_FIND, B_DEBT], [B_LEAD, B_SCHED]]);
-const MENU_TEACHER = persist([[B_MY, B_MYTASK], [B_SCHED]]);
+const MENU = persist([[B_IN, B_OUT], [B_INK, B_EXP], [B_BELL, B_PRICE], [B_NEW, B_MGR], [B_ATT, B_RISK], [B_STATS, B_SCHED], [B_BOOKS, B_PHONES], [B_DEBT, B_FIND], [B_TEACH, B_TASKS], [B_LEAD, B_ADMIN]]);
+const MENU_SENIOR = persist([[B_ATT, B_RISK], [B_NEW, B_MGR], [B_STATS, B_EXP], [B_INK, B_SCHED], [B_PHONES], [B_BELL, B_PRICE], [B_DEBT, B_FIND], [B_TEACH, B_TASKS], [B_LEAD]]);
+const MENU_SERVICE = persist([[B_ATT, B_RISK], [B_NEW, B_MY], [B_FIND, B_DEBT], [B_LEAD, B_SCHED], [B_PHONES]]);
+const MENU_TEACHER = persist([[B_MY, B_MYTASK], [B_SCHED, B_PHONES]]);
+const MENU_TEACHER_BOOK = persist([[B_MY, B_MYTASK], [B_BOOK, B_SCHED], [B_PHONES]]);
 // Bosh sahifadagi bosib tanlanadigan (inline) bo'limlar — rolga qarab
-const GO: Record<string, string> = { kirim: B_IN, chiqim: B_OUT, davomat: B_ATT, xavf: B_RISK, stat: B_STATS, xarajat: B_EXP, inkassa: B_INK, jadval: B_SCHED, qarz: B_DEBT, qidir: B_FIND, ustoz: B_TEACH, vazifa: B_TASKS, lid: B_LEAD, admin: B_ADMIN, natijam: B_MY, myvazifa: B_MYTASK, bell: B_BELL, narx: B_PRICE, yangi: B_NEW, mgr: B_MGR };
+const GO: Record<string, string> = { kirim: B_IN, chiqim: B_OUT, davomat: B_ATT, xavf: B_RISK, stat: B_STATS, xarajat: B_EXP, inkassa: B_INK, jadval: B_SCHED, raqam: B_PHONES, kitob: B_BOOK, kitoblar: B_BOOKS, qarz: B_DEBT, qidir: B_FIND, ustoz: B_TEACH, vazifa: B_TASKS, lid: B_LEAD, admin: B_ADMIN, natijam: B_MY, myvazifa: B_MYTASK, bell: B_BELL, narx: B_PRICE, yangi: B_NEW, mgr: B_MGR };
 const GO_ROWS: Record<string, string[][]> = {
-  top: [['kirim', 'chiqim'], ['inkassa', 'xarajat'], ['bell', 'narx'], ['yangi', 'mgr'], ['davomat', 'xavf'], ['stat', 'jadval'], ['qarz', 'qidir'], ['ustoz', 'vazifa'], ['lid', 'admin']],
-  senior: [['davomat', 'xavf'], ['yangi', 'mgr'], ['stat', 'xarajat'], ['inkassa', 'jadval'], ['bell', 'narx'], ['qarz', 'qidir'], ['ustoz', 'vazifa'], ['lid']],
-  service: [['davomat', 'xavf'], ['yangi', 'natijam'], ['qidir', 'qarz'], ['lid', 'jadval']],
-  teacher: [['natijam', 'myvazifa'], ['jadval']]
+  top: [['kirim', 'chiqim'], ['inkassa', 'xarajat'], ['bell', 'narx'], ['yangi', 'mgr'], ['davomat', 'xavf'], ['stat', 'jadval'], ['kitoblar', 'raqam'], ['qarz', 'qidir'], ['ustoz', 'vazifa'], ['lid', 'admin']],
+  senior: [['davomat', 'xavf'], ['yangi', 'mgr'], ['stat', 'xarajat'], ['inkassa', 'jadval'], ['raqam'], ['bell', 'narx'], ['qarz', 'qidir'], ['ustoz', 'vazifa'], ['lid']],
+  service: [['davomat', 'xavf'], ['yangi', 'natijam'], ['qidir', 'qarz'], ['lid', 'jadval'], ['raqam']],
+  teacher: [['natijam', 'myvazifa'], ['jadval', 'raqam']],
+  teacherBook: [['natijam', 'myvazifa'], ['kitob', 'jadval'], ['raqam']]
 };
 const homeKb = (r: string, withAcc = false) => ({ inline_keyboard: [...(GO_ROWS[r] || []).map(row => row.map(k => ({ text: GO[k], callback_data: `go:${k}` }))), ...(withAcc ? [[{ text: '🔑 Edutizim akkauntim', callback_data: 'acc' }]] : [])] });
 type Role = 'top' | 'senior' | 'service' | 'teacher' | 'pending' | 'blocked' | 'none';
-type Ctx = { role: Role; user: any; menu: any; from: any };
+type Ctx = { role: Role; user: any; menu: any; from: any; book?: boolean };
 const als = new AsyncLocalStorage<Ctx>();
 const menu = () => als.getStore()?.menu ?? MENU;
 const role = (): Role => als.getStore()?.role ?? 'none';
@@ -321,6 +326,202 @@ async function expenses(chatId: number, p: Period = 'week') {
   await send(chatId, text.slice(0, 4000), { reply_markup: { inline_keyboard: rows } });
 }
 
+// =========================================================
+// 📞 Kerakli raqamlar — barcha xodimlar ko'radi, top menejer qo'shadi/o'chiradi
+// =========================================================
+type Contact = { name: string; role: string; phone: string };
+const fmtPhone = (p: string) => { const d = String(p).replace(/\D/g, '').slice(-9); return d.length === 9 ? `+998 ${d.slice(0, 2)} ${d.slice(2, 5)} ${d.slice(5, 7)} ${d.slice(7)}` : p; };
+async function contacts(): Promise<Contact[]> { return (await getSetting<Contact[]>('eduContacts', [])) || []; }
+async function saveContacts(list: Contact[]) { await admin.from('crm_settings').upsert({ key: 'eduContacts', value: list }); }
+async function phonesView(chatId: number) {
+  const list = await contacts();
+  const isTop = role() === 'top';
+  const text = list.length
+    ? `📞 <b>Kerakli raqamlar</b>\n\n${list.map((c, i) => `${i + 1}. <b>${esc(c.name)}</b>${c.role ? ` — ${esc(c.role)}` : ''}\n    📱 ${esc(fmtPhone(c.phone))}`).join('\n\n')}\n\n<i>Raqamni bosib qo‘ng‘iroq qiling yoki pastdagi tugma orqali kontaktni oling.</i>`
+    : `📞 <b>Kerakli raqamlar</b>\n\nHozircha raqam kiritilmagan.${isTop ? ' “➕ Qo‘shish” tugmasini bosing.' : ' Top menejer qo‘shadi.'}`;
+  const rows: any[] = [];
+  const cbtn = list.slice(0, 20).map((c, i) => ib(`📲 ${c.name.slice(0, 24)}`, `ph:c:${i}`));
+  for (let i = 0; i < cbtn.length; i += 2) rows.push(cbtn.slice(i, i + 2));
+  if (isTop) rows.push([ib('➕ Qo‘shish', 'ph:add'), ...(list.length ? [ib('🗑 O‘chirish', 'ph:del')] : [])]);
+  await send(chatId, text, { reply_markup: { inline_keyboard: rows } });
+}
+async function phonesCallback(chatId: number, data: string) {
+  const list = await contacts();
+  if (data.startsWith('ph:c:')) {
+    const c = list[Number(data.slice(5))];
+    if (!c) return phonesView(chatId);
+    return void tg(await token(), 'sendContact', { chat_id: chatId, phone_number: fmtPhone(c.phone).replace(/\s/g, ''), first_name: c.name.slice(0, 60), last_name: c.role ? `(${c.role.slice(0, 40)})` : undefined });
+  }
+  if (role() !== 'top') return void send(chatId, '⛔ Raqamlarni faqat top menejer o‘zgartiradi.', { reply_markup: menu() });
+  if (data === 'ph:add') {
+    await setSession(chatId, 'ph_name', {});
+    return void send(chatId, '👤 Ism va lavozimini yozing.\nMasalan: <b>Aziz Karimov — direktor</b>', { reply_markup: CANCEL_KB });
+  }
+  if (data === 'ph:del') return void send(chatId, '🗑 Qaysi raqamni o‘chiramiz?', { reply_markup: { inline_keyboard: [...list.map((c, i) => [ib(`❌ ${c.name.slice(0, 30)}${c.role ? ' — ' + c.role.slice(0, 20) : ''}`, `ph:d:${i}`)]), [ib('⬅️ Orqaga', 'ph:v')]] } });
+  if (data.startsWith('ph:d:')) {
+    const i = Number(data.slice(5));
+    if (!list[i]) return phonesView(chatId);
+    const [gone] = list.splice(i, 1);
+    await saveContacts(list);
+    await send(chatId, `🗑 O‘chirildi: ${esc(gone.name)}`);
+    return phonesView(chatId);
+  }
+  return phonesView(chatId);
+}
+
+// =========================================================
+// 📚 Kitob buyurtma — nemis va turk tili ustozlari yuboradi, top menejer tasdiqlaydi
+// =========================================================
+const BOOK_SUBJECTS: [RegExp, string][] = [[/nemis/i, 'Nemis tili'], [/turk/i, 'Turk tili']];
+const bookCache = new Map<string, { at: number; v: { subject: string; group: string; students: number }[] }>();
+async function bookGroups(empId?: string | null) {
+  if (!empId) return [];
+  const c = bookCache.get(empId);
+  if (c && Date.now() - c.at < 600_000) return c.v;
+  const { data } = await admin.from('crm_edu_groups').select('name,data').eq('data->>teacherId', empId);
+  const v = (data || []).filter((g: any) => (g.data?.state || 'active') === 'active').map((g: any) => {
+    const subject = BOOK_SUBJECTS.find(([re]) => re.test(g.data?.course?.name || ''))?.[1];
+    return subject ? { subject, group: String(g.data?.name || g.name || '').replace(/\s+/g, ' ').trim(), students: Number(g.data?.students) || 0 } : null;
+  }).filter(Boolean) as { subject: string; group: string; students: number }[];
+  if (v.length) bookCache.set(empId, { at: Date.now(), v });
+  return v;
+}
+const ORDER_ST: Record<string, string> = { pending: '⏳ Kutilmoqda', approved: '✅ Tasdiqlandi', rejected: '❌ Rad etildi', ready: '📦 Tayyor — olib keting' };
+async function bookList(subject: string): Promise<string[]> { return ((await getSetting<Record<string, string[]>>('eduBooks', {})) || {})[subject] || []; }
+const orderLine = (o: any) => `<b>#${o.id}</b> · ${esc(o.book)} — <b>${o.qty} ta</b>\n   ${esc(o.subject)}${o.group_name ? ' · ' + esc(o.group_name) : ''} · ${esc(o.teacher_name)}${o.note ? `\n   💬 <i>${esc(o.note)}</i>` : ''}\n   ${ORDER_ST[o.status] || o.status} · ${dmy(new Date(o.created_at).getTime())}`;
+
+async function bookStart(chatId: number) {
+  const groups = await bookGroups(me()?.employee_id);
+  if (!groups.length) return void send(chatId, '📚 Kitob buyurtma bo‘limi nemis va turk tili ustozlari uchun. Edutizim’da sizda bu fanlardan aktiv guruh topilmadi.', { reply_markup: menu() });
+  await setSession(chatId, 'bk', { groups });
+  await send(chatId, '📚 <b>Kitob buyurtma</b>\n\nQaysi guruh uchun kitob kerak?', {
+    reply_markup: { inline_keyboard: [...groups.map((g, i) => [ib(`${g.subject === 'Nemis tili' ? '🇩🇪' : '🇹🇷'} ${g.group.slice(0, 40)} · ${g.students} o‘q.`, `bkt:g:${i}`)]), [ib('📦 Guruhsiz (umumiy)', 'bkt:g:-1')], [ib('📋 Buyurtmalarim', 'bkt:my')]] }
+  });
+}
+async function bookAskBook(chatId: number, d: any) {
+  const books = await bookList(d.subject);
+  await setSession(chatId, 'bk_book', { ...d, books });
+  await send(chatId, `📚 ${esc(d.subject)}${d.group ? ' · ' + esc(d.group) : ''}\n\nQaysi kitob?${books.length ? '' : '\n<i>Ro‘yxat hali kiritilmagan — kitob nomini yozing.</i>'}`, {
+    reply_markup: { inline_keyboard: [...books.slice(0, 20).map((b, i) => [ib(`📘 ${b.slice(0, 50)}`, `bkt:b:${i}`)]), [ib('✍️ Boshqa kitob (yozaman)', 'bkt:b:-1')]] }
+  });
+  if (!books.length) await send(chatId, '✍️ Kitob nomini yozing:', { reply_markup: CANCEL_KB });
+}
+async function bookAskQty(chatId: number, d: any) {
+  await setSession(chatId, 'bk_qty', d);
+  const opts = [...new Set([d.students, 1, 5, 10, 15, 20].filter((n: number) => n > 0))].slice(0, 6);
+  await send(chatId, `📘 <b>${esc(d.book)}</b>\nNechta kerak?${d.students ? `\n<i>Guruhda ${d.students} o‘quvchi.</i>` : ''}`, {
+    reply_markup: { inline_keyboard: [opts.map(n => ib(String(n), `bkt:q:${n}`)), [ib('✍️ Boshqa son (yozaman)', 'bkt:q:0')]] }
+  });
+}
+async function bookAskNote(chatId: number, d: any) {
+  await setSession(chatId, 'bk_note', d);
+  await send(chatId, `💬 Izoh (ixtiyoriy): daraja, nashr, muddat…\nYoki “${B_SKIP}”.`, { reply_markup: SKIP_KB });
+}
+async function bookConfirm(chatId: number, d: any) {
+  await setSession(chatId, 'bk_ok', d);
+  await send(chatId, `🧾 <b>Buyurtmani tekshiring</b>\n\n📚 ${esc(d.subject)}${d.group ? ' · ' + esc(d.group) : ''}\n📘 ${esc(d.book)} — <b>${d.qty} ta</b>${d.note ? `\n💬 ${esc(d.note)}` : ''}`, {
+    reply_markup: { inline_keyboard: [[ib('✅ Yuborish', 'bkt:ok'), ib('❌ Bekor', 'x')]] }
+  });
+}
+async function bookSubmit(chatId: number, d: any, from: any) {
+  const u = me();
+  const { data: o, error } = await admin.from('crm_edu_book_orders').insert({
+    teacher_tg: from.id, teacher_name: u?.full_name || from.first_name || 'Ustoz', employee_id: u?.employee_id || null,
+    subject: d.subject, group_name: d.group || null, book: d.book, qty: d.qty, note: d.note || null
+  }).select('*').single();
+  await setSession(chatId, null);
+  if (error || !o) return void send(chatId, `⚠️ Saqlab bo‘lmadi: ${esc(error?.message || '')}`, { reply_markup: menu() });
+  await send(chatId, `✅ Buyurtma <b>#${o.id}</b> top menejerga yuborildi. Javob shu yerga keladi.`, { reply_markup: menu() });
+  await notifyTops(`📚 <b>Yangi kitob buyurtmasi</b>\n\n${orderLine(o)}`, { reply_markup: { inline_keyboard: [[ib('✅ Tasdiqlash', `bko:a:${o.id}`), ib('❌ Rad etish', `bko:r:${o.id}`)]] } });
+}
+async function myBookOrders(chatId: number, tgId: number) {
+  const { data } = await admin.from('crm_edu_book_orders').select('*').eq('teacher_tg', tgId).order('created_at', { ascending: false }).limit(15);
+  await send(chatId, data?.length ? `📋 <b>Buyurtmalarim</b>\n\n${data.map(orderLine).join('\n\n')}` : '📋 Hali buyurtma yo‘q.', { reply_markup: { inline_keyboard: [[ib('➕ Yangi buyurtma', 'bkt:new')]] } });
+}
+async function bookTeacherCallback(chatId: number, data: string, s: any, from: any) {
+  if (data === 'bkt:my') return myBookOrders(chatId, from.id);
+  if (data === 'bkt:new') return bookStart(chatId);
+  if (data.startsWith('bkt:g:')) {
+    if (s.step !== 'bk') return bookStart(chatId);
+    const i = Number(data.slice(6));
+    const g = s.data.groups?.[i];
+    const subjects = [...new Set((s.data.groups || []).map((x: any) => x.subject))] as string[];
+    if (!g && subjects.length > 1) return void send(chatId, 'Qaysi fan uchun?', { reply_markup: { inline_keyboard: [subjects.map(x => ib(x, `bkt:s:${x === 'Nemis tili' ? 'N' : 'T'}`))] } });
+    return bookAskBook(chatId, { subject: g?.subject || subjects[0], group: g?.group || '', students: g?.students || 0 });
+  }
+  if (data.startsWith('bkt:s:')) return bookAskBook(chatId, { subject: data.endsWith('N') ? 'Nemis tili' : 'Turk tili', group: '', students: 0 });
+  if (data.startsWith('bkt:b:')) {
+    if (s.step !== 'bk_book') return bookStart(chatId);
+    const i = Number(data.slice(6));
+    if (i < 0) { await setSession(chatId, 'bk_book', s.data); return void send(chatId, '✍️ Kitob nomini yozing:', { reply_markup: CANCEL_KB }); }
+    const book = s.data.books?.[i];
+    if (!book) return bookAskBook(chatId, s.data);
+    return bookAskQty(chatId, { ...s.data, book });
+  }
+  if (data.startsWith('bkt:q:')) {
+    if (s.step !== 'bk_qty') return bookStart(chatId);
+    const n = Number(data.slice(6));
+    if (!n) return void send(chatId, '✍️ Sonini yozing (1–500):', { reply_markup: CANCEL_KB });
+    return bookAskNote(chatId, { ...s.data, qty: n });
+  }
+  if (data === 'bkt:ok') {
+    if (s.step !== 'bk_ok') return void send(chatId, 'Buyurtma eskirgan, qaytadan boshlang.', { reply_markup: menu() });
+    return bookSubmit(chatId, s.data, from);
+  }
+}
+
+// Top menejer: buyurtmalar ro'yxati va kitoblar ro'yxatini boshqarish
+async function bookOrdersTop(chatId: number, all = false) {
+  let q = admin.from('crm_edu_book_orders').select('*').order('created_at', { ascending: false }).limit(25);
+  if (!all) q = q.in('status', ['pending', 'approved']);
+  const { data } = await q;
+  const list = data || [];
+  const pend = list.filter(o => o.status === 'pending').length;
+  const rows: any[] = [];
+  list.filter(o => o.status === 'pending' || o.status === 'approved').slice(0, 12).forEach(o => rows.push(o.status === 'pending'
+    ? [ib(`✅ #${o.id}`, `bko:a:${o.id}`), ib(`❌ #${o.id}`, `bko:r:${o.id}`)]
+    : [ib(`📦 #${o.id} tayyor`, `bko:d:${o.id}`)]));
+  rows.push([ib(all ? '⏳ Faqat faollari' : '🗂 Hammasi (oxirgi 25)', all ? 'bko:list' : 'bko:all'), ib('📚 Kitoblar ro‘yxati', 'bkl:v')]);
+  await send(chatId, list.length
+    ? `📚 <b>Kitob buyurtmalari</b>${all ? '' : ` · faol (${pend} ta kutilmoqda)`}\n\n${list.map(orderLine).join('\n\n')}`.slice(0, 4000)
+    : '📚 Faol kitob buyurtmasi yo‘q.', { reply_markup: { inline_keyboard: rows } });
+}
+async function bookOrderAction(chatId: number, data: string, from: any) {
+  const [, act, idRaw] = data.split(':');
+  if (act === 'list') return bookOrdersTop(chatId);
+  if (act === 'all') return bookOrdersTop(chatId, true);
+  const id = Number(idRaw);
+  const status = act === 'a' ? 'approved' : act === 'r' ? 'rejected' : act === 'd' ? 'ready' : '';
+  if (!status) return;
+  const allowedFrom = status === 'ready' ? ['approved', 'pending'] : ['pending'];
+  const by = me()?.full_name || from.first_name || 'Top menejer';
+  const { data: o } = await admin.from('crm_edu_book_orders').update({ status, decided_by: by, decided_at: new Date().toISOString() }).eq('id', id).in('status', allowedFrom).select('*').maybeSingle();
+  if (!o) return void send(chatId, `ℹ️ #${id} buyurtma allaqachon ko‘rib chiqilgan.`);
+  await send(chatId, `${ORDER_ST[status]}: #${o.id} · ${esc(o.book)} — ${o.qty} ta (${esc(o.teacher_name)})`, status === 'approved' ? { reply_markup: { inline_keyboard: [[ib('📦 Tayyor bo‘lganda bosing', `bko:d:${o.id}`)]] } } : {});
+  const msg = status === 'approved' ? `✅ Kitob buyurtmangiz <b>#${o.id}</b> tasdiqlandi.\n📘 ${esc(o.book)} — ${o.qty} ta\nTayyor bo‘lganda xabar beramiz.`
+    : status === 'rejected' ? `❌ Kitob buyurtmangiz <b>#${o.id}</b> rad etildi.\n📘 ${esc(o.book)} — ${o.qty} ta\nSavol bo‘lsa, top menejerga yozing.`
+    : `📦 Kitob buyurtmangiz <b>#${o.id}</b> tayyor — olib ketishingiz mumkin.\n📘 ${esc(o.book)} — ${o.qty} ta`;
+  await send(o.teacher_tg, msg).catch(() => {});
+}
+async function bookLibrary(chatId: number, data: string) {
+  const books = (await getSetting<Record<string, string[]>>('eduBooks', {})) || {};
+  const subj = data.endsWith(':N') ? 'Nemis tili' : data.endsWith(':T') ? 'Turk tili' : '';
+  if (data === 'bkl:v') {
+    const txt = BOOK_SUBJECTS.map(([, s]) => `<b>${s}</b>\n${(books[s] || []).map((b, i) => `${i + 1}. ${esc(b)}`).join('\n') || '<i>bo‘sh</i>'}`).join('\n\n');
+    return void send(chatId, `📚 <b>Kitoblar ro‘yxati</b> (ustozlar shundan tanlaydi)\n\n${txt}`, { reply_markup: { inline_keyboard: [
+      [ib('➕ Nemis tili', 'bkl:add:N'), ib('➕ Turk tili', 'bkl:add:T')], [ib('🗑 Nemis tili', 'bkl:del:N'), ib('🗑 Turk tili', 'bkl:del:T')], [ib('⬅️ Buyurtmalar', 'bko:list')]] } });
+  }
+  if (data.startsWith('bkl:add:')) { await setSession(chatId, 'bk_lib', { subject: subj }); return void send(chatId, `➕ ${subj} uchun kitob nomini yozing (bir nechta bo‘lsa — har birini yangi qatorda):`, { reply_markup: CANCEL_KB }); }
+  if (data.startsWith('bkl:del:')) return void send(chatId, `🗑 ${subj}: qaysi kitobni o‘chiramiz?`, { reply_markup: { inline_keyboard: [...(books[subj] || []).map((b, i) => [ib(`❌ ${b.slice(0, 45)}`, `bkl:rm:${subj === 'Nemis tili' ? 'N' : 'T'}:${i}`)]), [ib('⬅️ Orqaga', 'bkl:v')]] } });
+  if (data.startsWith('bkl:rm:')) {
+    const [, , c, i] = data.split(':');
+    const s = c === 'N' ? 'Nemis tili' : 'Turk tili';
+    const arr = [...(books[s] || [])]; arr.splice(Number(i), 1);
+    await admin.from('crm_settings').upsert({ key: 'eduBooks', value: { ...books, [s]: arr } });
+    return bookLibrary(chatId, 'bkl:v');
+  }
+}
+
 // 🗓 Dars jadvali PDF — Edutizim guruhlaridan; "🔄 Yangilash" avval Edutizim'dan qayta o'qiydi
 const WD_LONG = ['Yakshanba', 'Dushanba', 'Seshanba', 'Chorshanba', 'Payshanba', 'Juma', 'Shanba'];
 async function scheduleSend(chatId: number, refresh: boolean, all = false) {
@@ -548,17 +749,17 @@ const C = (command: string, description: string) => ({ command, description });
 const CMDS: Record<string, any[]> = {
   top: [C('start', '🏠 Bosh menyu'), C('davomat', '📅 Davomat — kelmaganlar va izohlar'), C('xavf', '⚠️ Xavf ostida — notcoming'),
     C('kirim', '💰 Kassaga kirim'), C('chiqim', '💸 Kassadan chiqim'), C('statistika', '📈 Aktiv o‘quvchilar va qarz'),
-    C('xarajat', '🧾 Xarajatlar — haftalik'), C('xarajat_oy', '🗓 Xarajatlar — oylik'), C('inkassa', '💵 Naqd inkassa — Juma bankka'), C('jadval', '🗓 Dars jadvali (PDF)'), C('qarz', '🔴 Qarzdorlar'),
+    C('xarajat', '🧾 Xarajatlar — haftalik'), C('xarajat_oy', '🗓 Xarajatlar — oylik'), C('inkassa', '💵 Naqd inkassa — Juma bankka'), C('jadval', '🗓 Dars jadvali (PDF)'), C('kitoblar', '📚 Kitob buyurtmalari'), C('raqamlar', '📞 Kerakli raqamlar'), C('qarz', '🔴 Qarzdorlar'),
     C('qidir', '🔍 O‘quvchini qidirish'), C('oqituvchilar', '👩‍🏫 O‘qituvchilar hisoboti va Excel'), C('yangilar', '🆕 Yangi talabalar'), C('menejerlar', '🎧 Menejerlar konversiyasi'), C('vazifalar', '📋 Ustozlar vazifalari'),
     C('lid', '➕ Yangi lid'), C('boshqaruv', '⚙️ Rollar, hisobot, sinxron'), C('akkaunt', '🔑 Edutizim akkauntim'), C('cancel', '❌ Bekor qilish')],
   senior: [C('start', '🏠 Bosh menyu'), C('davomat', '📅 Davomat — kelmaganlar va izohlar'), C('xavf', '⚠️ Xavf ostida — notcoming'),
     C('yangilar', '🆕 Yangi talabalar'), C('menejerlar', '🎧 Menejerlar konversiyasi'), C('statistika', '📈 Aktiv o‘quvchilar va qarz'),
-    C('xarajat', '🧾 Xarajatlar — haftalik'), C('xarajat_oy', '🗓 Xarajatlar — oylik'), C('inkassa', '💵 Naqd inkassa — Juma bankka'), C('jadval', '🗓 Dars jadvali (PDF)'), C('qongiroq', '🔔 Kassa qo‘ng‘iroqchalari'), C('narx', '💲 Narx nazorati'),
+    C('xarajat', '🧾 Xarajatlar — haftalik'), C('xarajat_oy', '🗓 Xarajatlar — oylik'), C('inkassa', '💵 Naqd inkassa — Juma bankka'), C('jadval', '🗓 Dars jadvali (PDF)'), C('raqamlar', '📞 Kerakli raqamlar'), C('qongiroq', '🔔 Kassa qo‘ng‘iroqchalari'), C('narx', '💲 Narx nazorati'),
     C('qarz', '🔴 Qarzdorlar'), C('qidir', '🔍 O‘quvchini qidirish'), C('oqituvchilar', '👩‍🏫 O‘qituvchilar hisoboti va Excel'), C('vazifalar', '📋 Ustozlar vazifalari'),
     C('lid', '➕ Yangi lid'), C('akkaunt', '🔑 Edutizim akkauntim'), C('cancel', '❌ Bekor qilish')],
   service: [C('start', '🏠 Bosh menyu'), C('davomat', '📅 Davomat — kelmaganlar va izohlar'), C('xavf', '⚠️ Xavf ostida — notcoming'),
-    C('yangilar', '🆕 Yangi talabalar'), C('natijam', '📊 Mening konversiyam'), C('qidir', '🔍 O‘quvchini qidirish'), C('qarz', '🔴 Qarzdorlar'), C('lid', '➕ Yangi lid'), C('akkaunt', '🔑 Edutizim akkauntim'), C('cancel', '❌ Bekor qilish')],
-  teacher: [C('start', '🏠 Bosh menyu'), C('natijam', '📊 Mening natijam — konversiya'), C('vazifalarim', '📋 Vazifalarim'), C('akkaunt', '🔑 Edutizim akkauntim'), C('cancel', '❌ Bekor qilish')],
+    C('yangilar', '🆕 Yangi talabalar'), C('natijam', '📊 Mening konversiyam'), C('jadval', '🗓 Dars jadvali (PDF)'), C('raqamlar', '📞 Kerakli raqamlar'), C('qidir', '🔍 O‘quvchini qidirish'), C('qarz', '🔴 Qarzdorlar'), C('lid', '➕ Yangi lid'), C('akkaunt', '🔑 Edutizim akkauntim'), C('cancel', '❌ Bekor qilish')],
+  teacher: [C('start', '🏠 Bosh menyu'), C('natijam', '📊 Mening natijam — konversiya'), C('vazifalarim', '📋 Vazifalarim'), C('jadval', '🗓 Dars jadvali (PDF)'), C('kitob', '📚 Kitob buyurtma (nemis/turk)'), C('raqamlar', '📞 Kerakli raqamlar'), C('akkaunt', '🔑 Edutizim akkauntim'), C('cancel', '❌ Bekor qilish')],
   none: [C('start', '🚀 Boshlash — raqamni yuborish')]
 };
 async function syncCommands(chatId: number | string, r: Role) {
@@ -1237,18 +1438,18 @@ async function myStats(chatId: number, which: 'm' | 'pm' = 'm') {
 // =========================================================
 const ACCESS: Record<string, Role[]> = {
   // matn tugmalari
-  [B_IN]: ['top'], [B_OUT]: ['top'], [B_STATS]: ['top', 'senior'], [B_EXP]: ['top', 'senior'], [B_INK]: ['top', 'senior'], [B_SCHED]: ['top', 'senior', 'service', 'teacher'], [B_TEACH]: ['top', 'senior'], [B_TASKS]: ['top', 'senior'], [B_ADMIN]: ['top'], [B_BELL]: ['top', 'senior'], [B_PRICE]: ['top', 'senior'], [B_NEW]: ['top', 'senior', 'service'], [B_MGR]: ['top', 'senior'],
+  [B_IN]: ['top'], [B_OUT]: ['top'], [B_STATS]: ['top', 'senior'], [B_EXP]: ['top', 'senior'], [B_INK]: ['top', 'senior'], [B_SCHED]: ['top', 'senior', 'service', 'teacher'], [B_PHONES]: ['top', 'senior', 'service', 'teacher'], [B_BOOK]: ['teacher'], [B_BOOKS]: ['top'], [B_TEACH]: ['top', 'senior'], [B_TASKS]: ['top', 'senior'], [B_ADMIN]: ['top'], [B_BELL]: ['top', 'senior'], [B_PRICE]: ['top', 'senior'], [B_NEW]: ['top', 'senior', 'service'], [B_MGR]: ['top', 'senior'],
   [B_ATT]: ['top', 'senior', 'service'], [B_RISK]: ['top', 'senior', 'service'], [B_FIND]: ['top', 'senior', 'service'], [B_DEBT]: ['top', 'senior', 'service'], [B_LEAD]: ['top', 'senior', 'service'],
   [B_MY]: ['teacher', 'service'], [B_MYTASK]: ['teacher']
 };
 function cbAllowed(data: string, r: Role) {
   const p = data.split(':')[0];
   const top = ['kt', 'ks', 'km', 'kb', 'ok', 'kx', 'pay', 'ex', 'exc', 'st', 'ua', 'ur', 'urs', 'adm', 'trp', 'txl', 'tnew', 'tt', 'tp', 'td', 'tc'];
-  const svc = ['sch', 'att', 'ac', 'rc', 'dbt', 'lc', 'lf', 'x', 'ch', 'fn', 'fnw', 'nst', 'mys'];
-  const tch = ['sch', 'tk', 'ti', 'my', 'x'];
+  const svc = ['sch', 'ph', 'att', 'ac', 'rc', 'dbt', 'lc', 'lf', 'x', 'ch', 'fn', 'fnw', 'nst', 'mys'];
+  const tch = ['sch', 'ph', 'bkt', 'tk', 'ti', 'my', 'x'];
   if (['go', 'home', 'acc', 'acl', 'acu'].includes(p)) return ['top', 'senior', 'service', 'teacher'].includes(r);
   if (r === 'top') return true;
-  if (r === 'senior') return !['kt', 'ks', 'km', 'kb', 'ok', 'kx', 'pay', 'ua', 'ur', 'urs', 'adm', 'sms', 'sm1', 'sma', 'smt', 'smx', 'smi', 'smok', 'bd', 'bo', 'bda', 'bdy', 'pfx', 'pga', 'pgc', 'pok', 'tc'].includes(p);
+  if (r === 'senior') return !['bko', 'bkl', 'bkt', 'kt', 'ks', 'km', 'kb', 'ok', 'kx', 'pay', 'ua', 'ur', 'urs', 'adm', 'sms', 'sm1', 'sma', 'smt', 'smx', 'smi', 'smok', 'bd', 'bo', 'bda', 'bdy', 'pfx', 'pga', 'pgc', 'pok', 'tc'].includes(p);
   if (r === 'service') return svc.includes(p);
   if (r === 'teacher') return tch.includes(p);
   return false;
@@ -1267,7 +1468,7 @@ async function startMsg(chatId: number, m: any) {
   // 1) salom + doimiy pastki menyu, 2) banner ostida bosib tanlanadigan bo'limlar
   await send(chatId, `👋 Assalomu alaykum, <b>${name}</b>!`, { reply_markup: menu() });
   const caption = `💼 <b>Registan Globus · Moliya</b> · ${ROLE_NAME[r] || ''}\n\n${body}\n\nKerakli bo‘limni tanlang 👇`;
-  const hk = homeKb(r, !!me()?.phone);
+  const hk = homeKb(r === 'teacher' && als.getStore()?.book ? 'teacherBook' : r, !!me()?.phone);
   const res = await tg(await token(), 'sendPhoto', { chat_id: chatId, photo: BANNER, caption, parse_mode: 'HTML', reply_markup: hk });
   if (!res?.ok) await send(chatId, caption, { reply_markup: hk });
 }
@@ -1297,6 +1498,9 @@ async function onMessage(m: any) {
   if (isMgr && cmd === '/xarajat_oy') return expenses(chatId, 'month');
   if (isMgr && (text === B_INK || cmd === '/inkassa')) return inkassa(chatId, 'cur');
   if ((text === B_SCHED || cmd === '/jadval')) return scheduleSend(chatId, false);
+  if (text === B_PHONES || cmd === '/raqamlar') { await setSession(chatId, null); return phonesView(chatId); }
+  if (r === 'teacher' && (text === B_BOOK || cmd === '/kitob')) return bookStart(chatId);
+  if (isTop && (text === B_BOOKS || cmd === '/kitoblar')) return bookOrdersTop(chatId);
   if (isMgr && (text === B_TEACH || cmd === '/oqituvchilar')) return teachersView(chatId, 'm');
   if (isMgr && (text === B_TASKS || cmd === '/vazifalar')) return tasksTop(chatId);
   if (isTop && (text === B_ADMIN || cmd === '/boshqaruv')) return adminPanel(chatId);
@@ -1322,6 +1526,50 @@ async function onMessage(m: any) {
       return saveStudentNote(chatId, s, text);
     case 'task_note':
       return taskItemSave(chatId, s, text, m.from);
+    case 'ph_name': {
+      if (!isTop) break;
+      if (text.length < 2) return void send(chatId, 'Ism va lavozimni yozing.');
+      const [name, ...rest] = text.split(/\s+[—–-]\s+/);
+      await setSession(chatId, 'ph_phone', { name: name.trim().slice(0, 60), role: rest.join(' — ').trim().slice(0, 60) });
+      return void send(chatId, '📱 Telefon raqami (masalan: +998 90 123 45 67) yoki kontaktni ulashing:', { reply_markup: CANCEL_KB });
+    }
+    case 'ph_phone': {
+      if (!isTop) break;
+      const ph = normPhone(m.contact?.phone_number || text);
+      if (!ph) return void send(chatId, 'Raqamni to‘g‘ri yozing: +998 90 123 45 67');
+      const list = await contacts();
+      list.push({ name: s.data.name, role: s.data.role || '', phone: ph });
+      await saveContacts(list);
+      await setSession(chatId, null);
+      await send(chatId, `✅ Qo‘shildi: ${esc(s.data.name)} · ${esc(fmtPhone(ph))}`, { reply_markup: menu() });
+      return phonesView(chatId);
+    }
+    case 'bk_book':
+      if (r !== 'teacher') break;
+      if (text.length < 2) return void send(chatId, 'Kitob nomini yozing.');
+      await send(chatId, '✅', { reply_markup: menu() });
+      return bookAskQty(chatId, { ...s.data, book: text.replace(/\s+/g, ' ').slice(0, 120) });
+    case 'bk_qty': {
+      if (r !== 'teacher') break;
+      const n = Math.round(Number(text.replace(/\D/g, '')));
+      if (!n || n < 1 || n > 500) return void send(chatId, 'Sonini raqamda yozing (1–500).');
+      return bookAskNote(chatId, { ...s.data, qty: n });
+    }
+    case 'bk_note':
+      if (r !== 'teacher') break;
+      await send(chatId, '✅', { reply_markup: menu() });
+      return bookConfirm(chatId, { ...s.data, note: text === B_SKIP ? '' : text.slice(0, 300) });
+    case 'bk_lib': {
+      if (!isTop) break;
+      const add = text.split('\n').map(x => x.replace(/\s+/g, ' ').trim()).filter(x => x.length >= 2).map(x => x.slice(0, 120));
+      if (!add.length) return void send(chatId, 'Kitob nomini yozing.');
+      const books = (await getSetting<Record<string, string[]>>('eduBooks', {})) || {};
+      const subj = s.data.subject;
+      await admin.from('crm_settings').upsert({ key: 'eduBooks', value: { ...books, [subj]: [...new Set([...(books[subj] || []), ...add])] } });
+      await setSession(chatId, null);
+      await send(chatId, `✅ ${esc(subj)}: ${add.length} ta kitob qo‘shildi.`, { reply_markup: menu() });
+      return bookLibrary(chatId, 'bkl:v');
+    }
     case 'acc_phone': {
       const ph = normPhone(text);
       if (!ph) return void send(chatId, 'Raqamni to‘g‘ri yozing: +998 90 123 45 67');
@@ -1467,6 +1715,10 @@ async function onCallback(q: any) {
   if (data.startsWith('ex:')) return expenses(chatId, data.slice(3) as Period);
   if (data.startsWith('ink:')) return inkassa(chatId, data.slice(4));
   if (data === 'sch:r') return scheduleSend(chatId, true);
+  if (data.startsWith('ph:')) return phonesCallback(chatId, data);
+  if (data.startsWith('bkt:')) return bookTeacherCallback(chatId, data, s, q.from);
+  if (data.startsWith('bko:')) return bookOrderAction(chatId, data, q.from);
+  if (data.startsWith('bkl:')) return bookLibrary(chatId, data);
   if (data === 'sch:a') return scheduleSend(chatId, false, true);
   if (data.startsWith('exc:')) return expenseCategory(chatId, Number(data.slice(4)));
   if (data.startsWith('pay:')) {
@@ -1534,7 +1786,8 @@ async function onCallback(q: any) {
 async function handle(update: any) {
   const from = update.message?.from || update.callback_query?.from;
   const { role: r, user } = await resolveUser(from);
-  await als.run({ role: r, user, menu: menuFor(r), from }, async () => {
+  const book = r === 'teacher' && (await bookGroups(user?.employee_id).catch(() => [])).length > 0;
+  await als.run({ role: r, user, menu: book ? MENU_TEACHER_BOOK : menuFor(r), from, book }, async () => {
     try {
       if (update.message) await onMessage(update.message);
       else if (update.callback_query) await onCallback(update.callback_query);
