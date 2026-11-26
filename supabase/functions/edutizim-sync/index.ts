@@ -323,15 +323,33 @@ async function teacherReport(base: string, headers: Record<string, string>, b: a
   const T = new Map<string, any>();
   const get = (t: any) => {
     const id = t?._id || 'none';
-    if (!T.has(id)) T.set(id, { teacherId: id, name: fullName(t) || '—', phone: t?.phoneNumber || '', groups: new Map<string, { name: string; active: number }>(), active: 0, joined: [], left: [], graduated: [], frozen: 0, trials: new Set<string>(), converted: new Set<string>() });
+    if (!T.has(id)) T.set(id, { teacherId: id, name: fullName(t) || '—', phone: t?.phoneNumber || '', groups: new Map<string, { name: string; active: number }>(), active: 0, joined: [], left: [], graduated: [], frozen: 0, trials: new Set<string>(), converted: new Set<string>(), startSet: new Set<string>(), endSet: new Set<string>(), stInfo: new Map<string, any>() });
     return T.get(id);
   };
+  // Berilgan vaqtda guruhda aktiv bo'lganmi (qo'shilgan va hali chiqmagan)
+  const endT = Math.min(to, Date.now());
+  const ts0 = (d: any) => (d ? new Date(d).getTime() : NaN);
+  const activeAt = (g: any, T: number) => {
+    const j = ts0(g.joinedAt);
+    if (!(j <= T)) return false;
+    if (g.state === 'active') return true;
+    if (g.state === 'frozen') return true;
+    const end = ts0(g.leftAt || g.graduatedAt || g.archivedAt);
+    return Number.isFinite(end) ? end > T : false;
+  };
+  const cStart = new Set<string>(), cEnd = new Set<string>(), cJoined = new Set<string>(), cLeft = new Set<string>(), cGrad = new Set<string>();
   for (const row of ts) {
     if (b.teacherId && row.teacher?._id !== b.teacherId) continue;
     const t = get(row.teacher);
     const st = { id: row.student?._id, name: fullName(row.student), phone: row.student?.phoneNumber || '', uuid: row.student?.uuid || '' };
+    t.stInfo.set(st.id, st);
     let isActive = false;
     for (const g of row.groups || []) {
+      if (activeAt(g, from)) { t.startSet.add(st.id); cStart.add(st.id); }
+      if (activeAt(g, endT)) { t.endSet.add(st.id); cEnd.add(st.id); }
+      if (inP(g.joinedAt)) cJoined.add(st.id);
+      if ((g.state === 'left' || g.state === 'archive') && inP(g.leftAt || g.archivedAt)) cLeft.add(st.id);
+      if (g.state === 'graduated' && inP(g.graduatedAt)) cGrad.add(st.id);
       const gname = g.group?.name || '—';
       const gi = t.groups.get(g.group?._id) || { name: gname, active: 0 };
       if (g.state === 'active') { gi.active++; isActive = true; }
@@ -345,23 +363,35 @@ async function teacherReport(base: string, headers: Record<string, string>, b: a
     if (isActive) t.active++;
   }
   const joinedByTeacher = new Map<string, Set<string>>();
+  const cTrials = new Set<string>(), cConv = new Set<string>();
   T.forEach((t, id) => joinedByTeacher.set(id, new Set(t.joined.map((j: any) => j.id))));
   for (const a of trials) {
     const tid = a.teacher?._id || a.teacherId;
     if (b.teacherId && tid !== b.teacherId) continue;
     const t = get(a.teacher || { _id: tid });
     const sid = a.student?._id || a.studentId;
-    t.trials.add(sid);
-    if (joinedByTeacher.get(tid)?.has(sid)) t.converted.add(sid);
+    t.trials.add(sid); cTrials.add(sid);
+    if (joinedByTeacher.get(tid)?.has(sid)) { t.converted.add(sid); cConv.add(sid); }
   }
   const empPhone = new Map(emps.map((e: any) => [e.id, e.phone]));
   const teachers = [...T.values()].filter(t => t.teacherId !== 'none' && (t.active || t.joined.length || t.left.length || t.trials.size)).map(t => ({
     teacherId: t.teacherId, name: t.name, phone: t.phone || empPhone.get(t.teacherId) || '',
     groups: [...t.groups.values()].filter((g: any) => g.active > 0).map((g: any) => `${g.name} (${g.active})`),
     active: t.active, frozen: t.frozen, joined: t.joined, left: t.left, graduated: t.graduated,
-    trials: t.trials.size, converted: t.converted.size, conversion: t.trials.size ? Math.round((t.converted.size / t.trials.size) * 100) : null
-  })).sort((a, b) => b.active - a.active);
-  return { ok: true, fromDate: b.fromDate, toDate: b.toDate, teachers };
+    trials: t.trials.size, converted: t.converted.size, conversion: t.trials.size ? Math.round((t.converted.size / t.trials.size) * 100) : null,
+    // Oy boshida → hozir (yoki davr oxirida)
+    start: t.startSet.size, now: t.endSet.size, delta: t.endSet.size - t.startSet.size,
+    leftActive: [...t.startSet].filter((id: string) => !t.endSet.has(id)).map((id: string) => t.stInfo.get(id)),
+    newActive: [...t.endSet].filter((id: string) => !t.startSet.has(id)).length
+  })).filter(t => t.start || t.now || t.joined.length || t.left.length || t.trials).sort((a, b) => b.now - a.now);
+  const center = {
+    start: cStart.size, now: cEnd.size, delta: cEnd.size - cStart.size,
+    joined: cJoined.size, left: cLeft.size, graduated: cGrad.size,
+    leftActive: [...cStart].filter(id => !cEnd.has(id)).length, newActive: [...cEnd].filter(id => !cStart.has(id)).length,
+    trials: cTrials.size, converted: cConv.size, conversion: cTrials.size ? Math.round((cConv.size / cTrials.size) * 100) : null,
+    teachers: teachers.length
+  };
+  return { ok: true, fromDate: b.fromDate, toDate: b.toDate, endAt: new Date(endT).toISOString(), center, teachers };
 }
 
 // 📩 SMS: Edutizim integratsiyasi orqali (Eskiz va h.k.)
