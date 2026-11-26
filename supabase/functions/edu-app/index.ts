@@ -136,9 +136,100 @@ async function attendanceFor(day: string, kind: 'toq' | 'juft', teacherId?: stri
   };
 }
 
+// =========================================================
+// 🎬 AI montaj renderer (GitHub Actions) — GitHub OIDC tokeni bilan: faqat shu repo'ning render workflow'i
+// =========================================================
+const GH_REPO = 'bekmurodovm460-sudo/Registancrm';
+const GH_ISS = 'https://token.actions.githubusercontent.com';
+let jwks: { at: number; keys: any[] } | null = null;
+const b64u = (s: string) => Uint8Array.from(atob(s.replace(/-/g, '+').replace(/_/g, '/') + '==='.slice((s.length + 3) % 4)), c => c.charCodeAt(0));
+export async function verifyGithubOidc(jwt: string, now = Date.now()) {
+  const parts = String(jwt || '').split('.');
+  if (parts.length !== 3) return null;
+  let header: any, claims: any;
+  try { header = JSON.parse(new TextDecoder().decode(b64u(parts[0]))); claims = JSON.parse(new TextDecoder().decode(b64u(parts[1]))); } catch { return null; }
+  if (header.alg !== 'RS256') return null;
+  if (!jwks || now - jwks.at > 3600_000 || !jwks.keys.some(k => k.kid === header.kid)) {
+    const r = await fetch(`${GH_ISS}/.well-known/jwks`);
+    if (!r.ok) return null;
+    jwks = { at: now, keys: (await r.json()).keys || [] };
+  }
+  const jwk = jwks.keys.find(k => k.kid === header.kid);
+  if (!jwk) return null;
+  const key = await crypto.subtle.importKey('jwk', { kty: jwk.kty, n: jwk.n, e: jwk.e, alg: 'RS256', ext: true }, { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' }, false, ['verify']);
+  const ok = await crypto.subtle.verify('RSASSA-PKCS1-v1_5', key, b64u(parts[2]), new TextEncoder().encode(`${parts[0]}.${parts[1]}`));
+  if (!ok) return null;
+  const t = now / 1000;
+  if (claims.iss !== GH_ISS || claims.aud !== 'registan-render' || claims.repository !== GH_REPO) return null;
+  if (!(claims.exp > t) || (claims.nbf && claims.nbf > t + 60)) return null;
+  if (!String(claims.job_workflow_ref || claims.workflow_ref || '').includes('/.github/workflows/render.yml@')) return null;
+  return claims;
+}
+
+async function renderApi(body: any, token: string) {
+  if (body.action === 'renderPending') {
+    const { count } = await admin.from('crm_ai_projects').select('id', { count: 'exact', head: true }).in('status', ['queued', 'rendering']);
+    return json({ ok: true, count: count || 0 });
+  }
+  if (body.action === 'renderNext') {
+    const { data } = await admin.rpc('crm_ai_render_next');
+    const pr = Array.isArray(data) ? data[0] : data;
+    if (!pr) return json({ ok: true, job: null });
+    const path = `render/${pr.id}.mp4`;
+    const up = await admin.storage.from('edu-media').createSignedUploadUrl(path, { upsert: true });
+    if (up.error || !up.data) return json({ ok: false, error: up.error?.message || 'upload url' });
+    return json({ ok: true, job: { id: pr.id, plan: pr.plan, files: (pr.files || []).map((f: any) => ({ kind: f.kind, duration: f.duration, width: f.width, height: f.height })), upload: { url: up.data.signedUrl, path } } });
+  }
+  const { data: pr } = await admin.from('crm_ai_projects').select('*').eq('id', String(body.id || '')).maybeSingle();
+  if (!pr) return json({ ok: false, error: 'Loyiha topilmadi' }, 404);
+  if (body.action === 'renderFile') {
+    const f = (pr.files || [])[Number(body.i)];
+    if (!f) return json({ ok: false, error: 'Fayl topilmadi' }, 404);
+    const gf = await tg(token, 'getFile', { file_id: f.file_id });
+    if (!gf?.ok) return json({ ok: false, error: 'Telegram: ' + (gf?.description || '') });
+    const fr = await fetch(`https://api.telegram.org/file/bot${token}/${gf.result.file_path}`);
+    if (!fr.ok || !fr.body) return json({ ok: false, error: 'Fayl yuklanmadi' });
+    return new Response(fr.body, { headers: { 'Content-Type': 'application/octet-stream' } });
+  }
+  if (body.action === 'renderDone') {
+    const editUrl = await getSetting<string>('eduMontajAppUrl', '');
+    const editKb = editUrl ? { inline_keyboard: [[{ text: '✏️ Qo‘lda tahrirlash', web_app: { url: `${editUrl}?p=${pr.id}` } }]] } : undefined;
+    if (!body.ok) {
+      const retry = (pr.attempts || 0) < 3;
+      await admin.from('crm_ai_projects').update({ status: retry ? 'queued' : 'error', error: String(body.error || '').slice(0, 500), updated_at: new Date().toISOString() }).eq('id', pr.id);
+      if (!retry) await tg(token, 'sendMessage', { chat_id: pr.tg_id, text: `⚠️ Video avtomatik yasalmadi: ${String(body.error || '').slice(0, 200)}\n\nMini App’da qo‘lda tayyorlashingiz mumkin 👇`, ...(editKb ? { reply_markup: editKb } : {}) });
+      return json({ ok: true, retry });
+    }
+    const path = String(body.path || '');
+    if (path !== `render/${pr.id}.mp4`) return json({ ok: false, error: 'Noto‘g‘ri yo‘l' }, 400);
+    const { data: file, error } = await admin.storage.from('edu-media').download(path);
+    if (error || !file) return json({ ok: false, error: 'Video topilmadi' });
+    const form = new FormData();
+    form.append('chat_id', String(pr.tg_id));
+    form.append('video', file, `Registan_AI_${String(pr.id).slice(0, 8)}.mp4`);
+    const cap = String(pr.plan?.caption || '').trim();
+    form.append('caption', (`🎬 AI montaj tayyor${body.duration ? ` · ${Math.round(body.duration)} s` : ''}` + (cap ? `\n\n${cap}` : '')).slice(0, 1000));
+    form.append('supports_streaming', 'true');
+    if (body.width) form.append('width', String(body.width));
+    if (body.height) form.append('height', String(body.height));
+    if (body.duration) form.append('duration', String(Math.round(body.duration)));
+    if (editKb) form.append('reply_markup', JSON.stringify(editKb));
+    const r = await tg(token, 'sendVideo', form);
+    await admin.storage.from('edu-media').remove([path]).catch(() => {});
+    await admin.from('crm_ai_projects').update({ status: r?.ok ? 'done' : 'error', error: r?.ok ? null : `Telegram: ${r?.description || ''}`, updated_at: new Date().toISOString() }).eq('id', pr.id);
+    return json({ ok: !!r?.ok, error: r?.ok ? undefined : r?.description });
+  }
+  return json({ ok: false, error: 'Noma’lum amal' }, 400);
+}
+
 Deno.serve(async req => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors });
   const body = await req.json().catch(() => ({}));
+  if (String(body.action || '').startsWith('render')) {
+    const claims = await verifyGithubOidc((req.headers.get('Authorization') || '').replace(/^Bearer\s+/i, ''));
+    if (!claims) return json({ ok: false, error: 'GitHub OIDC tokeni yaroqsiz' }, 401);
+    try { return await renderApi(body, await getSecret('edu_bot_token')); } catch (e) { return json({ ok: false, error: String((e as Error).message || e) }); }
+  }
   const token = await getSecret('edu_bot_token');
   const user = await verifyInitData(String(body.initData || ''), token);
   if (!user?.id) return json({ ok: false, error: 'Telegram orqali oching' }, 401);

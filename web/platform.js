@@ -39,7 +39,19 @@ async function crmAiKeyStatus() {
   const box = document.getElementById('ai-key-status'); if (!box) return;
   const st = await secretStatus().catch(() => ({}));
   box.innerHTML = st.anthropic_api_key ? '✅ Kalit kiritilgan' : '⚪ Kalit kiritilmagan — AI yordamchi o‘chiq';
+  const gh = document.getElementById('gh-key-status');
+  if (gh) gh.innerHTML = st.github_dispatch_token ? '✅ Kiritilgan — video 1–3 daqiqada' : '⚪ Kiritilmagan — video 5–10 daqiqada';
 }
+async function crmSaveGhKey(remove = false) {
+  const el = document.getElementById('gh-key');
+  const v = remove ? '' : (el?.value || '').trim();
+  if (!remove && !/^(github_pat_|ghp_)/.test(v)) return showToast('Token “github_pat_” bilan boshlanadi', '⚠️');
+  try { await setSecret('github_dispatch_token', v); } catch (e) { return showToast(e.message, '⚠️'); }
+  if (el) el.value = '';
+  showToast(remove ? 'GitHub token o‘chirildi' : 'GitHub token saqlandi', '✅');
+  crmAiKeyStatus();
+}
+window.crmSaveGhKey = crmSaveGhKey;
 async function setSecret(key, value) {
   const { error } = await sb().rpc('crm_set_secret', { p_key: key, p_value: value });
   if (error) throw error;
@@ -1360,6 +1372,16 @@ async function renderTelegramTab() {
           <input id="ai-key" type="password" autocomplete="off" placeholder="sk-ant-..." class="${input} flex-1 min-w-[200px] font-mono">
           <button onclick="crmSaveAiKey()" class="${btn('slate-900')}">💾 Saqlash</button>
           <button onclick="crmSaveAiKey(true)" class="${btn('rose-600')}">🗑 O‘chirish</button>
+        </div>
+      </div>
+      <div class="mt-3 pt-3 border-t border-slate-200">
+        <div class="text-sm font-black text-slate-800">🎬 AI montaj — tezkor ishga tushirish (ixtiyoriy)</div>
+        <p class="text-[11px] text-slate-500 mb-2">Video GitHub Actions’da avtomatik yasaladi. Kalitsiz ham ishlaydi (har 5 daqiqada navbat tekshiriladi). GitHub token kiritilsa, video 1–3 daqiqada keladi. Token: GitHub → Settings → Developer settings → Fine-grained token → faqat <b>Registancrm</b> repo, <b>Contents: Read and write</b>.</p>
+        <div id="gh-key-status" class="text-xs mb-2">⏳</div>
+        <div class="flex flex-wrap gap-2 text-xs">
+          <input id="gh-key" type="password" autocomplete="off" placeholder="github_pat_..." class="${input} flex-1 min-w-[200px] font-mono">
+          <button onclick="crmSaveGhKey()" class="${btn('slate-900')}">💾 Saqlash</button>
+          <button onclick="crmSaveGhKey(true)" class="${btn('rose-600')}">🗑 O‘chirish</button>
         </div>
       </div>
     `) : ''}

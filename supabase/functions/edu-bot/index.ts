@@ -806,7 +806,7 @@ Montaj (create_montage vositasi bor bo'lsa):
 - Foydalanuvchi rasm/video yuborib reels, story, post yoki video so'rasa — create_montage chaqiring. Media raqamlari xabarda "[Media N]" bo'lib keladi, rasmlarni ko'rib mazmuniga mos tartib tanlang.
 - Odatiy: 9:16 format, rasm 2.5–4 soniya, video bo'lagi 3–8 soniya, jami 15–45 soniya (so'ralmasa). Har klip matni 2–6 so'z, jozibali, xatosiz. Intro sarlavhasi qisqa; outro'da markaz shiori. O'tish: fade yoki slide.
 - Post matni (caption) va 5–8 ta mos heshteg ham yozing.
-- Vosita chaqirilgandan keyin foydalanuvchiga "🎬 Montajni ochish" tugmasini bosib, ko'rib chiqib "Tayyorlash"ni bosishni ayting. Musiqani Mini App ichida o'zi tanlaydi.
+- Vosita chaqirilgandan keyin video serverda avtomatik yasaladi va bir necha daqiqada shu chatga MP4 bo'lib keladi — foydalanuvchiga shuni qisqa ayting. O'zgartirmoqchi bo'lsa (musiqa va h.k.), "✏️ Qo'lda tahrirlash" tugmasi bor.
 - Media yuborilmagan bo'lsa, avval rasm yoki video yuborishni so'rang.`;
 
 function aiTools(r: Role, tgId: number, ctx: { project?: string; caption?: string }) {
@@ -942,15 +942,27 @@ function aiTools(r: Role, tgId: number, ctx: { project?: string; caption?: strin
         if (bad.length) return `XATO: mavjud media raqamlari 1–${media.length}. Noto‘g‘ri: ${bad.map((c: any) => c.media).join(', ')}`;
         const files = media.map((m: any) => ({ file_id: m.file_id, kind: m.kind, duration: m.duration, width: m.width, height: m.height }));
         const plan = { ...inp, clips: inp.clips.map((c: any) => ({ ...c, media: c.media - 1 })) };
-        const { data, error } = await admin.from('crm_ai_projects').insert({ tg_id: tgId, plan, files }).select('id').single();
+        const { data, error } = await admin.from('crm_ai_projects').insert({ tg_id: tgId, plan, files, status: 'queued' }).select('id').single();
         if (error || !data) return 'XATO: loyiha saqlanmadi';
         ctx.project = data.id; ctx.caption = inp.caption || '';
         const total = inp.clips.reduce((a: number, c: any) => a + (Number(c.seconds) || 3), 0);
-        return `Loyiha yaratildi: ${inp.clips.length} klip, taxminan ${Math.round(total)} soniya. Foydalanuvchiga “🎬 Montajni ochish” tugmasini bosishni ayting.`;
+        return `Loyiha yaratildi va video yasash navbatiga qo‘yildi: ${inp.clips.length} klip, taxminan ${Math.round(total)} soniya. Tayyor MP4 bir necha daqiqada shu chatga avtomatik keladi; xohlasa “✏️ Qo‘lda tahrirlash” tugmasi bilan o‘zgartirishi mumkin.`;
       }
     }));
   }
   return T;
+}
+
+// GitHub Actions'dagi renderer'ni darhol ishga tushirish (kalit bo'lmasa — har 5 daqiqada o'zi tekshiradi)
+async function renderDispatch(): Promise<boolean> {
+  const tok = await getSecret('github_dispatch_token');
+  if (!tok) return false;
+  const r = await fetch('https://api.github.com/repos/bekmurodovm460-sudo/Registancrm/dispatches', {
+    method: 'POST', headers: { Authorization: `Bearer ${tok}`, Accept: 'application/vnd.github+json', 'User-Agent': 'registan-bot', 'Content-Type': 'application/json' },
+    body: JSON.stringify({ event_type: 'render' })
+  }).catch(() => null);
+  if (!r?.ok) console.error('render dispatch', r?.status);
+  return !!r?.ok;
 }
 
 async function aiStart(chatId: number) {
@@ -1057,7 +1069,9 @@ async function aiAsk(chatId: number, text: string, from: any) {
   const extra: any = {};
   if (ctx.project) {
     const url = await getSetting<string>('eduMontajAppUrl', '');
-    if (url) extra.reply_markup = { inline_keyboard: [[{ text: '🎬 Montajni ochish', web_app: { url: `${url}?p=${ctx.project}` } }]] };
+    if (url) extra.reply_markup = { inline_keyboard: [[{ text: '✏️ Qo‘lda tahrirlash', web_app: { url: `${url}?p=${ctx.project}` } }]] };
+    const fast = await renderDispatch();
+    reply += `\n\n🎬 Video yasalmoqda… ${fast ? '1–3 daqiqada' : '5–10 daqiqada'} tayyor MP4 shu chatga keladi.`;
   }
   const parts = reply.match(/[\s\S]{1,3900}(?=\n|$)|[\s\S]{1,3900}/g) || [reply];
   for (let i = 0; i < parts.length; i++) await tg(await token(), 'sendMessage', { chat_id: chatId, text: parts[i], ...(i === parts.length - 1 ? extra : {}) });
