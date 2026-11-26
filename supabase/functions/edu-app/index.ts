@@ -132,7 +132,7 @@ async function attendanceFor(day: string, kind: 'toq' | 'juft', teacherId?: stri
   return {
     kind, day, weekday: eduDay(day), groups: out,
     managers: [...managers.entries()].map(([name, v]) => ({ name, ...v })).sort((a, b) => (b.n - b.done) - (a.n - a.done) || a.name.localeCompare(b.name)),
-    totals: { groups: out.length, marked: out.filter(g => g.marked).length, total: sum('total'), attended: sum('attended'), reasonable: sum('reasonable'), unreasonable: sum('unreasonable'), unmarked: sum('unmarked'), absent: absentIds.length, noted: sum('noted') }
+    totals: { groups: out.length, marked: out.filter(g => g.marked).length, total: sum('total'), attended: sum('attended'), reasonable: sum('reasonable'), unreasonable: sum('unreasonable'), unmarked: sum('unmarked'), absent: out.reduce((n, g) => n + g.absentList.length, 0), noted: sum('noted') }
   };
 }
 
