@@ -19,6 +19,7 @@ const B_REPORT = '📊 Hisobot';
 const B_SYNC = '🔄 Sinxron';
 const B_STATS = '📈 Statistika';
 const B_EXP = '🧾 Xarajatlar';
+const B_INK = '💵 Naqd inkassa';
 const B_ATT = '📅 Davomat';
 const B_RISK = '⚠️ Xavf ostida';
 const B_TEACH = '👩‍🏫 O‘qituvchilar';
@@ -35,15 +36,15 @@ const B_SKIP = '⏭ O‘tkazib yuborish';
 
 const kb = (rows: string[][]) => ({ keyboard: rows.map(r => r.map(text => ({ text }))), resize_keyboard: true });
 const persist = (rows: string[][], ph = 'Bo‘limni tanlang…') => ({ ...kb(rows), is_persistent: true, input_field_placeholder: ph });
-const MENU = persist([[B_IN, B_OUT], [B_BELL, B_PRICE], [B_NEW, B_MGR], [B_ATT, B_RISK], [B_STATS, B_EXP], [B_DEBT, B_FIND], [B_TEACH, B_TASKS], [B_LEAD, B_ADMIN]]);
-const MENU_SENIOR = persist([[B_ATT, B_RISK], [B_NEW, B_MGR], [B_STATS, B_EXP], [B_BELL, B_PRICE], [B_DEBT, B_FIND], [B_TEACH, B_TASKS], [B_LEAD]]);
+const MENU = persist([[B_IN, B_OUT], [B_INK, B_EXP], [B_BELL, B_PRICE], [B_NEW, B_MGR], [B_ATT, B_RISK], [B_STATS], [B_DEBT, B_FIND], [B_TEACH, B_TASKS], [B_LEAD, B_ADMIN]]);
+const MENU_SENIOR = persist([[B_ATT, B_RISK], [B_NEW, B_MGR], [B_STATS, B_EXP], [B_INK], [B_BELL, B_PRICE], [B_DEBT, B_FIND], [B_TEACH, B_TASKS], [B_LEAD]]);
 const MENU_SERVICE = persist([[B_ATT, B_RISK], [B_NEW, B_MY], [B_FIND, B_DEBT], [B_LEAD]]);
 const MENU_TEACHER = persist([[B_MY, B_MYTASK]]);
 // Bosh sahifadagi bosib tanlanadigan (inline) bo'limlar — rolga qarab
-const GO: Record<string, string> = { kirim: B_IN, chiqim: B_OUT, davomat: B_ATT, xavf: B_RISK, stat: B_STATS, xarajat: B_EXP, qarz: B_DEBT, qidir: B_FIND, ustoz: B_TEACH, vazifa: B_TASKS, lid: B_LEAD, admin: B_ADMIN, natijam: B_MY, myvazifa: B_MYTASK, bell: B_BELL, narx: B_PRICE, yangi: B_NEW, mgr: B_MGR };
+const GO: Record<string, string> = { kirim: B_IN, chiqim: B_OUT, davomat: B_ATT, xavf: B_RISK, stat: B_STATS, xarajat: B_EXP, inkassa: B_INK, qarz: B_DEBT, qidir: B_FIND, ustoz: B_TEACH, vazifa: B_TASKS, lid: B_LEAD, admin: B_ADMIN, natijam: B_MY, myvazifa: B_MYTASK, bell: B_BELL, narx: B_PRICE, yangi: B_NEW, mgr: B_MGR };
 const GO_ROWS: Record<string, string[][]> = {
-  top: [['kirim', 'chiqim'], ['bell', 'narx'], ['yangi', 'mgr'], ['davomat', 'xavf'], ['stat', 'xarajat'], ['qarz', 'qidir'], ['ustoz', 'vazifa'], ['lid', 'admin']],
-  senior: [['davomat', 'xavf'], ['yangi', 'mgr'], ['stat', 'xarajat'], ['bell', 'narx'], ['qarz', 'qidir'], ['ustoz', 'vazifa'], ['lid']],
+  top: [['kirim', 'chiqim'], ['inkassa', 'xarajat'], ['bell', 'narx'], ['yangi', 'mgr'], ['davomat', 'xavf'], ['stat'], ['qarz', 'qidir'], ['ustoz', 'vazifa'], ['lid', 'admin']],
+  senior: [['davomat', 'xavf'], ['yangi', 'mgr'], ['stat', 'xarajat'], ['inkassa'], ['bell', 'narx'], ['qarz', 'qidir'], ['ustoz', 'vazifa'], ['lid']],
   service: [['davomat', 'xavf'], ['yangi', 'natijam'], ['qidir', 'qarz'], ['lid']],
   teacher: [['natijam', 'myvazifa']]
 };
@@ -314,6 +315,84 @@ async function expenses(chatId: number, p: Period = 'week') {
   await send(chatId, text.slice(0, 4000), { reply_markup: { inline_keyboard: rows } });
 }
 
+// =========================================================
+// 💵 Naqd inkassa — Edutizim kassasidagi "Naqd Inkassa" to'lov usuli:
+// kirim (to'lovlar), topshirilgan (transfer) va qoldiq; ustoz (izoh), kun va hafta bo'yicha
+// =========================================================
+const isInk = (m: string) => /inkassa/i.test(String(m || ''));
+const WD = ['Du', 'Se', 'Ch', 'Pa', 'Ju', 'Sh', 'Ya'];
+const dayKey = (ms: number) => dayStart(ms);
+const ustozOf = (c: string) => {
+  const s = String(c || '').replace(/\s+/g, ' ').trim();
+  if (!s || /^[.\-–—\s]*$/.test(s)) return 'Izohsiz';
+  const n = s.toLowerCase().replace(/ustoza\b/g, 'ustoz').replace(/[’'`ʻʼ‘]/g, '\'');
+  return n.charAt(0).toUpperCase() + n.slice(1);
+};
+async function inkTx(from: number, to: number) {
+  const meta = await edu('kassaMeta');
+  if (!meta.ok) throw new Error(meta.error || 'Edutizim kassasi');
+  const res = await Promise.all((meta.cashboxes || []).map((c: any) => edu('kassaTx', { cashboxId: c.id, dateFrom: new Date(from).toISOString(), dateTo: new Date(to).toISOString() })));
+  const err = res.find((r: any) => !r.ok);
+  if (err) throw new Error(err.error || 'Edutizim xatosi');
+  return res.flatMap((r: any) => r.tx || []).filter((t: any) => !t.cancelled && isInk(t.method));
+}
+type InkP = 'week' | 'pweek' | 'month' | 'pmonth' | 'w8';
+async function inkassa(chatId: number, p: InkP = 'week') {
+  await typing(chatId);
+  const now = Date.now();
+  const r = p === 'w8' ? (() => { const w = range('week', now); return { from: w.from - 7 * 7 * DAY, to: now }; })() : range(p as Period, now);
+  let tx: any[];
+  try { tx = await inkTx(r.from, r.to); } catch (e) { return void send(chatId, `⚠️ Kassa tarixini olib bo‘lmadi: ${esc((e as Error).message)}`, { reply_markup: menu() }); }
+  const ins = tx.filter(t => t.type === 'payIn'), outs = tx.filter(t => t.type === 'transfer' || t.type === 'payOut');
+  const inSum = ins.reduce((a, t) => a + t.amount, 0), outSum = outs.reduce((a, t) => a + t.amount, 0);
+  const label = p === 'w8' ? `Oxirgi 8 hafta (${dmy(r.from)}–${dmy(r.to)})` : `${P_LABEL[p]} (${dmy(r.from)}–${dmy(r.to)})`;
+  const bal = inSum - outSum;
+  const lines = [
+    `💵 <b>Naqd inkassa · ${label}</b>`, '',
+    `📥 Kirim: <b>${mln(inSum)}</b> · ${ins.length} ta to‘lov`,
+    `📤 Topshirilgan: <b>${mln(outSum)}</b> · ${outs.length} marta`,
+    `⚖️ Qoldiq (kirim − topshirilgan): <b>${mln(bal)}</b>${bal > 0 ? ' — hali topshirilmagan' : bal < 0 ? ' — davrdan oldingi qoldiq ham topshirilgan' : ' ✅'}`
+  ];
+  if (p === 'w8') {
+    const weeks = new Map<number, { i: number; o: number; n: number }>();
+    const wk = (ms: number) => { const d = dayKey(ms); const dow = (new Date(d + TZ).getUTCDay() + 6) % 7; return d - dow * DAY; };
+    for (let w = r.from; w <= now; w += 7 * DAY) weeks.set(wk(w), { i: 0, o: 0, n: 0 });
+    tx.forEach(t => { const k = wk(new Date(t.date).getTime()); const x = weeks.get(k) || { i: 0, o: 0, n: 0 }; if (t.type === 'payIn') { x.i += t.amount; x.n++; } else x.o += t.amount; weeks.set(k, x); });
+    const max = Math.max(1, ...[...weeks.values()].map(x => x.i));
+    lines.push('', '<b>Haftalar bo‘yicha (kirim · topshirildi):</b>');
+    [...weeks.entries()].sort((a, b) => b[0] - a[0]).forEach(([k, x]) =>
+      lines.push(`${dmy(k)}–${dmy(k + 6 * DAY)} · <b>${mln(x.i)}</b> · ${mln(x.o)}${x.i !== x.o ? ` · ⚖️ ${mln(x.i - x.o)}` : ''}\n   ${bar(x.i, max)} ${x.n} ta`));
+  } else {
+    // Ustozlar bo'yicha (to'lov izohida yozilgan)
+    const by = new Map<string, { s: number; n: number }>();
+    ins.forEach(t => { const k = ustozOf(t.comment); const x = by.get(k) || { s: 0, n: 0 }; x.s += t.amount; x.n++; by.set(k, x); });
+    const list = [...by.entries()].sort((a, b) => b[1].s - a[1].s);
+    if (list.length) {
+      lines.push('', '<b>👩‍🏫 Ustozlar bo‘yicha (izohdan):</b>');
+      list.slice(0, 15).forEach(([k, x], i) => lines.push(`${i + 1}. ${esc(k)} — <b>${mln(x.s)}</b> · ${x.n} ta · ${pct(x.s, inSum)}%`));
+    }
+    // Kunlar bo'yicha
+    const days = new Map<number, { i: number; o: number }>();
+    tx.forEach(t => { const k = dayKey(new Date(t.date).getTime()); const x = days.get(k) || { i: 0, o: 0 }; if (t.type === 'payIn') x.i += t.amount; else x.o += t.amount; days.set(k, x); });
+    if (days.size) {
+      lines.push('', '<b>📅 Kunlar bo‘yicha (kirim · topshirildi):</b>');
+      [...days.entries()].sort((a, b) => a[0] - b[0]).forEach(([k, x]) =>
+        lines.push(`${WD[(new Date(k + TZ).getUTCDay() + 6) % 7]} ${dmy(k)} · ${mln(x.i)} · ${mln(x.o)}${x.i !== x.o ? ` ⚠️ ${mln(x.i - x.o)}` : ' ✅'}`));
+    }
+    const pays = [...ins].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    if (pays.length) {
+      lines.push('', `<b>🧾 To‘lovlar${pays.length > 20 ? ' (oxirgi 20)' : ''}:</b>`);
+      pays.slice(0, 20).forEach(t => lines.push(`• ${dmy(new Date(t.date).getTime())} · ${esc(t.person || t.category || '—')} — <b>${sum(t.amount)}</b>${ustozOf(t.comment) !== 'Izohsiz' ? ` · <i>${esc(ustozOf(t.comment))}</i>` : ''}`));
+    }
+  }
+  if (!tx.length) lines.push('', 'Bu davrda “Naqd Inkassa” usulida amal yo‘q.');
+  const ps: InkP[] = ['week', 'pweek', 'month', 'pmonth'];
+  const kb = { inline_keyboard: [ps.slice(0, 2).map(x => ib((x === p ? '• ' : '') + P_LABEL[x as Period], `ink:${x}`)), ps.slice(2).map(x => ib((x === p ? '• ' : '') + P_LABEL[x as Period], `ink:${x}`)), [ib((p === 'w8' ? '• ' : '') + '📊 Oxirgi 8 hafta', 'ink:w8')]] };
+  let text = lines.join('\n');
+  if (text.length > 4000) text = text.slice(0, 3990) + '\n…';
+  await send(chatId, text, { reply_markup: kb });
+}
+
 async function expenseCategory(chatId: number, idx: number) {
   const s = await getSession(chatId);
   const c = s.step === 'exp' ? (s.data.cats || [])[idx] : null;
@@ -478,7 +557,7 @@ async function sticker(chatId: number | string, key: string) {
   } catch { /* stiker ixtiyoriy */ }
 }
 const STICKER_OF: Record<string, string> = {
-  [B_IN]: 'kirim', [B_OUT]: 'chiqim', [B_ATT]: 'davomat', [B_RISK]: 'xavf', [B_STATS]: 'statistika', [B_EXP]: 'xarajat',
+  [B_IN]: 'kirim', [B_OUT]: 'chiqim', [B_ATT]: 'davomat', [B_RISK]: 'xavf', [B_STATS]: 'statistika', [B_EXP]: 'xarajat', [B_INK]: 'hisobot', '/inkassa': 'hisobot',
   [B_DEBT]: 'qarz', [B_FIND]: 'qidir', [B_TEACH]: 'oqituvchi', [B_TASKS]: 'vazifa', [B_LEAD]: 'lid', [B_ADMIN]: 'boshqaruv',
   [B_MY]: 'natijam', [B_MYTASK]: 'vazifa', [B_BELL]: 'qongiroq', [B_PRICE]: 'narx', [B_NEW]: 'lid', [B_MGR]: 'oqituvchi', '/qongiroq': 'qongiroq', '/narx': 'narx',
   '/kirim': 'kirim', '/chiqim': 'chiqim', '/davomat': 'davomat', '/xavf': 'xavf', '/statistika': 'statistika', '/xarajat': 'xarajat', '/xarajat_oy': 'xarajat',
@@ -490,12 +569,12 @@ const C = (command: string, description: string) => ({ command, description });
 const CMDS: Record<string, any[]> = {
   top: [C('start', '🏠 Bosh menyu'), C('davomat', '📅 Davomat — kelmaganlar va izohlar'), C('xavf', '⚠️ Xavf ostida — notcoming'),
     C('kirim', '💰 Kassaga kirim'), C('chiqim', '💸 Kassadan chiqim'), C('statistika', '📈 Aktiv o‘quvchilar va qarz'),
-    C('xarajat', '🧾 Xarajatlar — haftalik'), C('xarajat_oy', '🗓 Xarajatlar — oylik'), C('qarz', '🔴 Qarzdorlar'),
+    C('xarajat', '🧾 Xarajatlar — haftalik'), C('xarajat_oy', '🗓 Xarajatlar — oylik'), C('inkassa', '💵 Naqd inkassa — haftalik'), C('qarz', '🔴 Qarzdorlar'),
     C('qidir', '🔍 O‘quvchini qidirish'), C('oqituvchilar', '👩‍🏫 O‘qituvchilar hisoboti va Excel'), C('yangilar', '🆕 Yangi talabalar'), C('menejerlar', '🎧 Menejerlar konversiyasi'), C('vazifalar', '📋 Ustozlar vazifalari'),
     C('lid', '➕ Yangi lid'), C('boshqaruv', '⚙️ Rollar, hisobot, sinxron'), C('akkaunt', '🔑 Edutizim akkauntim'), C('cancel', '❌ Bekor qilish')],
   senior: [C('start', '🏠 Bosh menyu'), C('davomat', '📅 Davomat — kelmaganlar va izohlar'), C('xavf', '⚠️ Xavf ostida — notcoming'),
     C('yangilar', '🆕 Yangi talabalar'), C('menejerlar', '🎧 Menejerlar konversiyasi'), C('statistika', '📈 Aktiv o‘quvchilar va qarz'),
-    C('xarajat', '🧾 Xarajatlar — haftalik'), C('xarajat_oy', '🗓 Xarajatlar — oylik'), C('qongiroq', '🔔 Kassa qo‘ng‘iroqchalari'), C('narx', '💲 Narx nazorati'),
+    C('xarajat', '🧾 Xarajatlar — haftalik'), C('xarajat_oy', '🗓 Xarajatlar — oylik'), C('inkassa', '💵 Naqd inkassa — haftalik'), C('qongiroq', '🔔 Kassa qo‘ng‘iroqchalari'), C('narx', '💲 Narx nazorati'),
     C('qarz', '🔴 Qarzdorlar'), C('qidir', '🔍 O‘quvchini qidirish'), C('oqituvchilar', '👩‍🏫 O‘qituvchilar hisoboti va Excel'), C('vazifalar', '📋 Ustozlar vazifalari'),
     C('lid', '➕ Yangi lid'), C('akkaunt', '🔑 Edutizim akkauntim'), C('cancel', '❌ Bekor qilish')],
   service: [C('start', '🏠 Bosh menyu'), C('davomat', '📅 Davomat — kelmaganlar va izohlar'), C('xavf', '⚠️ Xavf ostida — notcoming'),
@@ -1179,7 +1258,7 @@ async function myStats(chatId: number, which: 'm' | 'pm' = 'm') {
 // =========================================================
 const ACCESS: Record<string, Role[]> = {
   // matn tugmalari
-  [B_IN]: ['top'], [B_OUT]: ['top'], [B_STATS]: ['top', 'senior'], [B_EXP]: ['top', 'senior'], [B_TEACH]: ['top', 'senior'], [B_TASKS]: ['top', 'senior'], [B_ADMIN]: ['top'], [B_BELL]: ['top', 'senior'], [B_PRICE]: ['top', 'senior'], [B_NEW]: ['top', 'senior', 'service'], [B_MGR]: ['top', 'senior'],
+  [B_IN]: ['top'], [B_OUT]: ['top'], [B_STATS]: ['top', 'senior'], [B_EXP]: ['top', 'senior'], [B_INK]: ['top', 'senior'], [B_TEACH]: ['top', 'senior'], [B_TASKS]: ['top', 'senior'], [B_ADMIN]: ['top'], [B_BELL]: ['top', 'senior'], [B_PRICE]: ['top', 'senior'], [B_NEW]: ['top', 'senior', 'service'], [B_MGR]: ['top', 'senior'],
   [B_ATT]: ['top', 'senior', 'service'], [B_RISK]: ['top', 'senior', 'service'], [B_FIND]: ['top', 'senior', 'service'], [B_DEBT]: ['top', 'senior', 'service'], [B_LEAD]: ['top', 'senior', 'service'],
   [B_MY]: ['teacher', 'service'], [B_MYTASK]: ['teacher']
 };
@@ -1200,9 +1279,9 @@ async function startMsg(chatId: number, m: any) {
   const r = role();
   const name = esc(m.from?.first_name || '');
   const body = r === 'top'
-    ? `💰 <b>Kirim / Chiqim</b> — Edutizim kassasi\n🆕 <b>Yangi talabalar</b> · 🎧 <b>Menejerlar</b> konversiyasi\n📅 <b>Davomat</b> — kelmaganlar va menejer izohlari\n⚠️ <b>Xavf ostida</b> — notcoming bo‘lay deganlar\n📈 <b>Statistika</b> · 🧾 <b>Xarajatlar</b>\n🔴 <b>Qarzdorlar</b> · 🔍 <b>O‘quvchi</b>\n👩‍🏫 <b>O‘qituvchilar</b> — hisobot, konversiya, Excel\n📋 <b>Vazifalar</b> — ustozlarga topshiriq\n⚙️ <b>Boshqaruv</b> — rollar, hisobot, sinxron`
+    ? `💰 <b>Kirim / Chiqim</b> — Edutizim kassasi\n🆕 <b>Yangi talabalar</b> · 🎧 <b>Menejerlar</b> konversiyasi\n📅 <b>Davomat</b> — kelmaganlar va menejer izohlari\n⚠️ <b>Xavf ostida</b> — notcoming bo‘lay deganlar\n📈 <b>Statistika</b> · 🧾 <b>Xarajatlar</b> · 💵 <b>Naqd inkassa</b>\n🔴 <b>Qarzdorlar</b> · 🔍 <b>O‘quvchi</b>\n👩‍🏫 <b>O‘qituvchilar</b> — hisobot, konversiya, Excel\n📋 <b>Vazifalar</b> — ustozlarga topshiriq\n⚙️ <b>Boshqaruv</b> — rollar, hisobot, sinxron`
     : r === 'senior'
-      ? `📅 <b>Davomat</b> · ⚠️ <b>Xavf ostida</b>\n🆕 <b>Yangi talabalar</b> · 🎧 <b>Menejerlar</b>\n📈 <b>Statistika</b> · 🧾 <b>Xarajatlar</b>\n🔔 <b>Qo‘ng‘iroqchalar</b> · 💲 <b>Narx nazorati</b> (ko‘rish)\n🔴 <b>Qarzdorlar</b> · 🔍 <b>O‘quvchi</b>\n👩‍🏫 <b>O‘qituvchilar</b> · 📋 <b>Vazifalar</b>\n<i>Kassa, SMS, narx o‘zgartirish va rollar — top menejerda.</i>`
+      ? `📅 <b>Davomat</b> · ⚠️ <b>Xavf ostida</b>\n🆕 <b>Yangi talabalar</b> · 🎧 <b>Menejerlar</b>\n📈 <b>Statistika</b> · 🧾 <b>Xarajatlar</b> · 💵 <b>Naqd inkassa</b>\n🔔 <b>Qo‘ng‘iroqchalar</b> · 💲 <b>Narx nazorati</b> (ko‘rish)\n🔴 <b>Qarzdorlar</b> · 🔍 <b>O‘quvchi</b>\n👩‍🏫 <b>O‘qituvchilar</b> · 📋 <b>Vazifalar</b>\n<i>Kassa, SMS, narx o‘zgartirish va rollar — top menejerda.</i>`
       : r === 'service'
       ? `📅 <b>Davomat</b> — bugun kelmaganlar: qo‘ng‘iroq qilib izoh yozing\n⚠️ <b>Xavf ostida</b> — ketma-ket kelmayotganlar\n🆕 <b>Yangi talabalar</b> · 📊 <b>Mening natijam</b> — konversiyangiz\n🔍 <b>O‘quvchi</b> · 🔴 <b>Qarzdorlar</b> · ➕ <b>Lid</b>`
       : `📊 <b>Mening natijam</b> — aktiv, kelgan, ketgan, konversiya\n📋 <b>Vazifalarim</b> — top menejer topshiriqlari`;
@@ -1237,6 +1316,7 @@ async function onMessage(m: any) {
   if (isMgr && (text === B_STATS || cmd === '/statistika')) return stats(chatId);
   if (isMgr && (text === B_EXP || cmd === '/xarajat')) return expenses(chatId, 'week');
   if (isMgr && cmd === '/xarajat_oy') return expenses(chatId, 'month');
+  if (isMgr && (text === B_INK || cmd === '/inkassa')) return inkassa(chatId, 'week');
   if (isMgr && (text === B_TEACH || cmd === '/oqituvchilar')) return teachersView(chatId, 'm');
   if (isMgr && (text === B_TASKS || cmd === '/vazifalar')) return tasksTop(chatId);
   if (isTop && (text === B_ADMIN || cmd === '/boshqaruv')) return adminPanel(chatId);
@@ -1405,6 +1485,7 @@ async function onCallback(q: any) {
   if (data === 'dbt:active' || data === 'dbt:all') return debtors(chatId, data === 'dbt:all' ? 'all' : 'active');
   if (data === 'st:sync') { await sync(chatId); return stats(chatId); }
   if (data.startsWith('ex:')) return expenses(chatId, data.slice(3) as Period);
+  if (data.startsWith('ink:')) return inkassa(chatId, data.slice(4) as InkP);
   if (data.startsWith('exc:')) return expenseCategory(chatId, Number(data.slice(4)));
   if (data.startsWith('pay:')) {
     const st = (s.data.found || [])[Number(data.slice(4))];
