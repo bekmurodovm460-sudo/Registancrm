@@ -397,6 +397,49 @@ async function sendSms(base: string, headers: Record<string, string>, b: any) {
   return { ok: sent > 0 && failed === 0, sent, failed, errors };
 }
 
+// 🔔 Kassa qo'ng'iroqchalari (shift-bells): guruhdan chiqqan yoki narxi o'zgargan o'quvchilar
+async function bells(base: string, headers: Record<string, string>) {
+  const list = await pageAll(base, headers, '/shift-bells-pagin', {}, 100, 10);
+  return list.map((b: any) => ({
+    id: b._id, type: b.oldPrice !== undefined || b.newPrice !== undefined ? 'price' : 'left',
+    studentId: b.student?._id, name: fullName(b.student), phone: b.student?.phoneNumber || '', groupId: b.group?._id, group: b.group?.name || '',
+    oldPrice: b.oldPrice ?? null, newPrice: b.newPrice ?? null, leftAt: b.leftAt || null, joinedAt: b.joinedAt || null, reason: b.leftReason || b.reason || ''
+  }));
+}
+// 💲 Narx nazorati: guruhdoshlari to'laydigan narxdan (guruh me'yori) farq qiladigan aktiv o'quvchilar
+async function priceAudit(base: string, headers: Record<string, string>, branchId: string) {
+  const [ts, courses, groups] = await Promise.all([
+    pageAll(base, headers, '/teacher-students-pagin', {}, 200, 40),
+    pageAll(base, headers, '/courses-pagin', {}, 100, 5).catch(() => []),
+    pageAll(base, headers, '/group-pagin', {}, 100, 10).catch(() => [])
+  ]);
+  const coursePrice = new Map<string, { name: string; price: number | null }>();
+  courses.forEach((c: any) => coursePrice.set(c._id, { name: c.name, price: (c.branches || []).find((b: any) => b.branchId === branchId)?.price ?? null }));
+  const groupCourse = new Map<string, string>();
+  groups.forEach((g: any) => groupCourse.set(g._id, g.courseId || g.course?._id));
+  const byGroup = new Map<string, any[]>();
+  for (const row of ts) for (const g of row.groups || []) {
+    if (g.state !== 'active') continue;
+    const gid = g.group?._id;
+    (byGroup.get(gid) || byGroup.set(gid, []).get(gid)!).push({ studentId: row.student?._id, name: fullName(row.student), phone: row.student?.phoneNumber || '', teacher: fullName(row.teacher), groupId: gid, group: g.group?.name || '', price: Number(g.price) || 0, joinedAt: g.joinedAt });
+  }
+  const out: any[] = [];
+  for (const [gid, list] of byGroup) {
+    const freq = new Map<number, number>();
+    list.forEach(x => freq.set(x.price, (freq.get(x.price) || 0) + 1));
+    const [norm, normCount] = [...freq.entries()].sort((a, b) => b[1] - a[1])[0] || [0, 0];
+    const course = coursePrice.get(groupCourse.get(gid) || '');
+    const expected = normCount >= 2 ? norm : (course?.price ?? norm);
+    for (const x of list) if (x.price !== expected) out.push({ ...x, expected, coursePrice: course?.price ?? null, course: course?.name || '', groupSize: list.length, normCount, discount: /\d+\s*%|chegirma|aka-?uka|opa-?singil/i.test(x.name) });
+  }
+  return out.sort((a, b) => a.group.localeCompare(b.group) || a.name.localeCompare(b.name));
+}
+async function deleteBell(base: string, headers: Record<string, string>, id: string) {
+  const res = await fetch(`${base}/shift-bell/${encodeURIComponent(id)}`, { method: 'DELETE', headers });
+  const out = await res.json().catch(() => ({}));
+  return res.ok && (!out?.code || out.code === 0) ? { ok: true } : { ok: false, error: `${res.status} ${out?.message || ''}`.trim() };
+}
+
 async function kassaCancel(base: string, headers: Record<string, string>, b: any) {
   if (!b.transactionId) return { ok: false, error: 'transactionId kerak' };
   const res = await fetch(`${base}/cashbox/transaction/cancel`, { method: 'POST', headers, body: JSON.stringify({ transactionId: b.transactionId }) });
@@ -426,7 +469,7 @@ Deno.serve(async req => {
     const branches = auth.branches.map((b: any) => ({ id: String(b._id), name: b.name }));
     if (body.action === 'test') return json({ ok: true, branches });
     // 'cron' roli = ichki chaqiruv (pg_cron yoki Telegram bot admin bo'limi, x-cron-secret bilan)
-    if (['meta', 'pushLead', 'kassaMeta', 'kassaPay', 'kassaCancel', 'kassaTx', 'read', 'employees', 'absences', 'absenceRisk', 'commentsFor', 'comment', 'teacherReport', 'smsMeta', 'sendSms'].includes(body.action)) {
+    if (['meta', 'pushLead', 'kassaMeta', 'kassaPay', 'kassaCancel', 'kassaTx', 'read', 'employees', 'absences', 'absenceRisk', 'commentsFor', 'comment', 'teacherReport', 'smsMeta', 'sendSms', 'bells', 'bellDelete', 'priceAudit', 'changePrice'].includes(body.action)) {
       const br = body.branchId ? branches.find(b => b.id === body.branchId) : branches[0];
       if (!br) throw new Error('Filial topilmadi');
       const headers = { ...baseHeaders(site), Authorization: `Bearer ${auth.token}`, branch: br.id };
@@ -443,6 +486,21 @@ Deno.serve(async req => {
       if (body.action === 'absenceRisk') return json({ ok: true, rows: await absenceRisk(base, headers, Number(body.days) || 21) });
       if (body.action === 'commentsFor') return json({ ok: true, comments: await commentsFor(base, headers, body.studentIds || [], Math.min(Number(body.limit) || 5, 20)) });
       if (body.action === 'teacherReport') return json(await teacherReport(base, headers, body));
+      if (body.action === 'bells') return json({ ok: true, bells: await bells(base, headers) });
+      if (body.action === 'priceAudit') return json({ ok: true, rows: await priceAudit(base, headers, br.id) });
+      if (body.action === 'bellDelete' || body.action === 'changePrice') {
+        if (role !== 'cron' && role !== 'admin') return json({ ok: false, error: 'Ruxsat yo‘q' }, 403);
+        let r: any;
+        if (body.action === 'bellDelete') r = await deleteBell(base, headers, String(body.id || ''));
+        else {
+          const price = Math.round(Number(body.price) || 0);
+          if (!body.studentId || !body.groupId || price <= 0) return json({ ok: false, error: 'studentId, groupId va narx kerak' });
+          const out = await postJson(base, headers, '/group-student-change-price', { studentId: body.studentId, groupId: body.groupId, price });
+          r = { ok: !out?.code || out.code === 0 };
+        }
+        await admin.from('crm_sync_log').insert({ source: 'edutizim-fix', ok: !!r.ok, message: `${body.action} ${body.id || body.studentId || ''} ${body.price || ''} · ${body.by || ''}`.slice(0, 300) });
+        return json(r);
+      }
       if (body.action === 'smsMeta') return json({ ok: true, ...(await smsMeta(base, headers, !!body.raw)) });
       if (body.action === 'sendSms') {
         if (role !== 'cron' && role !== 'admin') return json({ ok: false, error: 'Ruxsat yo‘q' }, 403);
