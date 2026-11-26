@@ -1,6 +1,7 @@
 -- =========================================================
 -- LAYLO PARDAYEVA KITOBXONLIK AKADEMIYASI — baza sxemasi
--- Mustaqil Supabase loyiha. Barcha jadvallar `ka_` prefiksi bilan.
+-- Barcha jadvallar `ka_` prefiksi bilan — alohida loyihada ham, boshqa tizim (Registan CRM) bilan
+-- umumiy Supabase loyihada ham to'qnashuvsiz ishlaydi.
 --
 --  Xodimlar (CRM): admin · moderator (ustoz) · kassir
 --  A'zolar (Telegram): ro'yxat → kitob (PDF/audio + qo'llanma) → kitob testi →
@@ -31,10 +32,13 @@ returns boolean language sql stable security definer set search_path = public as
   select coalesce((select role from public.ka_staff where id = auth.uid()) = any(roles), false);
 $$;
 
--- Birinchi ro'yxatdan o'tgan xodim — admin, qolganlari admin rol bergunicha "pending"
+-- Supabase Auth Registan CRM bilan umumiy bo'lishi mumkin, shuning uchun xodim yozuvi faqat
+-- Akademiya panelidan ro'yxatdan o'tganda (metadata app = 'ka') yoki ka_join() chaqirilganda yaratiladi.
+-- Birinchi xodim — admin, qolganlari admin rol bergunicha "pending".
 create or replace function public.ka_handle_new_user()
 returns trigger language plpgsql security definer set search_path = public as $$
 begin
+  if coalesce(new.raw_user_meta_data->>'app', '') <> 'ka' then return new; end if;
   insert into public.ka_staff (id, email, full_name, role)
   values (new.id, new.email,
           coalesce(new.raw_user_meta_data->>'full_name', split_part(new.email, '@', 1)),
@@ -45,6 +49,23 @@ end $$;
 drop trigger if exists ka_on_auth_user_created on auth.users;
 create trigger ka_on_auth_user_created after insert on auth.users
   for each row execute function public.ka_handle_new_user();
+
+-- Mavjud hisob (masalan Registan xodimi) bilan Akademiya paneliga birinchi kirganda
+create or replace function public.ka_join()
+returns text language plpgsql security definer set search_path = public as $$
+declare r text;
+begin
+  if auth.uid() is null then raise exception 'login kerak'; end if;
+  insert into public.ka_staff (id, email, full_name, role)
+  select u.id, u.email, coalesce(u.raw_user_meta_data->>'full_name', split_part(u.email, '@', 1)),
+         case when not exists (select 1 from public.ka_staff where role = 'admin') then 'admin' else 'pending' end
+  from auth.users u where u.id = auth.uid()
+  on conflict (id) do nothing;
+  select role into r from public.ka_staff where id = auth.uid();
+  return r;
+end $$;
+revoke all on function public.ka_join() from public, anon;
+grant execute on function public.ka_join() to authenticated;
 
 -- =========================================================
 -- 2. Sozlamalar va maxfiy kalitlar
@@ -119,7 +140,7 @@ create table if not exists public.ka_books (
   description text,
   pages int,
   cover_url text,
-  pdf_path text,             -- Supabase Storage (books bucket) yo'li
+  pdf_path text,             -- Supabase Storage (ka-books bucket) yo'li
   pdf_file_id text,          -- Telegram file_id (bot birinchi yuborganda yoki xodim botga yuklaganda saqlanadi)
   audio_path text,
   audio_file_id text,
@@ -520,21 +541,21 @@ revoke all on function public.ka_handle_new_user() from public, anon, authentica
 -- 12. Storage: kitob fayllari (yopiq) va muqovalar (ochiq)
 -- =========================================================
 insert into storage.buckets (id, name, public, file_size_limit)
-values ('books', 'books', false, 52428800), ('covers', 'covers', true, 5242880)
+values ('ka-books', 'ka-books', false, 52428800), ('ka-covers', 'ka-covers', true, 5242880)
 on conflict (id) do nothing;
 
 drop policy if exists ka_books_files_read on storage.objects;
 create policy ka_books_files_read on storage.objects for select to authenticated
-  using (bucket_id in ('books', 'covers') and public.ka_is(array['admin','moderator']));
+  using (bucket_id in ('ka-books', 'ka-covers') and public.ka_is(array['admin','moderator']));
 drop policy if exists ka_books_files_write on storage.objects;
 create policy ka_books_files_write on storage.objects for insert to authenticated
-  with check (bucket_id in ('books', 'covers') and public.ka_is(array['admin','moderator']));
+  with check (bucket_id in ('ka-books', 'ka-covers') and public.ka_is(array['admin','moderator']));
 drop policy if exists ka_books_files_update on storage.objects;
 create policy ka_books_files_update on storage.objects for update to authenticated
-  using (bucket_id in ('books', 'covers') and public.ka_is(array['admin','moderator']));
+  using (bucket_id in ('ka-books', 'ka-covers') and public.ka_is(array['admin','moderator']));
 drop policy if exists ka_books_files_delete on storage.objects;
 create policy ka_books_files_delete on storage.objects for delete to authenticated
-  using (bucket_id in ('books', 'covers') and public.ka_is(array['admin']));
+  using (bucket_id in ('ka-books', 'ka-covers') and public.ka_is(array['admin']));
 
 -- =========================================================
 -- 13. Realtime (CRM jonli yangilanadi)

@@ -135,7 +135,7 @@ export async function sendBookFile(chatId: number, book: any, kind: 'pdf' | 'aud
     if (r.ok) return true;
   }
   if (book[pathCol]) {
-    const { data: signed } = await admin.storage.from('books').createSignedUrl(book[pathCol], 600);
+    const { data: signed } = await admin.storage.from('ka-books').createSignedUrl(book[pathCol], 600);
     if (signed?.signedUrl) {
       const r = await tg(method, { chat_id: chatId, [field]: signed.signedUrl, caption, parse_mode: 'HTML', protect_content: true });
       if (r.ok) {

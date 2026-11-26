@@ -64,7 +64,7 @@ $('a-btn').onclick = async () => {
   $('a-msg').textContent = '';
   if (!email || password.length < 6) { $('a-msg').textContent = 'Email va kamida 6 belgili parol kiriting'; return; }
   const r = signUp
-    ? await sb.auth.signUp({ email, password, options: { data: { full_name: $('a-name').value.trim() || email.split('@')[0] }, emailRedirectTo: location.origin } })
+    ? await sb.auth.signUp({ email, password, options: { data: { app: 'ka', full_name: $('a-name').value.trim() || email.split('@')[0] }, emailRedirectTo: location.origin } })
     : await sb.auth.signInWithPassword({ email, password });
   if (r.error) { $('a-msg').textContent = r.error.message; return; }
   if (signUp && !r.data.session) { $('a-msg').style.color = '#059669'; $('a-msg').textContent = 'Emailingizga tasdiqlash xati yuborildi.'; return; }
@@ -76,7 +76,11 @@ async function boot() {
   const { data: { session } } = await sb.auth.getSession();
   ['auth', 'app', 'pending'].forEach(id => $(id).classList.add('hidden'));
   if (!session) { $('auth').classList.remove('hidden'); return; }
-  const { data: me } = await sb.from('ka_staff').select('*').eq('id', session.user.id).maybeSingle();
+  let { data: me } = await sb.from('ka_staff').select('*').eq('id', session.user.id).maybeSingle();
+  if (!me) { // boshqa tizim (Registan CRM) hisobi bilan kirgan — Akademiyaga ariza
+    await sb.rpc('ka_join');
+    ({ data: me } = await sb.from('ka_staff').select('*').eq('id', session.user.id).maybeSingle());
+  }
   if (!me || me.role === 'pending') { $('pending').classList.remove('hidden'); return; }
   S.me = me;
   $('me-name').textContent = me.full_name || me.email;
@@ -366,14 +370,14 @@ window.saveBook = async id => {
       if (!f) continue;
       if (f.size > 50 * 1024 * 1024) throw new Error(`${kind}: 50 MB dan katta — botda /yukla dan foydalaning`);
       $('b-progress').textContent = `⏳ ${f.name} yuklanmoqda…`;
-      row[`${kind}_path`] = await upload('books', f, kind);
+      row[`${kind}_path`] = await upload('ka-books', f, kind);
       row[`${kind}_file_id`] = null; // yangi fayl — Telegram nusxasi qayta yaratiladi
     }
     const cover = $('bf-cover').files[0];
     if (cover) {
       $('b-progress').textContent = '⏳ Muqova yuklanmoqda…';
-      const p = await upload('covers', cover, 'c');
-      row.cover_url = sb.storage.from('covers').getPublicUrl(p).data.publicUrl;
+      const p = await upload('ka-covers', cover, 'c');
+      row.cover_url = sb.storage.from('ka-covers').getPublicUrl(p).data.publicUrl;
     }
   } catch (e) { $('b-save').disabled = false; $('b-progress').textContent = ''; return toast(e.message || String(e), false); }
   const { error } = id ? await sb.from('ka_books').update(row).eq('id', id) : await sb.from('ka_books').insert(row);

@@ -1,6 +1,6 @@
 # 📚 Laylo Pardayeva Kitobxonlik Akademiyasi
 
-Mustaqil tizim: **Telegram bot + Mini App + CRM**. Registan CRM bilan umumiy kodi ham, umumiy bazasi ham yo‘q — alohida Supabase loyiha, alohida Netlify sayt va alohida bot.
+**Telegram bot + Mini App + CRM**. Registan CRM bilan umumiy kodi yo‘q va alohida bot ishlatadi. Bepul Supabase loyiha chegarasi sabab jadvallar (`ka_*`), funksiyalar (`ka-*`) va storage (`ka-books`, `ka-covers`) Registan bilan **bitta Supabase loyihada** (`bbnakgvgoydahagiwltn`) joylashgan; Supabase Auth umumiy, lekin Akademiya xodimlari alohida `ka_staff` jadvalida — Registan hisobi bilan kirgan odam Akademiyada “kutilmoqda” bo‘ladi va admin rol bermaguncha hech narsa ko‘rmaydi.
 
 ## A’zo yo‘li (botda)
 
@@ -61,7 +61,14 @@ supabase/
   functions/_shared           common.ts, academy.ts, cert.ts (sertifikat: resvg-wasm)
 ```
 
-## Joylash
+## Joriy holat
+
+- ✅ Baza: `001_schema.sql`, `002_cron.sql` qo‘llangan; `functions_url` yozilgan, `ka-cron` har 5 daqiqada ishlaydi.
+- ✅ Funksiyalar: `ka-bot`, `ka-admin`, `ka-miniapp` joylangan (`--no-verify-jwt`).
+- ⏳ Sayt: Netlify loyihasi `kitobxonlik-akademiya` yaratilgan, lekin hisobdagi Netlify kreditlari tugagani uchun joylash to‘xtatilgan.
+- ⏳ Bot: @BotFather tokeni CRM’ga kiritilishi kerak.
+
+## Joylash (yangi loyihaga ko‘chirish uchun)
 
 1. **Supabase:** yangi loyiha → `001_schema.sql`, `002_cron.sql` ni SQL Editor’da ishga tushiring, so‘ng:
    ```sql
