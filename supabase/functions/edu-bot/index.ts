@@ -4,6 +4,7 @@
 // Kirish: CRM → 🤖 Telegram Bot → "Bot adminlari" (Telegram ID) yoki admin chat ID.
 // Edutizim bilan ishlash edutizim-sync funksiyasi orqali (x-cron-secret, ichki chaqiruv).
 // =========================================================
+import { inkassaReport, isMoveOut, P_INK, type InkP } from '../_shared/inkassa.ts';
 import { admin, getSecret, getSetting, SUPABASE_URL, tg, webhookSecret } from '../_shared/common.ts';
 import { AsyncLocalStorage } from 'node:async_hooks';
 import * as XLSX from 'npm:xlsx@0.18.5';
@@ -318,99 +319,15 @@ async function expenses(chatId: number, p: Period = 'week') {
   await send(chatId, text.slice(0, 4000), { reply_markup: { inline_keyboard: rows } });
 }
 
-// =========================================================
-// 💵 Naqd inkassa — Edutizim kassasidagi "Naqd Inkassa" to'lov usuli:
-// kirim (to'lovlar), topshirilgan (transfer) va qoldiq; ustoz (izoh), kun va hafta bo'yicha
-// =========================================================
-const isInk = (m: string) => /inkassa/i.test(String(m || ''));
-const WD = ['Du', 'Se', 'Ch', 'Pa', 'Ju', 'Sh', 'Ya'];
-const dayKey = (ms: number) => dayStart(ms);
-const ustozOf = (c: string) => {
-  const s = String(c || '').replace(/\s+/g, ' ').trim();
-  if (!s || /^[.\-–—\s]*$/.test(s)) return 'Izohsiz';
-  const n = s.toLowerCase().replace(/ustoza\b/g, 'ustoz').replace(/[’'`ʻʼ‘]/g, '\'');
-  return n.charAt(0).toUpperCase() + n.slice(1);
-};
-async function inkTx(from: number, to: number) {
-  const meta = await edu('kassaMeta');
-  if (!meta.ok) throw new Error(meta.error || 'Edutizim kassasi');
-  const res = await Promise.all((meta.cashboxes || []).map((c: any) => edu('kassaTx', { cashboxId: c.id, dateFrom: new Date(from).toISOString(), dateTo: new Date(to).toISOString() })));
-  const err = res.find((r: any) => !r.ok);
-  if (err) throw new Error(err.error || 'Edutizim xatosi');
-  const all = res.flatMap((r: any) => r.tx || []).filter((t: any) => !t.cancelled);
-  // Ko'chirma: "Naqd"dan chiqim + bir vaqtda (≤10 s) xuddi shu summada "Naqd Inkassa"ga kirim
-  const outs = all.filter((t: any) => t.type === 'payOut' && !isInk(t.method) && /naqd/i.test(t.method));
-  const used = new Set<any>();
-  const ink = all.filter((t: any) => isInk(t.method));
-  ink.forEach((t: any) => {
-    if (t.type !== 'payIn') return;
-    const tm = new Date(t.date).getTime();
-    const o = outs.find((x: any) => !used.has(x) && x.amount === t.amount && Math.abs(new Date(x.date).getTime() - tm) <= 10_000);
-    if (o) { used.add(o); t.moved = true; }
-  });
-  return ink;
-}
-// Xarajatlardan chiqariladi: kategoriyasiz "Naqd" chiqim — bu Naqd Inkassa'ga ko'chirma, xarajat emas
-const isMoveOut = (t: any) => t.type === 'payOut' && (!t.category || t.category === '—') && !t.subtype && !t.person && /naqd/i.test(t.method || '') && !isInk(t.method);
-type InkP = 'week' | 'pweek' | 'month' | 'pmonth' | 'w8';
-async function inkassa(chatId: number, p: InkP = 'week') {
+// 💵 Naqd inkassa (Shanba–Juma davri, Juma kuni bankka) — hisob _shared/inkassa.ts da
+async function inkassa(chatId: number, p0: string = 'cur') {
+  const p = (({ week: 'cur', pweek: 'prev' } as Record<string, InkP>)[p0] || p0) as InkP;
+  if (!P_INK[p]) return;
   await typing(chatId);
-  const now = Date.now();
-  const r = p === 'w8' ? (() => { const w = range('week', now); return { from: w.from - 7 * 7 * DAY, to: now }; })() : range(p as Period, now);
-  let tx: any[];
-  try { tx = await inkTx(r.from, r.to); } catch (e) { return void send(chatId, `⚠️ Kassa tarixini olib bo‘lmadi: ${esc((e as Error).message)}`, { reply_markup: menu() }); }
-  const ins = tx.filter(t => t.type === 'payIn'), outs = tx.filter(t => t.type === 'transfer' || t.type === 'payOut');
-  const inSum = ins.reduce((a, t) => a + t.amount, 0), outSum = outs.reduce((a, t) => a + t.amount, 0);
-  const moved = ins.filter(t => t.moved), direct = ins.filter(t => !t.moved);
-  const movedSum = moved.reduce((a, t) => a + t.amount, 0), directSum = inSum - movedSum;
-  const label = p === 'w8' ? `Oxirgi 8 hafta (${dmy(r.from)}–${dmy(r.to)})` : `${P_LABEL[p]} (${dmy(r.from)}–${dmy(r.to)})`;
-  const bal = inSum - outSum;
-  const lines = [
-    `💵 <b>Naqd inkassa · ${label}</b>`, '',
-    `📥 Jami kirim: <b>${mln(inSum)}</b>`,
-    `   🧑‍🎓 To‘g‘ridan-to‘g‘ri to‘lovlar: <b>${mln(directSum)}</b> · ${direct.length} ta`,
-    `   🔁 Naqddan ko‘chirilgan: <b>${mln(movedSum)}</b> · ${moved.length} marta`,
-    `📤 Topshirilgan: <b>${mln(outSum)}</b> · ${outs.length} marta`,
-    `⚖️ Qoldiq (kirim − topshirilgan): <b>${mln(bal)}</b>${bal > 0 ? ' — hali topshirilmagan' : bal < 0 ? ' — davrdan oldingi qoldiq ham topshirilgan' : ' ✅'}`
-  ];
-  if (p === 'w8') {
-    const weeks = new Map<number, { i: number; o: number; n: number; m: number }>();
-    const wk = (ms: number) => { const d = dayKey(ms); const dow = (new Date(d + TZ).getUTCDay() + 6) % 7; return d - dow * DAY; };
-    for (let w = r.from; w <= now; w += 7 * DAY) weeks.set(wk(w), { i: 0, o: 0, n: 0, m: 0 });
-    tx.forEach(t => { const k = wk(new Date(t.date).getTime()); const x = weeks.get(k) || { i: 0, o: 0, n: 0, m: 0 }; if (t.type === 'payIn') { x.i += t.amount; x.n++; if (t.moved) x.m += t.amount; } else x.o += t.amount; weeks.set(k, x); });
-    const max = Math.max(1, ...[...weeks.values()].map(x => x.i));
-    lines.push('', '<b>Haftalar bo‘yicha (kirim · shundan ko‘chirma · topshirildi):</b>');
-    [...weeks.entries()].sort((a, b) => b[0] - a[0]).forEach(([k, x]) =>
-      lines.push(`${dmy(k)}–${dmy(k + 6 * DAY)} · <b>${mln(x.i)}</b> · 🔁 ${mln(x.m)} · ${mln(x.o)}${x.i !== x.o ? ` · ⚖️ ${mln(x.i - x.o)}` : ''}\n   ${bar(x.i, max)} ${x.n} ta`));
-  } else {
-    // Ustozlar bo'yicha (to'lov izohida yozilgan)
-    const by = new Map<string, { s: number; n: number }>();
-    direct.forEach(t => { const k = ustozOf(t.comment); const x = by.get(k) || { s: 0, n: 0 }; x.s += t.amount; x.n++; by.set(k, x); });
-    const list = [...by.entries()].sort((a, b) => b[1].s - a[1].s);
-    if (list.length) {
-      lines.push('', '<b>👩‍🏫 To‘lovlar ustozlar bo‘yicha (izohdan):</b>');
-      list.slice(0, 15).forEach(([k, x], i) => lines.push(`${i + 1}. ${esc(k)} — <b>${mln(x.s)}</b> · ${x.n} ta · ${pct(x.s, directSum)}%`));
-    }
-    // Kunlar bo'yicha
-    const days = new Map<number, { i: number; o: number; m: number }>();
-    tx.forEach(t => { const k = dayKey(new Date(t.date).getTime()); const x = days.get(k) || { i: 0, o: 0, m: 0 }; if (t.type === 'payIn') { x.i += t.amount; if (t.moved) x.m += t.amount; } else x.o += t.amount; days.set(k, x); });
-    if (days.size) {
-      lines.push('', '<b>📅 Kunlar bo‘yicha (kirim · topshirildi):</b>');
-      [...days.entries()].sort((a, b) => a[0] - b[0]).forEach(([k, x]) =>
-        lines.push(`${WD[(new Date(k + TZ).getUTCDay() + 6) % 7]} ${dmy(k)} · ${mln(x.i)}${x.m ? ` (🔁 ${mln(x.m)})` : ''} · ${mln(x.o)}${x.i !== x.o ? ` ⚠️ ${mln(x.i - x.o)}` : ' ✅'}`));
-    }
-    const pays = [...direct].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-    if (pays.length) {
-      lines.push('', `<b>🧾 To‘g‘ridan-to‘g‘ri to‘lovlar${pays.length > 20 ? ' (oxirgi 20)' : ''}:</b>`);
-      pays.slice(0, 20).forEach(t => lines.push(`• ${dmy(new Date(t.date).getTime())} · ${esc(t.person || t.category || '—')} — <b>${sum(t.amount)}</b>${ustozOf(t.comment) !== 'Izohsiz' ? ` · <i>${esc(ustozOf(t.comment))}</i>` : ''}`));
-    }
-  }
-  if (!tx.length) lines.push('', 'Bu davrda “Naqd Inkassa” usulida amal yo‘q.');
-  const ps: InkP[] = ['week', 'pweek', 'month', 'pmonth'];
-  const kb = { inline_keyboard: [ps.slice(0, 2).map(x => ib((x === p ? '• ' : '') + P_LABEL[x as Period], `ink:${x}`)), ps.slice(2).map(x => ib((x === p ? '• ' : '') + P_LABEL[x as Period], `ink:${x}`)), [ib((p === 'w8' ? '• ' : '') + '📊 Oxirgi 8 hafta', 'ink:w8')]] };
-  let text = lines.join('\n');
-  if (text.length > 4000) text = text.slice(0, 3990) + '\n…';
-  await send(chatId, text, { reply_markup: kb });
+  let text: string;
+  try { text = await inkassaReport(edu, p); } catch (e) { return void send(chatId, `⚠️ Kassa tarixini olib bo‘lmadi: ${esc((e as Error).message)}`, { reply_markup: menu() }); }
+  const b = (x: InkP) => ib((x === p ? '• ' : '') + P_INK[x], `ink:${x}`);
+  await send(chatId, text, { reply_markup: { inline_keyboard: [[b('cur'), b('prev')], [b('month'), b('pmonth')], [b('w8')]] } });
 }
 
 async function expenseCategory(chatId: number, idx: number) {
@@ -589,12 +506,12 @@ const C = (command: string, description: string) => ({ command, description });
 const CMDS: Record<string, any[]> = {
   top: [C('start', '🏠 Bosh menyu'), C('davomat', '📅 Davomat — kelmaganlar va izohlar'), C('xavf', '⚠️ Xavf ostida — notcoming'),
     C('kirim', '💰 Kassaga kirim'), C('chiqim', '💸 Kassadan chiqim'), C('statistika', '📈 Aktiv o‘quvchilar va qarz'),
-    C('xarajat', '🧾 Xarajatlar — haftalik'), C('xarajat_oy', '🗓 Xarajatlar — oylik'), C('inkassa', '💵 Naqd inkassa — haftalik'), C('qarz', '🔴 Qarzdorlar'),
+    C('xarajat', '🧾 Xarajatlar — haftalik'), C('xarajat_oy', '🗓 Xarajatlar — oylik'), C('inkassa', '💵 Naqd inkassa — Juma bankka'), C('qarz', '🔴 Qarzdorlar'),
     C('qidir', '🔍 O‘quvchini qidirish'), C('oqituvchilar', '👩‍🏫 O‘qituvchilar hisoboti va Excel'), C('yangilar', '🆕 Yangi talabalar'), C('menejerlar', '🎧 Menejerlar konversiyasi'), C('vazifalar', '📋 Ustozlar vazifalari'),
     C('lid', '➕ Yangi lid'), C('boshqaruv', '⚙️ Rollar, hisobot, sinxron'), C('akkaunt', '🔑 Edutizim akkauntim'), C('cancel', '❌ Bekor qilish')],
   senior: [C('start', '🏠 Bosh menyu'), C('davomat', '📅 Davomat — kelmaganlar va izohlar'), C('xavf', '⚠️ Xavf ostida — notcoming'),
     C('yangilar', '🆕 Yangi talabalar'), C('menejerlar', '🎧 Menejerlar konversiyasi'), C('statistika', '📈 Aktiv o‘quvchilar va qarz'),
-    C('xarajat', '🧾 Xarajatlar — haftalik'), C('xarajat_oy', '🗓 Xarajatlar — oylik'), C('inkassa', '💵 Naqd inkassa — haftalik'), C('qongiroq', '🔔 Kassa qo‘ng‘iroqchalari'), C('narx', '💲 Narx nazorati'),
+    C('xarajat', '🧾 Xarajatlar — haftalik'), C('xarajat_oy', '🗓 Xarajatlar — oylik'), C('inkassa', '💵 Naqd inkassa — Juma bankka'), C('qongiroq', '🔔 Kassa qo‘ng‘iroqchalari'), C('narx', '💲 Narx nazorati'),
     C('qarz', '🔴 Qarzdorlar'), C('qidir', '🔍 O‘quvchini qidirish'), C('oqituvchilar', '👩‍🏫 O‘qituvchilar hisoboti va Excel'), C('vazifalar', '📋 Ustozlar vazifalari'),
     C('lid', '➕ Yangi lid'), C('akkaunt', '🔑 Edutizim akkauntim'), C('cancel', '❌ Bekor qilish')],
   service: [C('start', '🏠 Bosh menyu'), C('davomat', '📅 Davomat — kelmaganlar va izohlar'), C('xavf', '⚠️ Xavf ostida — notcoming'),
@@ -1336,7 +1253,7 @@ async function onMessage(m: any) {
   if (isMgr && (text === B_STATS || cmd === '/statistika')) return stats(chatId);
   if (isMgr && (text === B_EXP || cmd === '/xarajat')) return expenses(chatId, 'week');
   if (isMgr && cmd === '/xarajat_oy') return expenses(chatId, 'month');
-  if (isMgr && (text === B_INK || cmd === '/inkassa')) return inkassa(chatId, 'week');
+  if (isMgr && (text === B_INK || cmd === '/inkassa')) return inkassa(chatId, 'cur');
   if (isMgr && (text === B_TEACH || cmd === '/oqituvchilar')) return teachersView(chatId, 'm');
   if (isMgr && (text === B_TASKS || cmd === '/vazifalar')) return tasksTop(chatId);
   if (isTop && (text === B_ADMIN || cmd === '/boshqaruv')) return adminPanel(chatId);
@@ -1505,7 +1422,7 @@ async function onCallback(q: any) {
   if (data === 'dbt:active' || data === 'dbt:all') return debtors(chatId, data === 'dbt:all' ? 'all' : 'active');
   if (data === 'st:sync') { await sync(chatId); return stats(chatId); }
   if (data.startsWith('ex:')) return expenses(chatId, data.slice(3) as Period);
-  if (data.startsWith('ink:')) return inkassa(chatId, data.slice(4) as InkP);
+  if (data.startsWith('ink:')) return inkassa(chatId, data.slice(4));
   if (data.startsWith('exc:')) return expenseCategory(chatId, Number(data.slice(4)));
   if (data.startsWith('pay:')) {
     const st = (s.data.found || [])[Number(data.slice(4))];
