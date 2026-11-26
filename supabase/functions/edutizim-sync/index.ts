@@ -238,6 +238,132 @@ async function eduRead(base: string, headers: Record<string, string>, b: any) {
   return { ok: true, total: total ?? items.length, count: items.length, items: b.noItems ? undefined : items, extra, ...(b.raw ? { raw } : {}) };
 }
 
+
+// =========================================================
+// 👥 Xodimlar, 📅 davomat, ⚠️ notcoming xavfi, 💬 izohlar, 👩‍🏫 o'qituvchi hisoboti
+// =========================================================
+async function postJson(base: string, headers: Record<string, string>, path: string, body: unknown) {
+  const res = await fetch(`${base}${path}`, { method: 'POST', headers, body: JSON.stringify(body) });
+  const out = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(`${path}: ${res.status} ${out?.message || ''}`.trim());
+  return out;
+}
+// Ro'yxatni to'liq olish: 1-sahifadan jami son, keyin 6 tadan parallel
+async function pageAll(base: string, headers: Record<string, string>, path: string, body: Record<string, unknown>, limit = 200, maxPages = 40) {
+  const listOfData = (o: any) => { const d = o?.data; return { list: (Array.isArray(d) ? d : Array.isArray(d?.data) ? d.data : []) as any[], total: typeof d?.total === 'number' ? d.total : null }; };
+  const first = listOfData(await postJson(base, headers, path, { ...body, page: 1, limit }));
+  const items = [...first.list];
+  const pages = first.total ? Math.min(maxPages, Math.ceil(first.total / limit)) : 1;
+  for (let p = 2; p <= pages; p += 6) {
+    const batch = [];
+    for (let q = p; q < p + 6 && q <= pages; q++) batch.push(postJson(base, headers, path, { ...body, page: q, limit }).then(listOfData));
+    (await Promise.all(batch)).forEach(r => items.push(...r.list));
+  }
+  return items;
+}
+const fullName = (o: any) => [o?.firstName, o?.lastName].filter(Boolean).join(' ').trim() || o?.fullName || '';
+
+async function employees(base: string, headers: Record<string, string>) {
+  const list = await pageAll(base, headers, '/hr/employees-pagin', {}, 100, 10);
+  return list.map((e: any) => ({ id: e._id, name: fullName(e), phone: e.phoneNumber || '', digits: String(e.phoneNumber || '').replace(/\D/g, '').slice(-9), roles: (e.roles || e.role ? [].concat(e.roles || e.role).map((r: any) => r?.name || r).filter(Boolean) : []), isTeacher: !!(e.isTeacher ?? (e.type === 'teacher')) }));
+}
+
+const mapAtt = (a: any) => ({
+  id: a._id, studentId: a.studentId || a.student?._id, name: fullName(a.student), phone: a.student?.phoneNumber || '', balance: Number(a.student?.balance) || 0,
+  groupId: a.groupId || a.group?._id, group: a.group?.name || '', teacherId: a.teacherId || a.teacher?._id, teacher: fullName(a.teacher),
+  manager: fullName(a.moderator), managerId: a.moderator?._id || a.student?.moderatorId || null, lessonDate: a.lessonDate || a.date, state: a.state,
+  reason: a.reason?.name || a.reason || '', teacherComment: a.comment || '', sgState: a.studentGroup?.state || '', status: a.student?.status?.name || ''
+});
+async function attendance(base: string, headers: Record<string, string>, states: string[], fromDate: string, toDate: string) {
+  const res = await Promise.all(states.map(state => pageAll(base, headers, '/attendance-histoy-pagin', { state, fromDate, toDate }, 200, 30)));
+  return res.flat().map(mapAtt);
+}
+
+// Ketma-ket qoldirilgan darslar: har o'quvchi+guruh bo'yicha oxirgi darslardan boshlab sanaladi
+async function absenceRisk(base: string, headers: Record<string, string>, days = 21) {
+  const to = new Date(), from = new Date(Date.now() - days * 86400_000);
+  const rows = await attendance(base, headers, ['attended', 'reasonable', 'unreasonable'], from.toISOString(), to.toISOString());
+  const by = new Map<string, any[]>();
+  rows.forEach(r => { const k = `${r.studentId}|${r.groupId}`; (by.get(k) || by.set(k, []).get(k)!).push(r); });
+  const out: any[] = [];
+  for (const list of by.values()) {
+    list.sort((a, b) => new Date(b.lessonDate).getTime() - new Date(a.lessonDate).getTime());
+    if (list[0].sgState && list[0].sgState !== 'active') continue;
+    let streak = 0, unr = 0;
+    for (const r of list) { if (r.state === 'attended') break; streak++; if (r.state === 'unreasonable') unr++; }
+    if (streak >= 2) out.push({ ...list[0], streak, unreasonable: unr, dates: list.slice(0, streak).map(r => r.lessonDate) });
+  }
+  return out.sort((a, b) => b.streak - a.streak || a.name.localeCompare(b.name));
+}
+
+async function commentsFor(base: string, headers: Record<string, string>, ids: string[]) {
+  const out: Record<string, any[]> = {};
+  const uniq = [...new Set(ids.filter(Boolean))].slice(0, 150);
+  for (let i = 0; i < uniq.length; i += 8) {
+    await Promise.all(uniq.slice(i, i + 8).map(async id => {
+      try {
+        const r = await postJson(base, headers, '/comments-pagin', { studentId: id, page: 1, limit: 3 });
+        const list = Array.isArray(r?.data?.data) ? r.data.data : [];
+        out[id] = list.map((c: any) => ({ text: c.text || '', by: fullName(c.moderator), at: c.createdAt || c.updatedAt }));
+      } catch { out[id] = []; }
+    }));
+  }
+  return out;
+}
+
+// O'qituvchi hisoboti: guruhlar, aktiv, kelgan, ketgan (arxiv), bitirgan, konversiya (sinov → guruh)
+async function teacherReport(base: string, headers: Record<string, string>, b: any) {
+  const from = new Date(b.fromDate).getTime(), to = new Date(b.toDate).getTime();
+  const inP = (d: any) => { const t = d ? new Date(d).getTime() : NaN; return t >= from && t <= to; };
+  const [ts, trials, emps] = await Promise.all([
+    pageAll(base, headers, '/teacher-students-pagin', b.teacherId ? { teacherId: b.teacherId } : {}, 200, 40),
+    pageAll(base, headers, '/attendance-histoy-pagin', { state: 'trial', fromDate: b.fromDate, toDate: b.toDate, ...(b.teacherId ? { teacherId: b.teacherId } : {}) }, 200, 20).catch(() => []),
+    employees(base, headers).catch(() => [])
+  ]);
+  const T = new Map<string, any>();
+  const get = (t: any) => {
+    const id = t?._id || 'none';
+    if (!T.has(id)) T.set(id, { teacherId: id, name: fullName(t) || '—', phone: t?.phoneNumber || '', groups: new Map<string, { name: string; active: number }>(), active: 0, joined: [], left: [], graduated: [], frozen: 0, trials: new Set<string>(), converted: new Set<string>() });
+    return T.get(id);
+  };
+  for (const row of ts) {
+    if (b.teacherId && row.teacher?._id !== b.teacherId) continue;
+    const t = get(row.teacher);
+    const st = { id: row.student?._id, name: fullName(row.student), phone: row.student?.phoneNumber || '', uuid: row.student?.uuid || '' };
+    let isActive = false;
+    for (const g of row.groups || []) {
+      const gname = g.group?.name || '—';
+      const gi = t.groups.get(g.group?._id) || { name: gname, active: 0 };
+      if (g.state === 'active') { gi.active++; isActive = true; }
+      if (g.state === 'frozen') t.frozen++;
+      t.groups.set(g.group?._id, gi);
+      const leftAt = g.leftAt || g.archivedAt || g.updatedAt;
+      if (inP(g.joinedAt)) t.joined.push({ ...st, group: gname, date: g.joinedAt, price: g.price || 0, state: g.state });
+      if (g.state === 'archive' && inP(leftAt)) t.left.push({ ...st, group: gname, date: leftAt, price: g.price || 0, reason: g.leftReason || '' });
+      if (g.state === 'graduated' && inP(g.graduatedAt)) t.graduated.push({ ...st, group: gname, date: g.graduatedAt });
+    }
+    if (isActive) t.active++;
+  }
+  const joinedByTeacher = new Map<string, Set<string>>();
+  T.forEach((t, id) => joinedByTeacher.set(id, new Set(t.joined.map((j: any) => j.id))));
+  for (const a of trials) {
+    const tid = a.teacher?._id || a.teacherId;
+    if (b.teacherId && tid !== b.teacherId) continue;
+    const t = get(a.teacher || { _id: tid });
+    const sid = a.student?._id || a.studentId;
+    t.trials.add(sid);
+    if (joinedByTeacher.get(tid)?.has(sid)) t.converted.add(sid);
+  }
+  const empPhone = new Map(emps.map((e: any) => [e.id, e.phone]));
+  const teachers = [...T.values()].filter(t => t.teacherId !== 'none' && (t.active || t.joined.length || t.left.length || t.trials.size)).map(t => ({
+    teacherId: t.teacherId, name: t.name, phone: t.phone || empPhone.get(t.teacherId) || '',
+    groups: [...t.groups.values()].filter((g: any) => g.active > 0).map((g: any) => `${g.name} (${g.active})`),
+    active: t.active, frozen: t.frozen, joined: t.joined, left: t.left, graduated: t.graduated,
+    trials: t.trials.size, converted: t.converted.size, conversion: t.trials.size ? Math.round((t.converted.size / t.trials.size) * 100) : null
+  })).sort((a, b) => b.active - a.active);
+  return { ok: true, fromDate: b.fromDate, toDate: b.toDate, teachers };
+}
+
 async function kassaCancel(base: string, headers: Record<string, string>, b: any) {
   if (!b.transactionId) return { ok: false, error: 'transactionId kerak' };
   const res = await fetch(`${base}/cashbox/transaction/cancel`, { method: 'POST', headers, body: JSON.stringify({ transactionId: b.transactionId }) });
@@ -267,7 +393,7 @@ Deno.serve(async req => {
     const branches = auth.branches.map((b: any) => ({ id: String(b._id), name: b.name }));
     if (body.action === 'test') return json({ ok: true, branches });
     // 'cron' roli = ichki chaqiruv (pg_cron yoki Telegram bot admin bo'limi, x-cron-secret bilan)
-    if (['meta', 'pushLead', 'kassaMeta', 'kassaPay', 'kassaCancel', 'kassaTx', 'read'].includes(body.action)) {
+    if (['meta', 'pushLead', 'kassaMeta', 'kassaPay', 'kassaCancel', 'kassaTx', 'read', 'employees', 'absences', 'absenceRisk', 'commentsFor', 'comment', 'teacherReport'].includes(body.action)) {
       const br = body.branchId ? branches.find(b => b.id === body.branchId) : branches[0];
       if (!br) throw new Error('Filial topilmadi');
       const headers = { ...baseHeaders(site), Authorization: `Bearer ${auth.token}`, branch: br.id };
@@ -279,6 +405,18 @@ Deno.serve(async req => {
       }
       if (body.action === 'kassaTx') return json(await kassaTx(base, headers, body));
       if (body.action === 'read') return json(await eduRead(base, headers, body));
+      if (body.action === 'employees') return json({ ok: true, employees: await employees(base, headers) });
+      if (body.action === 'absences') return json({ ok: true, rows: await attendance(base, headers, ['reasonable', 'unreasonable'], body.fromDate, body.toDate) });
+      if (body.action === 'absenceRisk') return json({ ok: true, rows: await absenceRisk(base, headers, Number(body.days) || 21) });
+      if (body.action === 'commentsFor') return json({ ok: true, comments: await commentsFor(base, headers, body.studentIds || []) });
+      if (body.action === 'teacherReport') return json(await teacherReport(base, headers, body));
+      if (body.action === 'comment') {
+        if (role !== 'cron' && role !== 'admin') return json({ ok: false, error: 'Ruxsat yo‘q' }, 403);
+        const text = String(body.text || '').trim().slice(0, 1000);
+        if (!body.studentId || !text) return json({ ok: false, error: 'studentId va matn kerak' });
+        const r = await postJson(base, headers, '/comment', { studentId: body.studentId, text });
+        return json({ ok: !r?.code, id: r?.data?._id || null });
+      }
       if (body.action === 'kassaCancel') {
         if (role !== 'cron' && role !== 'admin') return json({ ok: false, error: 'Faqat admin' }, 403);
         return json(await kassaCancel(base, headers, body));
