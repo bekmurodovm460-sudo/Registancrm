@@ -39,6 +39,8 @@ async function crmAiKeyStatus() {
   const box = document.getElementById('ai-key-status'); if (!box) return;
   const st = await secretStatus().catch(() => ({}));
   box.innerHTML = st.anthropic_api_key ? '✅ Kalit kiritilgan' : '⚪ Kalit kiritilmagan — AI yordamchi o‘chiq';
+  const smsBox = document.getElementById('sms-key-status');
+  if (smsBox) smsBox.innerHTML = st.eskiz_email && st.eskiz_password ? '✅ Eskiz ulangan' : '⚪ Eskiz kiritilmagan — SMS yuborilmaydi';
   const gh = document.getElementById('gh-key-status');
   if (gh) gh.innerHTML = st.github_dispatch_token ? '✅ Kiritilgan — video 1–3 daqiqada' : '⚪ Kiritilmagan — video 5–10 daqiqada';
 }
@@ -52,6 +54,20 @@ async function crmSaveGhKey(remove = false) {
   crmAiKeyStatus();
 }
 window.crmSaveGhKey = crmSaveGhKey;
+window.crmSaveEskiz = async () => {
+  const e = document.getElementById('eskiz-email').value.trim(), p = document.getElementById('eskiz-pass').value;
+  if (!e || !p) return showToast('Email va parolni kiriting', '⚠️');
+  try { await setSecret('eskiz_email', e); await setSecret('eskiz_password', p); } catch (err) { return showToast(err.message, '⚠️'); }
+  document.getElementById('eskiz-pass').value = '';
+  showToast('Eskiz saqlandi — botda /sms_test bilan sinang', '✅');
+  crmAiKeyStatus();
+};
+window.crmSaveDirectorPhones = () => {
+  state.directorSmsPhones = document.getElementById('director-phones').value.split('\n').map(l => l.replace(/\D/g, '')).filter(d => d.length >= 9).map(d => '+998' + d.slice(-9));
+  saveState();
+  showToast(`Rahbar raqamlari: ${state.directorSmsPhones.length} ta`, '📱');
+  renderTelegramTab();
+};
 async function setSecret(key, value) {
   const { error } = await sb().rpc('crm_set_secret', { p_key: key, p_value: value });
   if (error) throw error;
@@ -1383,6 +1399,20 @@ async function renderTelegramTab() {
           <button onclick="crmSaveGhKey()" class="${btn('slate-900')}">💾 Saqlash</button>
           <button onclick="crmSaveGhKey(true)" class="${btn('rose-600')}">🗑 O‘chirish</button>
         </div>
+      </div>
+      <div class="mt-3 pt-3 border-t border-slate-200">
+        <div class="text-sm font-black text-slate-800">📱 Rahbarga SMS (Eskiz.uz)</div>
+        <p class="text-[11px] text-slate-500 mb-2">Kunlik (20:00), haftalik, oylik hisobot va Juma inkassasining qisqa matni rahbar raqamiga SMS bo‘lib boradi. Eskiz.uz kabinetidagi email/parol. Eskiz faqat tasdiqlangan shablonga mos matnni yuboradi — shablonlar ro‘yxati yo‘riqnomada.</p>
+        <div id="sms-key-status" class="text-xs mb-2">⏳</div>
+        <div class="flex flex-wrap gap-2 text-xs">
+          <input id="eskiz-email" type="email" autocomplete="off" placeholder="Eskiz email" class="${input} flex-1 min-w-[160px]">
+          <input id="eskiz-pass" type="password" autocomplete="off" placeholder="Eskiz parol" class="${input} flex-1 min-w-[140px]">
+          <button onclick="crmSaveEskiz()" class="${btn('slate-900')}">💾 Saqlash</button>
+        </div>
+        <label class="text-xs font-bold block mt-2">Rahbar raqami (har qatorda bittasi)
+          <textarea id="director-phones" rows="2" class="${input} w-full font-mono mt-1" placeholder="+998 94 699 67 11">${esc((state.directorSmsPhones || []).join('\n'))}</textarea></label>
+        <button onclick="crmSaveDirectorPhones()" class="${btn('[#F2642A]')} mt-1">💾 Raqamni saqlash</button>
+        <p class="text-[10px] text-slate-400 mt-1">Sinov: botda top menejer <code>/sms_test</code> yozadi (yoki <code>/sms_test week</code>, <code>month</code>, <code>inkassa</code>).</p>
       </div>
     `) : ''}
     ${card(`

@@ -7,7 +7,8 @@
 import Anthropic from 'npm:@anthropic-ai/sdk@1.8.0';
 import { betaTool } from 'npm:@anthropic-ai/sdk@1.8.0/helpers/beta/json-schema';
 import { daysLabel, schedulePdf, toLessons } from '../_shared/schedule.ts';
-import { inkassaReport, isMoveOut, P_INK, type InkP } from '../_shared/inkassa.ts';
+import { cycleOf, inkassaReport, inkTx, isMoveOut, P_INK, type InkP } from '../_shared/inkassa.ts';
+import { smsDirectors } from '../_shared/sms.ts';
 import { admin, getSecret, getSetting, SUPABASE_URL, tg, webhookSecret } from '../_shared/common.ts';
 import { AsyncLocalStorage } from 'node:async_hooks';
 import * as XLSX from 'npm:xlsx@0.18.5';
@@ -1149,6 +1150,41 @@ async function summaryReport(p: RepP): Promise<string> {
   L.push('', '<i>Batafsil: 📑 Hisobotlar · 💵 Naqd inkassa · 🧾 Xarajatlar · 👩‍🏫 O‘qituvchilar</i>');
   return L.join('\n').slice(0, 4000);
 }
+// 📱 Rahbarga SMS — qisqa, qat'iy shablonda (Eskiz shablon tasdig'i uchun)
+const OY_UZ = ['Yanvar', 'Fevral', 'Mart', 'Aprel', 'May', 'Iyun', 'Iyul', 'Avgust', 'Sentabr', 'Oktabr', 'Noyabr', 'Dekabr'];
+const smsM = (n: number) => `${(Math.round(n / 100_000) / 10).toString().replace('.', ',')} mln so'm`;
+async function smsReportText(kind: 'day' | 'week' | 'month' | 'inkassa'): Promise<string> {
+  if (kind === 'inkassa') {
+    const c = cycleOf(Date.now());
+    const tx = await inkTx(edu, c.from, Math.min(Date.now(), c.to));
+    const total = tx.filter((t: any) => t.type === 'payIn').reduce((a: number, t: any) => a + t.amount, 0);
+    return `Registan LC: ${dmy(c.bank)} Juma kuni bankka topshiriladigan naqd inkassa ${sum(total).replace('so‘m', "so'm")}.`;
+  }
+  const per: Period = kind === 'day' ? 'today' : kind === 'week' ? 'pweek' : 'pmonth';
+  const rr = range(per);
+  const meta = await edu('kassaMeta');
+  let kirim = 0, xarajat = 0;
+  if (meta.ok) {
+    const [inc, out] = await Promise.all([txFor('payIn', rr.from, rr.to, meta.cashboxes || []), txFor('payOut', rr.from, rr.to, meta.cashboxes || [])]);
+    kirim = inc.filter((t: any) => !/inkassa/i.test(t.method || '') || t.category !== '—').reduce((a: number, t: any) => a + t.amount, 0);
+    xarajat = out.filter((t: any) => !isMoveOut(t)).reduce((a: number, t: any) => a + t.amount, 0);
+  }
+  const aktiv = (await allBalances().catch(() => [])).filter((s: any) => s.active).length;
+  if (kind === 'day') {
+    const ymd = new Date(dayStart(Date.now()) + TZ).toISOString().slice(0, 10);
+    const res = await edu('absences', { fromDate: `${ymd}T00:00:00.000Z`, toDate: `${ymd}T23:59:59.999Z` });
+    const k = (res.rows || []).filter((x: any) => !x.lessonDate || String(x.lessonDate).slice(0, 10) === ymd).length;
+    return `Registan LC ${dmy(rr.from)}: kirim ${smsM(kirim)}, xarajat ${smsM(xarajat)}, kelmagan ${k} ta, aktiv o'quvchi ${aktiv} ta.`;
+  }
+  if (kind === 'week') return `Registan LC ${dmy(rr.from)}-${dmy(rr.to)} hafta: kirim ${smsM(kirim)}, xarajat ${smsM(xarajat)}, aktiv o'quvchi ${aktiv} ta.`;
+  const c: any = (await teacherReport('pm').catch(() => null) as any)?.center || {};
+  return `Registan LC ${OY_UZ[new Date(rr.from + TZ).getUTCMonth()]} oyi: kirim ${smsM(kirim)}, xarajat ${smsM(xarajat)}, o'quvchilar ${c.start ?? '-'}->${c.now ?? aktiv}, konversiya ${c.conversion ?? '-'}%.`;
+}
+async function smsReport(kind: 'day' | 'week' | 'month' | 'inkassa') {
+  const text = await smsReportText(kind);
+  return { text, ...(await smsDirectors(text)) };
+}
+
 /** Avtomatik hisobot: rahbar(lar) va top menejerlarning shaxsiy chatiga */
 async function sendAutoReport(kind: 'week' | 'month') {
   const text = await summaryReport(kind === 'week' ? 'pweek' : 'pmonth');
@@ -1157,7 +1193,8 @@ async function sendAutoReport(kind: 'week' | 'month') {
   const ids = [...new Set([...(dirs || []).map((d: any) => String(d.tg_id)), ...(await topIds()), ...(grp ? [String(grp)] : [])])];
   let sent = 0;
   for (const id of ids) { const r = await send(id, text, { reply_markup: { inline_keyboard: [[ib('📑 Hisobotlar', 'rp:hub')]] } }).catch(() => null); if (r?.ok) sent++; }
-  return { sent, recipients: ids.length };
+  const sms = await smsReport(kind).catch(e => ({ error: String(e) }));
+  return { sent, recipients: ids.length, sms };
 }
 
 // 🎬 Video montaj Mini App (telefonning o'zida montaj; tayyor video shu chatga keladi)
@@ -2194,7 +2231,13 @@ async function onMessage(m: any) {
   if (isMgr && (text === B_INK || cmd === '/inkassa')) return inkassa(chatId, 'cur');
   if ((text === B_SCHED || cmd === '/jadval')) return scheduleSend(chatId, false);
   if ((text === B_MEDIA || cmd === '/montaj') && ['top', 'senior', 'media'].includes(r)) return mediaOpen(chatId);
-  if (isMgr && (text === B_REPORTS || cmd === '/hisobot') && !(r === 'senior' && false)) return reportsHub(chatId);
+  if (isMgr && (text === B_REPORTS || cmd === '/hisobot')) return reportsHub(chatId);
+  if (isTop && cmd === '/sms_test') {
+    await typing(chatId);
+    const kind = (['day', 'week', 'month', 'inkassa'].find(k => text.includes(k)) || 'day') as any;
+    const r: any = await smsReport(kind).catch(e => ({ error: String(e) }));
+    return void send(chatId, r.sent ? `📱 SMS yuborildi (${r.sent} ta raqam):\n<code>${esc(r.text)}</code>` : `⚠️ SMS yuborilmadi: ${esc(r.skipped === 'no eskiz' ? 'Eskiz login/parol kiritilmagan (CRM → Rahbarga SMS)' : r.skipped === 'no phones' ? 'Rahbar raqami kiritilmagan' : r.error || JSON.stringify(r.results?.map((x: any) => x.error)))}\n\nMatn: <code>${esc(r.text || '')}</code>`);
+  }
   if (text === B_AI || cmd === '/ai') { const q = text.startsWith('/ai') ? text.slice(3).trim() : ''; if (q) { await setSession(chatId, 'ai', {}); return aiAsk(chatId, q, m.from); } return aiStart(chatId); }
   if (text === B_PHONES || cmd === '/raqamlar') { await setSession(chatId, null); return phonesView(chatId); }
   if (r === 'teacher' && (text === B_BOOK || cmd === '/kitob')) return bookStart(chatId);
@@ -2538,6 +2581,7 @@ Deno.serve(async req => {
     if (cronHdr !== await getSecret('cron_secret')) return new Response('forbidden', { status: 403 });
     const b = await req.json().catch(() => ({}));
     if (b.action === 'autoReport' && (b.kind === 'week' || b.kind === 'month')) return new Response(JSON.stringify({ ok: true, ...(await sendAutoReport(b.kind)) }), { headers: { 'Content-Type': 'application/json' } });
+    if (b.action === 'smsReport' && ['day', 'inkassa'].includes(b.kind)) return new Response(JSON.stringify({ ok: true, ...(await smsReport(b.kind)) }), { headers: { 'Content-Type': 'application/json' } });
     return new Response('{"ok":false}', { status: 400 });
   }
   if (req.headers.get('X-Telegram-Bot-Api-Secret-Token') !== await webhookSecret(t)) return new Response('forbidden', { status: 403 });

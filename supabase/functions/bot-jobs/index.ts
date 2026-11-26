@@ -245,6 +245,12 @@ async function eduCall(action: string, body: Record<string, unknown> = {}): Prom
 }
 const normName = (s: string) => String(s || '').toLowerCase().replace(/[ʻʼ‘’'`]/g, '').replace(/\s+/g, ' ').trim();
 
+// edu-bot ichki amali (rahbarga SMS, haftalik/oylik hisobot)
+async function eduBotInternal(body: Record<string, unknown>) {
+  const r = await fetch(`${SUPABASE_URL}/functions/v1/edu-bot`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-cron-secret': await getSecret('cron_secret') }, body: JSON.stringify(body) });
+  return await r.json().catch(() => ({ ok: false, status: r.status }));
+}
+
 // 🏦 Juma ertalab (09:00 dan keyin, bir marta) — top menejerlarga bankka topshiriladigan naqd inkassa
 async function fridayInkassa(force = false) {
   const token = await getSecret('edu_bot_token');
@@ -266,7 +272,8 @@ async function fridayInkassa(force = false) {
   const grp = await getSetting<number | null>('reportsChatId', null);
   const tops = new Set<string>([...(ids || []).map(String), String(chat || ''), ...(users || []).map(u => String(u.tg_id)), grp ? String(grp) : ''].filter(Boolean));
   for (const id of tops) await tg(token, 'sendMessage', { chat_id: id, text, parse_mode: 'HTML', ...(String(id) === String(grp) ? {} : { reply_markup: { inline_keyboard: [[{ text: '💵 Batafsil', callback_data: 'ink:cur' }]] } }) }).catch(() => {});
-  return { sent: tops.size };
+  const sms = await eduBotInternal({ action: 'smsReport', kind: 'inkassa' }).catch(e => ({ error: String(e) }));
+  return { sent: tops.size, sms };
 }
 
 // 📅 Dushanba va 🗓 oyning 1-sanasi 09:00 dan keyin — rahbarga (va topga) haftalik/oylik yakun (edu-bot yasaydi)
@@ -360,7 +367,8 @@ async function dailyReport(force = false) {
     await tg(token, 'sendMessage', { chat_id: u.tg_id, text: body, parse_mode: 'HTML' }).catch(() => {});
     serviceSent++;
   }
-  return { sent: tops.size, serviceSent, absent: rows.length, done, risk: riskRows.length };
+  const sms = await eduBotInternal({ action: 'smsReport', kind: 'day' }).catch(e => ({ error: String(e) }));
+  return { sent: tops.size, serviceSent, absent: rows.length, done, risk: riskRows.length, sms };
 }
 
 // ---------------------------------------------------------

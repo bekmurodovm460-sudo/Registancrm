@@ -25,7 +25,7 @@ const crm = window.crm = {
 // ---------------------------------------------------------
 // Kolleksiyalar: ilova `state` <-> jadval
 // ---------------------------------------------------------
-const SETTINGS_KEYS = ['schoolRules', 'mockRules', 'gformsConfig', 'kidsMockFormConfig', 'gdriveConfig', 'mockSessions', 'mockRooms', 'centerInfo', 'eduLeadDefaults', 'mockSchedule', 'botAdmins'];
+const SETTINGS_KEYS = ['schoolRules', 'mockRules', 'gformsConfig', 'kidsMockFormConfig', 'gdriveConfig', 'mockSessions', 'mockRooms', 'centerInfo', 'eduLeadDefaults', 'mockSchedule', 'botAdmins', 'directorSmsPhones'];
 
 // Sinf va o'quvchilar faol maktab bo'yicha (scoped) yuklanadi; har bir yozuvga schoolId qo'yiladi
 const stampSchool = o => { if (!o.schoolId) o.schoolId = crm.schoolId; return o; };
