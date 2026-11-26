@@ -194,6 +194,47 @@ async function cronReminders() {
 }
 
 // ---------------------------------------------------------
+// 📋 Edutizim boti: o'qituvchi vazifalari — har 4 soatda eslatma, muddat nazorati
+// ---------------------------------------------------------
+async function eduTopIds(): Promise<string[]> {
+  const [ids, chat, { data }] = await Promise.all([
+    getSetting<any[]>('botAdmins', []), getSecret('telegram_admin_chat_id'),
+    admin.from('crm_edu_bot_users').select('tg_id').eq('role', 'top')
+  ]);
+  return [...new Set([...(ids || []).map(String), String(chat || ''), ...(data || []).map(r => String(r.tg_id))].filter(Boolean))];
+}
+async function taskReminders() {
+  const token = await getSecret('edu_bot_token');
+  if (!token) return { skipped: 'no token' };
+  const now = Date.now();
+  const hour = new Date(now + 5 * 3600_000).getUTCHours();
+  const quiet = hour >= 22 || hour < 8;
+  const { data: tasks } = await admin.from('crm_edu_tasks').select('*').in('status', ['open', 'overdue']).limit(200);
+  let reminded = 0, overdue = 0;
+  const fmt = (iso: string) => { const d = new Date(new Date(iso).getTime() + 5 * 3600_000); return `${String(d.getUTCDate()).padStart(2, '0')}.${String(d.getUTCMonth() + 1).padStart(2, '0')} ${String(d.getUTCHours()).padStart(2, '0')}:${String(d.getUTCMinutes()).padStart(2, '0')}`; };
+  for (const t of tasks || []) {
+    const items = t.items || [];
+    const done = items.filter((x: any) => x.doneAt).length;
+    const kb = { inline_keyboard: [[{ text: '📋 Vazifani ochish', callback_data: `tk:${t.id}` }]] };
+    if (t.status === 'open' && new Date(t.deadline).getTime() < now) {
+      await admin.from('crm_edu_tasks').update({ status: 'overdue' }).eq('id', t.id);
+      overdue++;
+      await tg(token, 'sendMessage', { chat_id: t.teacher_tg, parse_mode: 'HTML', reply_markup: kb, text: `🔴 <b>Vazifa muddati o‘tdi!</b>\n${esc(t.title)}\nBajarildi: <b>${done}/${items.length}</b>\nIltimos, bugunoq yakunlang.` }).catch(() => {});
+      for (const id of await eduTopIds()) await tg(token, 'sendMessage', { chat_id: id, parse_mode: 'HTML', reply_markup: kb, text: `🔴 <b>Muddat o‘tdi:</b> ${esc(t.teacher_name)} — ${esc(t.title)}\nBajarildi: ${done}/${items.length}` }).catch(() => {});
+    }
+    const last = t.last_reminded_at ? new Date(t.last_reminded_at).getTime() : 0;
+    if (quiet || now - last < 4 * 3600_000 - 60_000) continue;
+    const ms = new Date(t.deadline).getTime() - now;
+    const leftTxt = ms <= 0 ? '🔴 muddat o‘tgan' : ms < 86400_000 ? `⏳ ${Math.floor(ms / 3600_000)} soat qoldi` : `⏳ ${Math.floor(ms / 86400_000)} kun qoldi`;
+    await tg(token, 'sendMessage', { chat_id: t.teacher_tg, parse_mode: 'HTML', reply_markup: kb,
+      text: `⏰ <b>Eslatma: arxiv o‘quvchilaringiz bilan ishlang</b>\n${esc(t.title)}\n\n✅ Bajarildi: <b>${done}/${items.length}</b> · qoldi: <b>${items.length - done}</b>\n📅 Muddat: ${fmt(t.deadline)} · ${leftTxt}\n\nQo‘ng‘iroq qilib, natijani botda izoh qilib yozing.` }).catch(() => {});
+    await admin.from('crm_edu_tasks').update({ last_reminded_at: new Date().toISOString() }).eq('id', t.id);
+    reminded++;
+  }
+  return { reminded, overdue, quiet };
+}
+
+// ---------------------------------------------------------
 Deno.serve(async req => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors });
   const cronSecret = await getSecret('cron_secret');
@@ -207,11 +248,12 @@ Deno.serve(async req => {
       case 'cron': {
         if (role !== 'cron') return json({ ok: false, error: 'Ruxsat yo‘q' }, 403);
         const reminders = await cronReminders();
+        const tasks = await taskReminders().catch(e => ({ error: String(e) }));
         // To'xtab qolgan ommaviy xabarlarni davom ettirish
         const stale = new Date(Date.now() - 3 * 60_000).toISOString();
         const { data: stuck } = await admin.from('crm_broadcasts').select('id').in('status', ['queued', 'sending']).lt('updated_at', stale).limit(3);
         for (const b of stuck || []) EdgeRuntime.waitUntil(work(Number(b.id)));
-        return json({ ok: true, reminders, resumed: (stuck || []).length });
+        return json({ ok: true, reminders, tasks, resumed: (stuck || []).length });
       }
       case 'continue': {
         if (role !== 'cron') return json({ ok: false, error: 'Ruxsat yo‘q' }, 403);

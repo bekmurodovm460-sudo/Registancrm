@@ -337,9 +337,9 @@ async function teacherReport(base: string, headers: Record<string, string>, b: a
       if (g.state === 'active') { gi.active++; isActive = true; }
       if (g.state === 'frozen') t.frozen++;
       t.groups.set(g.group?._id, gi);
-      const leftAt = g.leftAt || g.archivedAt || g.updatedAt;
+      const leftAt = g.leftAt || g.archivedAt;
       if (inP(g.joinedAt)) t.joined.push({ ...st, group: gname, date: g.joinedAt, price: g.price || 0, state: g.state });
-      if (g.state === 'archive' && inP(leftAt)) t.left.push({ ...st, group: gname, date: leftAt, price: g.price || 0, reason: g.leftReason || '' });
+      if ((g.state === 'left' || g.state === 'archive') && inP(leftAt)) t.left.push({ ...st, group: gname, date: leftAt, price: g.price || 0, reason: g.reason || g.leftReason || '' });
       if (g.state === 'graduated' && inP(g.graduatedAt)) t.graduated.push({ ...st, group: gname, date: g.graduatedAt });
     }
     if (isActive) t.active++;

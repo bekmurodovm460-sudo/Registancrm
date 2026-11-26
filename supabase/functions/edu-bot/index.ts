@@ -5,6 +5,10 @@
 // Edutizim bilan ishlash edutizim-sync funksiyasi orqali (x-cron-secret, ichki chaqiruv).
 // =========================================================
 import { admin, getSecret, getSetting, SUPABASE_URL, tg, webhookSecret } from '../_shared/common.ts';
+import { AsyncLocalStorage } from 'node:async_hooks';
+import * as XLSX from 'npm:xlsx@0.18.5';
+
+declare const EdgeRuntime: { waitUntil(p: Promise<unknown>): void } | undefined;
 
 const B_LEAD = '➕ Lid qo‘shish';
 const B_FIND = '🔍 O‘quvchi';
@@ -15,11 +19,29 @@ const B_REPORT = '📊 Hisobot';
 const B_SYNC = '🔄 Sinxron';
 const B_STATS = '📈 Statistika';
 const B_EXP = '🧾 Xarajatlar';
+const B_ATT = '📅 Davomat';
+const B_RISK = '⚠️ Xavf ostida';
+const B_TEACH = '👩‍🏫 O‘qituvchilar';
+const B_TASKS = '📋 Vazifalar';
+const B_ADMIN = '⚙️ Boshqaruv';
+const B_MY = '📊 Mening natijam';
+const B_MYTASK = '📋 Vazifalarim';
 const B_CANCEL = '❌ Bekor qilish';
 const B_SKIP = '⏭ O‘tkazib yuborish';
 
 const kb = (rows: string[][]) => ({ keyboard: rows.map(r => r.map(text => ({ text }))), resize_keyboard: true });
-const MENU = { ...kb([[B_IN, B_OUT], [B_STATS, B_EXP], [B_DEBT, B_FIND], [B_LEAD, B_REPORT], [B_SYNC]]), is_persistent: true, input_field_placeholder: 'Amalni tanlang…' };
+const persist = (rows: string[][], ph = 'Bo‘limni tanlang…') => ({ ...kb(rows), is_persistent: true, input_field_placeholder: ph });
+const MENU = persist([[B_IN, B_OUT], [B_ATT, B_RISK], [B_STATS, B_EXP], [B_DEBT, B_FIND], [B_TEACH, B_TASKS], [B_LEAD, B_ADMIN]]);
+const MENU_SERVICE = persist([[B_ATT, B_RISK], [B_FIND, B_DEBT], [B_LEAD]]);
+const MENU_TEACHER = persist([[B_MY, B_MYTASK]]);
+type Role = 'top' | 'service' | 'teacher' | 'pending' | 'blocked' | 'none';
+type Ctx = { role: Role; user: any; menu: any; from: any };
+const als = new AsyncLocalStorage<Ctx>();
+const menu = () => als.getStore()?.menu ?? MENU;
+const role = (): Role => als.getStore()?.role ?? 'none';
+const me = () => als.getStore()?.user;
+const menuFor = (r: Role) => (r === 'top' ? MENU : r === 'service' ? MENU_SERVICE : r === 'teacher' ? MENU_TEACHER : { remove_keyboard: true });
+const ROLE_NAME: Record<string, string> = { top: '👑 Top menejer', service: '🎧 Servis menejer', teacher: '👩‍🏫 O‘qituvchi', pending: '⏳ Kutilmoqda', blocked: '⛔ Bloklangan' };
 const CANCEL_KB = kb([[B_CANCEL]]);
 const SKIP_KB = kb([[B_SKIP], [B_CANCEL]]);
 const BANNER = 'https://raw.githubusercontent.com/bekmurodovm460-sudo/Registancrm/refs/heads/claude/html-site-web-platform-pltyl0/brand/edu-bot-tavsif-1280x720.png';
@@ -73,7 +95,7 @@ async function adminIds(): Promise<string[]> {
 async function isAdmin(userId?: number) { return !!userId && (await adminIds()).includes(String(userId)); }
 // Boshqa adminlarga xabar (amalni bajargan o'zidan tashqari)
 async function notifyOthers(text: string, exceptId?: number) {
-  for (const id of await adminIds()) if (id !== String(exceptId)) await send(id, text).catch(() => {});
+  for (const id of await topIds()) if (id !== String(exceptId)) await send(id, text).catch(() => {});
 }
 
 async function edu(action: string, body: Record<string, unknown> = {}): Promise<any> {
@@ -127,7 +149,7 @@ async function findAnswer(chatId: number, q: string) {
 async function debtors(chatId: number, scope: 'active' | 'all' = 'active') {
   await typing(chatId);
   const list = (await allBalances()).filter(s => s.balance < 0 && (scope === 'all' || s.active)).sort((a, b) => a.balance - b.balance);
-  if (!list.length) return void send(chatId, '✅ Qarzdorlar yo‘q.', { reply_markup: MENU });
+  if (!list.length) return void send(chatId, '✅ Qarzdorlar yo‘q.', { reply_markup: menu() });
   const top = list.slice(0, 20);
   await setSession(chatId, 'find', { found: top });
   const total = list.reduce((a, b) => a + b.balance, 0);
@@ -231,7 +253,7 @@ async function txFor(type: 'payIn' | 'payOut', from: number, to: number, cashbox
 async function expenses(chatId: number, p: Period = 'week') {
   await typing(chatId);
   const meta = await edu('kassaMeta');
-  if (!meta.ok) return void send(chatId, `⚠️ Edutizim kassasi: ${esc(meta.error)}`, { reply_markup: MENU });
+  if (!meta.ok) return void send(chatId, `⚠️ Edutizim kassasi: ${esc(meta.error)}`, { reply_markup: menu() });
   const r = range(p);
   let cur: any[], prev: any[], inc: any[];
   try {
@@ -240,7 +262,7 @@ async function expenses(chatId: number, p: Period = 'week') {
       txFor('payOut', r.prev.from, r.prev.to, meta.cashboxes || []),
       txFor('payIn', r.from, r.to, meta.cashboxes || [])
     ]);
-  } catch (e) { return void send(chatId, `⚠️ Kassa tarixini olib bo‘lmadi: ${esc((e as Error).message)}`, { reply_markup: MENU }); }
+  } catch (e) { return void send(chatId, `⚠️ Kassa tarixini olib bo‘lmadi: ${esc((e as Error).message)}`, { reply_markup: menu() }); }
   const total = cur.reduce((a, t) => a + t.amount, 0);
   const prevTotal = prev.reduce((a, t) => a + t.amount, 0);
   const incTotal = inc.reduce((a, t) => a + t.amount, 0);
@@ -290,14 +312,14 @@ async function expenseCategory(chatId: number, idx: number) {
 async function leadCourse(chatId: number, d: any) {
   await typing(chatId);
   const meta = await edu('meta');
-  if (!meta.ok) { await setSession(chatId, null); return void send(chatId, `⚠️ Edutizim: ${esc(meta.error)}`, { reply_markup: MENU }); }
+  if (!meta.ok) { await setSession(chatId, null); return void send(chatId, `⚠️ Edutizim: ${esc(meta.error)}`, { reply_markup: menu() }); }
   const courses = (meta.courses || []).slice(0, 40).map((c: any) => ({ id: c.id, name: c.name }));
   await setSession(chatId, 'lead_course', { ...d, courses, defCourse: meta.defaults?.courseId || null });
   const btns = courses.map((c: any, i: number) => ib(String(c.name).slice(0, 30), `lc:${i}`));
   const rows = [];
   for (let i = 0; i < btns.length; i += 2) rows.push(btns.slice(i, i + 2));
   rows.push([ib('⏭ Kurssiz (standart)', 'lc:-')]);
-  await send(chatId, '✅', { reply_markup: MENU });
+  await send(chatId, '✅', { reply_markup: menu() });
   await send(chatId, `👤 ${esc(d.name)} · 📱 ${esc(d.phone)}\n\n📚 Qaysi kursga qiziqadi?`, { reply_markup: { inline_keyboard: rows } });
 }
 
@@ -305,7 +327,7 @@ async function leadPush(chatId: number, d: any, force: boolean, from: any) {
   await typing(chatId);
   const r = await edu('pushLead', { students: [{ fullName: d.name, phone: d.phone }], courseId: d.courseId || undefined, force });
   const res = r.results?.[0];
-  if (!r.ok || !res) { await setSession(chatId, null); return void send(chatId, `⚠️ ${esc(r.error || 'Xatolik')}`, { reply_markup: MENU }); }
+  if (!r.ok || !res) { await setSession(chatId, null); return void send(chatId, `⚠️ ${esc(r.error || 'Xatolik')}`, { reply_markup: menu() }); }
   if (res.skipped === 'exists' && !force) {
     await setSession(chatId, 'lead_dup', d);
     return void send(chatId, `ℹ️ ${esc(res.message)}\n\nBaribir yangi lid qo‘shilsinmi?`, { reply_markup: { inline_keyboard: [[ib('➕ Ha, qo‘shish', 'lf'), ib('❌ Yo‘q', 'x')]] } });
@@ -313,7 +335,7 @@ async function leadPush(chatId: number, d: any, force: boolean, from: any) {
   await setSession(chatId, null);
   await send(chatId, res.ok
     ? `✅ Edutizim’ga lid qo‘shildi!\n\n👤 ${esc(d.name)}\n📱 ${esc(d.phone)}${d.courseName ? `\n📚 ${esc(d.courseName)}` : ''}`
-    : `⚠️ Lid qo‘shilmadi: ${esc(res.message)}`, { reply_markup: MENU });
+    : `⚠️ Lid qo‘shilmadi: ${esc(res.message)}`, { reply_markup: menu() });
   if (res.ok) await notifyOthers(`➕ Lid: <b>${esc(d.name)}</b> · ${esc(d.phone)}${d.courseName ? ' · ' + esc(d.courseName) : ''} · ${esc(from?.first_name || '')}`, from?.id);
 }
 
@@ -344,25 +366,26 @@ async function report(chatId: number) {
     `➕ Lidlar (CRM/bot): bugun <b>${leadsDay.count ?? 0}</b> · 7 kun <b>${leadsWeek.count ?? 0}</b>\n` +
     `💰 Bot orqali kassa amallari bugun: <b>${(ops.data || []).length}</b>\n\n${cbs}\n\n` +
     `🔄 Oxirgi sinxron: ${t(lastSync.data?.created_at)} ${lastSync.data ? (lastSync.data.ok ? '✅' : '⚠️') : ''}`,
-    { reply_markup: MENU });
+    { reply_markup: menu() });
 }
 
 async function sync(chatId: number) {
   await send(chatId, '⏳ Edutizim bilan sinxronlanmoqda… (30–60 soniya)');
   const r = await edu('sync');
-  await send(chatId, r.ok ? `✅ Sinxron tugadi: <b>${r.students}</b> o‘quvchi, <b>${r.groups}</b> guruh (${Math.round((r.ms || 0) / 1000)} s)` : `⚠️ Sinxron xatosi: ${esc(r.error)}`, { reply_markup: MENU });
+  await send(chatId, r.ok ? `✅ Sinxron tugadi: <b>${r.students}</b> o‘quvchi, <b>${r.groups}</b> guruh (${Math.round((r.ms || 0) / 1000)} s)` : `⚠️ Sinxron xatosi: ${esc(r.error)}`, { reply_markup: menu() });
 }
 
 // ---------------------------------------------------------
 // 💰 Kassa: kirim / chiqim
 // ---------------------------------------------------------
 async function kassaStart(chatId: number, kind: 'in' | 'out', student: any = null) {
+  if (role() !== 'top') return void send(chatId, '⛔ Kassa amallari faqat top menejer uchun.', { reply_markup: menu() });
   await typing(chatId);
   const meta = await edu('kassaMeta');
-  if (!meta.ok) return void send(chatId, `⚠️ Edutizim kassasi: ${esc(meta.error)}`, { reply_markup: MENU });
+  if (!meta.ok) return void send(chatId, `⚠️ Edutizim kassasi: ${esc(meta.error)}`, { reply_markup: menu() });
   const types = (meta.types || []).filter((t: any) => t.type === (kind === 'in' ? 'payIn' : 'payOut') && t.subtype !== 'employee' && (!student || t.subtype === 'student'));
   const cashboxes = (meta.cashboxes || []).filter((c: any) => !c.frozen);
-  if (!types.length || !cashboxes.length) return void send(chatId, '⚠️ Edutizim’da mos kassa yoki kirim/chiqim turi topilmadi.', { reply_markup: MENU });
+  if (!types.length || !cashboxes.length) return void send(chatId, '⚠️ Edutizim’da mos kassa yoki kirim/chiqim turi topilmadi.', { reply_markup: menu() });
   const data = { kind, types, methods: meta.methods || [], cashboxes, student };
   if (student) {
     const t = types.find((x: any) => /student to.?ladi/i.test(x.name)) || types[0];
@@ -387,7 +410,7 @@ async function askMethod(chatId: number, d: any) {
   const btns = (d.methods || []).map((m: any, i: number) => ib(methodName(m).slice(0, 30), `km:${i}`));
   const rows = [];
   for (let i = 0; i < btns.length; i += 2) rows.push(btns.slice(i, i + 2));
-  await send(chatId, '✅', { reply_markup: MENU });
+  await send(chatId, '✅', { reply_markup: menu() });
   await send(chatId, `💵 Summa: <b>${sum(d.amount)}</b>\n\n💳 To‘lov usuli:`, { reply_markup: { inline_keyboard: rows } });
 }
 async function askComment(chatId: number, d: any) {
@@ -396,7 +419,7 @@ async function askComment(chatId: number, d: any) {
 }
 async function confirm(chatId: number, d: any) {
   await setSession(chatId, 'k_confirm', d);
-  await send(chatId, '✅', { reply_markup: MENU });
+  await send(chatId, '✅', { reply_markup: menu() });
   await send(chatId, `${summary(d)}\n\nTasdiqlaysizmi? Amal Edutizim kassasiga darhol yoziladi.`, { reply_markup: { inline_keyboard: [[ib('✅ Tasdiqlash', 'ok'), ib('❌ Bekor', 'x')]] } });
 }
 async function execute(chatId: number, d: any, from: any) {
@@ -408,60 +431,427 @@ async function execute(chatId: number, d: any, from: any) {
     amount: d.amount, studentId: d.student?.id || undefined, comment: `[Bot ${by}] ${d.comment || d.type?.name || ''}`.trim(), by
   });
   await setSession(chatId, null);
-  if (!r.ok) return void send(chatId, `⚠️ Kassaga yozilmadi: ${esc(r.error)}\n\n${summary(d)}`, { reply_markup: MENU });
+  if (!r.ok) return void send(chatId, `⚠️ Kassaga yozilmadi: ${esc(r.error)}\n\n${summary(d)}`, { reply_markup: menu() });
   const rows: any[] = [];
   if (r.id) rows.push([ib('↩️ Bu amalni bekor qilish', `kx:${r.id}`)]);
-  await send(chatId, `✅ <b>Kassaga yozildi</b>\n\n${summary(d)}`, rows.length ? { reply_markup: { inline_keyboard: rows } } : { reply_markup: MENU });
+  await send(chatId, `✅ <b>Kassaga yozildi</b>\n\n${summary(d)}`, rows.length ? { reply_markup: { inline_keyboard: rows } } : { reply_markup: menu() });
   await notifyOthers(`${d.kind === 'in' ? '💰 Kirim' : '💸 Chiqim'}: ${esc(d.type?.name)} · <b>${sum(d.amount)}</b>${d.student ? ' · ' + esc(d.student.name) : ''}${d.comment ? ' · ' + esc(d.comment) : ''} · ${esc(by)}`, from?.id);
 }
 
 // ---------------------------------------------------------
 // Router
 // ---------------------------------------------------------
+// =========================================================
+// 👥 Foydalanuvchilar va rollar
+// =========================================================
+async function resolveUser(from: any): Promise<{ role: Role; user: any }> {
+  if (!from?.id) return { role: 'none', user: null };
+  if ((await adminIds()).includes(String(from.id))) return { role: 'top', user: { tg_id: from.id, full_name: from.first_name || 'Owner', owner: true } };
+  const { data } = await admin.from('crm_edu_bot_users').select('*').eq('tg_id', from.id).maybeSingle();
+  return { role: (data?.role as Role) || 'none', user: data };
+}
+async function topIds(): Promise<string[]> {
+  const { data } = await admin.from('crm_edu_bot_users').select('tg_id').eq('role', 'top');
+  return [...new Set([...(await adminIds()), ...(data || []).map(r => String(r.tg_id))])];
+}
+async function notifyTops(text: string, extra: Record<string, unknown> = {}, exceptId?: number) {
+  for (const id of await topIds()) if (id !== String(exceptId)) await send(id, text, extra).catch(() => {});
+}
+let empCache: { at: number; list: any[] } | null = null;
+async function employeesList() {
+  if (empCache && Date.now() - empCache.at < 600_000) return empCache.list;
+  const r = await edu('employees');
+  empCache = { at: Date.now(), list: r.ok ? r.employees : [] };
+  return empCache.list;
+}
+
+async function askContact(chatId: number, first = '') {
+  await send(chatId, `👋 Assalomu alaykum${first ? ', <b>' + esc(first) + '</b>' : ''}!\n\n💼 <b>Registan Globus · Moliya</b> — xodimlar boti.\nKirish uchun pastdagi tugma orqali <b>telefon raqamingizni</b> yuboring. Top menejer tasdiqlagach bot ochiladi.`, {
+    reply_markup: { keyboard: [[{ text: '📱 Raqamni yuborish', request_contact: true }]], resize_keyboard: true, one_time_keyboard: true }
+  });
+}
+
+async function register(chatId: number, m: any) {
+  const c = m.contact;
+  if (!c || c.user_id !== m.from?.id) return void send(chatId, '📱 Faqat o‘zingizning raqamingizni tugma orqali yuboring.');
+  const digits = String(c.phone_number || '').replace(/\D/g, '').slice(-9);
+  const emp = (await employeesList()).find((e: any) => e.digits === digits);
+  const name = emp?.name || [m.from.first_name, m.from.last_name].filter(Boolean).join(' ');
+  await admin.from('crm_edu_bot_users').upsert({ tg_id: m.from.id, role: 'pending', full_name: name, phone: '+998' + digits, employee_id: emp?.id || null, tg_username: m.from.username || null, updated_at: new Date().toISOString() });
+  await send(chatId, `✅ So‘rovingiz yuborildi.\n👤 ${esc(name)} · +998${digits}${emp ? '\n🗂 Edutizim’da topildi' : ''}\n\nTop menejer rolingizni tasdiqlashi bilan xabar beramiz.`, { reply_markup: { remove_keyboard: true } });
+  await notifyTops(`🆕 <b>Botga kirish so‘rovi</b>\n👤 ${esc(name)}${m.from.username ? ' · @' + esc(m.from.username) : ''}\n📱 +998${digits}\n🗂 Edutizim: ${emp ? 'xodim topildi ✅' : 'topilmadi ⚠️'}\n\nRolini tanlang:`, {
+    reply_markup: { inline_keyboard: [[ib('👑 Top', `ua:${m.from.id}:top`), ib('🎧 Servis', `ua:${m.from.id}:service`), ib('👩‍🏫 O‘qituvchi', `ua:${m.from.id}:teacher`)], [ib('⛔ Rad etish', `ua:${m.from.id}:blocked`)]] }
+  });
+}
+
+async function setRole(chatId: number, tgId: number, newRole: Role, by: any) {
+  const { data: u } = await admin.from('crm_edu_bot_users').update({ role: newRole, approved_by: by?.id || null, updated_at: new Date().toISOString() }).eq('tg_id', tgId).select('*').maybeSingle();
+  if (!u) return void send(chatId, 'Foydalanuvchi topilmadi.');
+  await send(chatId, `✅ ${esc(u.full_name)} — ${ROLE_NAME[newRole]}${newRole === 'teacher' && !u.employee_id ? '\n⚠️ Edutizim’da o‘qituvchi topilmadi (telefon mos emas) — “Mening natijam” ishlamaydi.' : ''}`);
+  if (newRole === 'blocked') return void send(tgId, '⛔ Botga kirish rad etildi.', { reply_markup: { remove_keyboard: true } });
+  await send(tgId, `🎉 Tasdiqlandingiz: <b>${ROLE_NAME[newRole]}</b>\n\nPastdagi tugmalardan foydalaning 👇`, { reply_markup: menuFor(newRole) });
+}
+
+async function usersPanel(chatId: number) {
+  const { data } = await admin.from('crm_edu_bot_users').select('tg_id,full_name,role,phone').order('role').order('full_name').limit(60);
+  const list = data || [];
+  await send(chatId, `👥 <b>Bot foydalanuvchilari</b> (${list.length})\n\n` + (list.map(u => `${ROLE_NAME[u.role] || u.role} — ${esc(u.full_name)} · ${esc(u.phone || '')}`).join('\n') || 'Hali yo‘q. Xodim botga /start yozib raqamini yuboradi.'), {
+    reply_markup: { inline_keyboard: list.slice(0, 30).map(u => [ib(`✏️ ${String(u.full_name).slice(0, 30)}`, `ur:${u.tg_id}`)]) }
+  });
+}
+
+async function adminPanel(chatId: number) {
+  await send(chatId, '⚙️ <b>Boshqaruv</b>', { reply_markup: { inline_keyboard: [[ib('👥 Foydalanuvchilar va rollar', 'adm:users')], [ib('📊 Hisobot', 'adm:report'), ib('🔄 Sinxron', 'adm:sync')]] } });
+}
+
+// =========================================================
+// 📅 Davomat: kelmaganlar + bugungi menejer izohlari
+// =========================================================
+const hm = (iso: string) => new Date(new Date(iso).getTime() + TZ).toISOString().slice(11, 16);
+const firstName = (s: string) => String(s || '').split(' ')[0];
+async function sendLong(chatId: number, text: string, extra: Record<string, unknown> = {}) {
+  const parts: string[] = [];
+  let cur = '';
+  for (const line of text.split('\n')) {
+    if ((cur + '\n' + line).length > 3800) { parts.push(cur); cur = line; } else cur = cur ? cur + '\n' + line : line;
+  }
+  if (cur) parts.push(cur);
+  for (let i = 0; i < parts.length; i++) await send(chatId, parts[i], i === parts.length - 1 ? extra : {});
+}
+
+async function attendanceView(chatId: number, day: 'today' | 'yesterday' = 'today') {
+  await typing(chatId);
+  const d0 = dayStart(Date.now()) - (day === 'yesterday' ? DAY : 0);
+  const r = await edu('absences', { fromDate: new Date(d0).toISOString(), toDate: new Date(d0 + DAY - 1).toISOString() });
+  if (!r.ok) return void send(chatId, `⚠️ Edutizim: ${esc(r.error)}`, { reply_markup: menu() });
+  const seen = new Set<string>();
+  const rows = (r.rows || []).filter((x: any) => { const k = `${x.studentId}|${x.groupId}`; if (seen.has(k)) return false; seen.add(k); return true; })
+    .sort((a: any, b: any) => (a.manager || '').localeCompare(b.manager || '') || a.name.localeCompare(b.name));
+  const label = `${day === 'today' ? 'Bugun' : 'Kecha'} · ${dmy(d0)}`;
+  const nav = [ib(day === 'today' ? '• Bugun' : 'Bugun', 'att:today'), ib(day === 'yesterday' ? '• Kecha' : 'Kecha', 'att:yesterday')];
+  if (!rows.length) return void send(chatId, `📅 <b>Davomat · ${label}</b>\n\n✅ Kelmagan o‘quvchi yo‘q (yoki davomat hali belgilanmagan).`, { reply_markup: { inline_keyboard: [nav] } });
+  const cm = await edu('commentsFor', { studentIds: rows.map((x: any) => x.studentId) });
+  const comments = cm.comments || {};
+  const todayNote = (sid: string) => (comments[sid] || []).find((c: any) => new Date(c.at).getTime() >= d0);
+  const unr = rows.filter((x: any) => x.state === 'unreasonable').length;
+  const done = rows.filter((x: any) => todayNote(x.studentId)).length;
+  const byMgr = new Map<string, { n: number; done: number }>();
+  rows.forEach((x: any) => { const k = x.manager || '—'; const v = byMgr.get(k) || { n: 0, done: 0 }; v.n++; if (todayNote(x.studentId)) v.done++; byMgr.set(k, v); });
+  const mgrLines = [...byMgr.entries()].map(([k, v]) => `👤 ${esc(k)}: ${v.done}/${v.n} ${v.done === v.n ? '✅' : '⏳'}`).join('\n');
+  const list = rows.map((x: any, i: number) => {
+    const n = todayNote(x.studentId);
+    return `<b>${i + 1}. ${x.state === 'unreasonable' ? '🔴' : '🟡'} ${esc(x.name)}</b> · ${esc(x.phone)}\n   ${esc(x.group)} · ${esc(firstName(x.teacher))}${x.balance < 0 ? ` · 💳 ${sum(x.balance)}` : ''}\n   ` +
+      (n ? `💬 <i>${esc(firstName(n.by))} (${hm(n.at)}): ${esc(String(n.text).slice(0, 90))}</i>` : `⚠️ izoh yo‘q · mas’ul: ${esc(firstName(x.manager) || '—')}`);
+  }).join('\n');
+  await setSession(chatId, 'att', { day, list: rows.map((x: any) => ({ id: x.studentId, name: x.name, phone: x.phone })) });
+  const pending = rows.map((x: any, i: number) => ({ x, i })).filter(({ x }: any) => !todayNote(x.studentId)).slice(0, 24);
+  const btns = pending.map(({ x, i }: any) => ib(`✍️ ${i + 1}. ${x.name.slice(0, 22)}`, `ac:${i}`));
+  const kbRows: any[] = [nav];
+  for (let i = 0; i < btns.length; i += 2) kbRows.push(btns.slice(i, i + 2));
+  await sendLong(chatId,
+    `📅 <b>Davomat · ${label}</b>\n\n❌ Kelmaganlar: <b>${rows.length}</b> (🔴 sababsiz ${unr} · 🟡 sababli ${rows.length - unr})\n📞 Menejer izohi: <b>${done}/${rows.length}</b>\n${mgrLines}\n\n${list}` +
+    (pending.length ? '\n\n✍️ Gaplashgach izoh yozish uchun o‘quvchini tanlang 👇' : '\n\n✅ Hammasiga izoh yozilgan!'),
+    { reply_markup: { inline_keyboard: kbRows } });
+}
+
+async function riskView(chatId: number) {
+  await typing(chatId);
+  const r = await edu('absenceRisk', { days: 21 });
+  if (!r.ok) return void send(chatId, `⚠️ Edutizim: ${esc(r.error)}`, { reply_markup: menu() });
+  const rows = r.rows || [];
+  if (!rows.length) return void send(chatId, '✅ Ketma-ket 2+ dars qoldirgan aktiv o‘quvchi yo‘q.', { reply_markup: menu() });
+  const red = rows.filter((x: any) => x.streak >= 3).length;
+  await setSession(chatId, 'risk', { list: rows.map((x: any) => ({ id: x.studentId, name: x.name, phone: x.phone })) });
+  const list = rows.map((x: any, i: number) => `<b>${i + 1}. ${x.streak >= 3 ? '🔴' : '🟠'} ${esc(x.name)}</b> — <b>${x.streak} dars</b> ketma-ket${x.unreasonable ? ` (sababsiz ${x.unreasonable})` : ''}\n   ${esc(x.group)} · ${esc(firstName(x.teacher))} · ${esc(x.phone)}\n   📆 ${x.dates.map((d: string) => dmy(new Date(d).getTime())).join(', ')} · mas’ul: ${esc(firstName(x.manager) || '—')}`).join('\n');
+  const btns = rows.slice(0, 24).map((x: any, i: number) => ib(`✍️ ${i + 1}. ${x.name.slice(0, 22)}`, `rc:${i}`));
+  const kbRows: any[] = [];
+  for (let i = 0; i < btns.length; i += 2) kbRows.push(btns.slice(i, i + 2));
+  await sendLong(chatId, `⚠️ <b>Notcoming xavfi</b> — ketma-ket kelmayotganlar: <b>${rows.length}</b>\n🔴 3+ dars: ${red} · 🟠 2 dars (keyingi darsda chiqariladi): ${rows.length - red}\n\nEdutizim ketma-ket 3 dars qoldirganni notcoming qiladi — hoziroq qo‘ng‘iroq qiling.\n\n${list}`, { reply_markup: { inline_keyboard: kbRows } });
+}
+
+async function askStudentNote(chatId: number, st: any, back: string) {
+  await setSession(chatId, 'note', { st, back });
+  await send(chatId, `✍️ <b>${esc(st.name)}</b>${st.phone ? ' · ' + esc(st.phone) : ''}\n\nGaplashgan natijangizni yozing — izoh Edutizim’dagi o‘quvchi kartasiga tushadi:`, { reply_markup: CANCEL_KB });
+}
+async function saveStudentNote(chatId: number, s: Session, text: string) {
+  if (text.length < 3) return void send(chatId, 'Izohni to‘liqroq yozing.');
+  const r = await edu('comment', { studentId: s.data.st.id, text: text.slice(0, 1000) });
+  await setSession(chatId, null);
+  await send(chatId, r.ok ? `✅ Izoh Edutizim’ga yozildi: <b>${esc(s.data.st.name)}</b>` : `⚠️ Yozilmadi: ${esc(r.error)}`, { reply_markup: menu() });
+  if (r.ok && s.data.back === 'att') return attendanceView(chatId, 'today');
+}
+
+// =========================================================
+// 👩‍🏫 O'qituvchilar hisoboti + Excel
+// =========================================================
+const repCache = new Map<string, { at: number; r: any }>();
+function monthRange(which: 'm' | 'pm') {
+  const t = new Date(Date.now() + TZ);
+  const m0 = Date.UTC(t.getUTCFullYear(), t.getUTCMonth(), 1) - TZ;
+  const pm0 = Date.UTC(t.getUTCFullYear(), t.getUTCMonth() - 1, 1) - TZ;
+  return which === 'm' ? { from: m0, to: Date.now(), label: 'Bu oy' } : { from: pm0, to: m0 - 1, label: 'O‘tgan oy' };
+}
+async function teacherReport(which: 'm' | 'pm', teacherId?: string) {
+  const key = `${which}|${teacherId || ''}`;
+  const c = repCache.get(key);
+  if (c && Date.now() - c.at < 600_000) return c.r;
+  const mr = monthRange(which);
+  const r = await edu('teacherReport', { fromDate: new Date(mr.from).toISOString(), toDate: new Date(mr.to).toISOString(), teacherId });
+  if (r.ok) repCache.set(key, { at: Date.now(), r: { ...r, label: `${mr.label} (${dmy(mr.from)}–${dmy(mr.to)})`, mr } });
+  return r.ok ? repCache.get(key)!.r : r;
+}
+const convTxt = (t: any) => (t.conversion === null || t.conversion === undefined ? '—' : `${t.conversion}% (${t.converted}/${t.trials})`);
+
+async function teachersView(chatId: number, which: 'm' | 'pm' = 'm') {
+  await typing(chatId);
+  await send(chatId, '⏳ O‘qituvchilar hisoboti tayyorlanmoqda (20–40 soniya)…');
+  const r = await teacherReport(which);
+  if (!r.ok) return void send(chatId, `⚠️ ${esc(r.error)}`, { reply_markup: menu() });
+  const T = r.teachers || [];
+  const tot = T.reduce((a: any, t: any) => ({ act: a.act + t.active, j: a.j + t.joined.length, l: a.l + t.left.length, tr: a.tr + t.trials, cv: a.cv + t.converted }), { act: 0, j: 0, l: 0, tr: 0, cv: 0 });
+  const lines = T.map((t: any, i: number) => `<b>${i + 1}. ${esc(t.name)}</b>\n   👥 ${t.active} aktiv · ${t.groups.length} guruh · ➕${t.joined.length} · ➖${t.left.length}${t.graduated.length ? ` · 🎓${t.graduated.length}` : ''} · 🔁 ${convTxt(t)}`).join('\n');
+  await sendLong(chatId,
+    `👩‍🏫 <b>O‘qituvchilar · ${r.label}</b>\n\n👥 Aktiv: <b>${tot.act}</b> · ➕ kelgan: <b>${tot.j}</b> · ➖ ketgan (arxiv): <b>${tot.l}</b>\n🔁 Konversiya (sinov → guruh): <b>${tot.tr ? Math.round((tot.cv / tot.tr) * 100) : 0}%</b> (${tot.cv}/${tot.tr})\n\n${lines}`,
+    { reply_markup: { inline_keyboard: [
+      [ib(which === 'm' ? '• Bu oy' : 'Bu oy', 'trp:m'), ib(which === 'pm' ? '• O‘tgan oy' : 'O‘tgan oy', 'trp:pm')],
+      [ib('📥 Excel (har bir o‘qituvchi)', `txl:${which}`)],
+      [ib('📋 O‘qituvchiga vazifa berish', 'tnew')]
+    ] } });
+}
+
+function sheetName(name: string, used: Set<string>) {
+  let n = String(name || 'Ustoz').replace(/[\\/?*[\]:]/g, '').slice(0, 28) || 'Ustoz';
+  let k = n, i = 2;
+  while (used.has(k)) k = `${n.slice(0, 25)} ${i++}`;
+  used.add(k);
+  return k;
+}
+async function teacherExcel(chatId: number, which: 'm' | 'pm') {
+  await tg(await token(), 'sendChatAction', { chat_id: chatId, action: 'upload_document' }).catch(() => {});
+  const r = await teacherReport(which);
+  if (!r.ok) return void send(chatId, `⚠️ ${esc(r.error)}`, { reply_markup: menu() });
+  const T = r.teachers || [];
+  const wb = XLSX.utils.book_new();
+  const used = new Set<string>(['Umumiy']);
+  const d = (iso: string) => (iso ? new Date(new Date(iso).getTime() + TZ).toISOString().slice(0, 10) : '');
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(T.map((t: any, i: number) => ({
+    '№': i + 1, 'O‘qituvchi': t.name, 'Telefon': t.phone, 'Guruhlar soni': t.groups.length, 'Guruhlar': t.groups.join('; '),
+    'Aktiv o‘quvchilar': t.active, 'Muzlatilgan': t.frozen, 'Oy davomida kelgan': t.joined.length, 'Oy davomida ketgan (arxiv)': t.left.length,
+    'Bitirgan': t.graduated.length, 'Sinov darsiga kelgan': t.trials, 'Sinovdan guruhga o‘tgan': t.converted, 'Konversiya %': t.conversion ?? ''
+  }))), 'Umumiy');
+  for (const t of T) {
+    const rows: any[] = [];
+    rows.push({ 'Bo‘lim': 'GURUHLAR', 'F.I.Sh.': '', 'Telefon': '', 'Guruh': t.groups.join('; '), 'Sana': '', 'Narx': '', 'Izoh / sabab': '' });
+    t.joined.forEach((x: any) => rows.push({ 'Bo‘lim': 'Kelgan', 'F.I.Sh.': x.name, 'Telefon': x.phone, 'Guruh': x.group, 'Sana': d(x.date), 'Narx': x.price, 'Izoh / sabab': x.state }));
+    t.left.forEach((x: any) => rows.push({ 'Bo‘lim': 'Ketgan (arxiv)', 'F.I.Sh.': x.name, 'Telefon': x.phone, 'Guruh': x.group, 'Sana': d(x.date), 'Narx': x.price, 'Izoh / sabab': x.reason }));
+    t.graduated.forEach((x: any) => rows.push({ 'Bo‘lim': 'Bitirgan', 'F.I.Sh.': x.name, 'Telefon': x.phone, 'Guruh': x.group, 'Sana': d(x.date), 'Narx': '', 'Izoh / sabab': '' }));
+    rows.push({ 'Bo‘lim': 'XULOSA', 'F.I.Sh.': `Aktiv: ${t.active} · Kelgan: ${t.joined.length} · Ketgan: ${t.left.length} · Konversiya: ${convTxt(t)}` });
+    const ws = XLSX.utils.json_to_sheet(rows);
+    ws['!cols'] = [{ wch: 16 }, { wch: 28 }, { wch: 16 }, { wch: 30 }, { wch: 12 }, { wch: 10 }, { wch: 40 }];
+    XLSX.utils.book_append_sheet(wb, ws, sheetName(t.name, used));
+  }
+  const bytes = new Uint8Array(XLSX.write(wb, { type: 'array', bookType: 'xlsx' }));
+  const form = new FormData();
+  form.append('chat_id', String(chatId));
+  form.append('document', new Blob([bytes], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }), `Oqituvchilar_${which === 'm' ? 'bu_oy' : 'otgan_oy'}_${dmy(r.mr.from).replace('.', '-')}.xlsx`);
+  form.append('caption', `📥 O‘qituvchilar hisoboti · ${r.label}\n${T.length} ta o‘qituvchi: umumiy varaq + har biriga alohida varaq (guruhlar, kelgan, ketgan, bitirgan).`);
+  const res = await tg(await token(), 'sendDocument', form);
+  if (!res?.ok) await send(chatId, `⚠️ Fayl yuborilmadi: ${esc(res?.description || '')}`);
+}
+
+// =========================================================
+// 📋 Vazifalar: "Arxiv o'quvchilaringiz bilan ishlang"
+// =========================================================
+async function newTaskPickTeacher(chatId: number) {
+  const { data: users } = await admin.from('crm_edu_bot_users').select('tg_id,full_name,employee_id').eq('role', 'teacher').order('full_name');
+  const list = (users || []).filter(u => u.employee_id);
+  if (!list.length) return void send(chatId, '⚠️ Botga ulangan o‘qituvchi yo‘q. O‘qituvchi botga /start yozib raqamini yuborsin, keyin uni “👩‍🏫 O‘qituvchi” sifatida tasdiqlang.', { reply_markup: menu() });
+  await setSession(chatId, 'tnew', { teachers: list.map(u => ({ tg: u.tg_id, name: u.full_name, emp: u.employee_id })) });
+  await send(chatId, '📋 <b>Yangi vazifa: arxiv o‘quvchilar bilan ishlash</b>\n\nQaysi o‘qituvchiga?', { reply_markup: { inline_keyboard: list.slice(0, 40).map((u, i) => [ib(`👩‍🏫 ${String(u.full_name).slice(0, 34)}`, `tt:${i}`)]) } });
+}
+
+async function createTask(chatId: number, s: Session, days: number, from: any) {
+  const d = s.data;
+  await typing(chatId);
+  const r = await teacherReport(d.period, d.teacher.emp);
+  if (!r.ok) return void send(chatId, `⚠️ ${esc(r.error)}`, { reply_markup: menu() });
+  const t = (r.teachers || []).find((x: any) => x.teacherId === d.teacher.emp);
+  const items = (t?.left || []).map((x: any) => ({ studentId: x.id, name: x.name, phone: x.phone, group: x.group, leftAt: x.date, reason: x.reason || '', comment: '', doneAt: null }));
+  if (!items.length) { await setSession(chatId, null); return void send(chatId, `ℹ️ ${esc(d.teacher.name)}da ${r.label} davomida arxivga chiqqan o‘quvchi yo‘q.`, { reply_markup: menu() }); }
+  const deadline = new Date(Date.now() + days * DAY);
+  const { data: task } = await admin.from('crm_edu_tasks').insert({
+    kind: 'archive', title: `Arxiv o‘quvchilar bilan ishlash · ${r.label}`, teacher_tg: d.teacher.tg, teacher_name: d.teacher.name, employee_id: d.teacher.emp,
+    period_from: new Date(r.mr.from).toISOString(), period_to: new Date(r.mr.to).toISOString(), deadline: deadline.toISOString(), items, created_by: from?.id || null, last_reminded_at: new Date().toISOString()
+  }).select('id').single();
+  await setSession(chatId, null);
+  await send(chatId, `✅ Vazifa yuborildi: <b>${esc(d.teacher.name)}</b>\n📋 ${items.length} ta arxiv o‘quvchi · ⏰ muddat: ${dmy(deadline.getTime())} ${hm(deadline.toISOString())}\nBot ustozga har 4 soatda eslatadi.`, { reply_markup: menu() });
+  await send(d.teacher.tg, `📋 <b>Yangi vazifa</b> (${esc(from?.first_name || 'Top menejer')} tomonidan)\n\n<b>Arxiv o‘quvchilaringiz bilan ishlang</b> — ${esc(r.label)}\n👥 ${items.length} ta o‘quvchi\n⏰ Muddat: <b>${dmy(deadline.getTime())} ${hm(deadline.toISOString())}</b>\n\nHar biriga qo‘ng‘iroq qiling va natijani botda izoh qilib yozing. Bajarilmaguncha bot har 4 soatda eslatadi.`, {
+    reply_markup: { inline_keyboard: [[ib('📋 Vazifani ochish', `tk:${task?.id}`)]] }
+  });
+}
+
+const prog = (t: any) => { const n = (t.items || []).length, d = (t.items || []).filter((x: any) => x.doneAt).length; return { n, d }; };
+const left = (iso: string) => { const ms = new Date(iso).getTime() - Date.now(); if (ms <= 0) return 'muddat o‘tdi'; const h = Math.floor(ms / 3600_000); return h >= 24 ? `${Math.floor(h / 24)} kun ${h % 24} soat qoldi` : `${h} soat qoldi`; };
+
+async function myTasks(chatId: number) {
+  const { data } = await admin.from('crm_edu_tasks').select('*').eq('teacher_tg', chatId).in('status', ['open', 'overdue']).order('deadline');
+  if (!data?.length) return void send(chatId, '✅ Ochiq vazifa yo‘q.', { reply_markup: menu() });
+  await send(chatId, '📋 <b>Vazifalarim</b>', { reply_markup: { inline_keyboard: data.map(t => { const p = prog(t); return [ib(`${t.status === 'overdue' ? '🔴' : '⏳'} ${p.d}/${p.n} · ${t.title.slice(0, 30)}`, `tk:${t.id}`)]; }) } });
+}
+
+async function openTask(chatId: number, id: number) {
+  const { data: t } = await admin.from('crm_edu_tasks').select('*').eq('id', id).maybeSingle();
+  if (!t || (role() === 'teacher' && Number(t.teacher_tg) !== chatId)) return void send(chatId, 'Vazifa topilmadi.', { reply_markup: menu() });
+  const p = prog(t);
+  const lines = (t.items || []).map((x: any, i: number) => `${x.doneAt ? '✅' : '⏳'} <b>${i + 1}. ${esc(x.name)}</b> · ${esc(x.phone)}\n   ${esc(x.group)} · chiqqan: ${x.leftAt ? dmy(new Date(x.leftAt).getTime()) : '—'}${x.reason ? ` · <i>${esc(String(x.reason).slice(0, 50))}</i>` : ''}${x.comment ? `\n   💬 ${esc(String(x.comment).slice(0, 100))}` : ''}`).join('\n');
+  const isOwner = Number(t.teacher_tg) === chatId;
+  const btns = isOwner ? (t.items || []).map((x: any, i: number) => ({ x, i })).filter(({ x }: any) => !x.doneAt).slice(0, 30).map(({ x, i }: any) => ib(`📞 ${i + 1}. ${x.name.slice(0, 24)}`, `ti:${t.id}:${i}`)) : [];
+  const rows: any[] = [];
+  for (let i = 0; i < btns.length; i += 2) rows.push(btns.slice(i, i + 2));
+  if (!isOwner && role() === 'top' && ['open', 'overdue'].includes(t.status)) rows.push([ib('⛔ Vazifani bekor qilish', `tc:${t.id}`)]);
+  await sendLong(chatId, `📋 <b>${esc(t.title)}</b>\n👩‍🏫 ${esc(t.teacher_name)} · ${p.d}/${p.n} bajarildi\n⏰ Muddat: ${dmy(new Date(t.deadline).getTime())} ${hm(t.deadline)} (${left(t.deadline)})${t.status === 'done' ? '\n✅ Bajarilgan' : t.status === 'overdue' ? '\n🔴 Muddati o‘tgan' : ''}\n\n${lines}` + (btns.length ? '\n\n📞 Qo‘ng‘iroq qilgach o‘quvchini tanlab izoh yozing 👇' : ''), { reply_markup: { inline_keyboard: rows } });
+}
+
+async function taskItemAsk(chatId: number, id: number, idx: number) {
+  const { data: t } = await admin.from('crm_edu_tasks').select('*').eq('id', id).maybeSingle();
+  const x = t?.items?.[idx];
+  if (!t || !x || Number(t.teacher_tg) !== chatId) return void send(chatId, 'Topilmadi.', { reply_markup: menu() });
+  await setSession(chatId, 'task_note', { id, idx });
+  await send(chatId, `📞 <b>${esc(x.name)}</b>\n☎️ ${esc(x.phone)}\n👥 ${esc(x.group)}${x.reason ? `\n📝 Chiqish sababi: ${esc(x.reason)}` : ''}\n\nQo‘ng‘iroq qiling va natijani yozing (masalan: “Dekabrdan qaytadi”, “Boshqa markazga o‘tgan”):`, { reply_markup: CANCEL_KB });
+}
+
+async function taskItemSave(chatId: number, s: Session, text: string, from: any) {
+  if (text.length < 3) return void send(chatId, 'Izohni to‘liqroq yozing.');
+  const { data: t } = await admin.from('crm_edu_tasks').select('*').eq('id', s.data.id).maybeSingle();
+  if (!t) return;
+  const items = [...(t.items || [])];
+  const x = items[s.data.idx];
+  const r = await edu('comment', { studentId: x.studentId, text: `[Ustoz ${t.teacher_name}] ${text.slice(0, 900)}` });
+  items[s.data.idx] = { ...x, comment: text.slice(0, 500), doneAt: new Date().toISOString() };
+  const allDone = items.every((i: any) => i.doneAt);
+  await admin.from('crm_edu_tasks').update({ items, ...(allDone ? { status: 'done', done_at: new Date().toISOString() } : {}) }).eq('id', t.id);
+  await setSession(chatId, null);
+  await send(chatId, `✅ Saqlandi${r.ok ? ' (Edutizim kartasiga ham yozildi)' : ''}: ${esc(x.name)}`, { reply_markup: menu() });
+  if (allDone) {
+    await send(chatId, '🎉 Vazifa to‘liq bajarildi. Rahmat!');
+    await notifyTops(`✅ <b>${esc(t.teacher_name)}</b> vazifani bajardi: ${esc(t.title)} (${items.length} ta)`, { reply_markup: { inline_keyboard: [[ib('📋 Ko‘rish', `tk:${t.id}`)]] } });
+    return;
+  }
+  return openTask(chatId, t.id);
+}
+
+async function tasksTop(chatId: number) {
+  const { data } = await admin.from('crm_edu_tasks').select('*').neq('status', 'cancelled').order('created_at', { ascending: false }).limit(20);
+  const rows = (data || []).map(t => { const p = prog(t); return [ib(`${t.status === 'done' ? '✅' : t.status === 'overdue' ? '🔴' : '⏳'} ${String(t.teacher_name).slice(0, 18)} · ${p.d}/${p.n}`, `tk:${t.id}`)]; });
+  rows.push([ib('➕ Yangi vazifa', 'tnew')]);
+  await send(chatId, `📋 <b>Vazifalar</b>\n\n${(data || []).length ? (data || []).map(t => { const p = prog(t); return `${t.status === 'done' ? '✅' : t.status === 'overdue' ? '🔴' : '⏳'} ${esc(t.teacher_name)} — ${p.d}/${p.n} · ⏰ ${dmy(new Date(t.deadline).getTime())}`; }).join('\n') : 'Hali vazifa yo‘q.'}`, { reply_markup: { inline_keyboard: rows } });
+}
+
+async function myStats(chatId: number, which: 'm' | 'pm' = 'm') {
+  const u = me();
+  if (!u?.employee_id) return void send(chatId, '⚠️ Edutizim’dagi o‘qituvchi profilingiz topilmadi (telefon mos emas). Top menejerga murojaat qiling.', { reply_markup: menu() });
+  await typing(chatId);
+  const r = await teacherReport(which, u.employee_id);
+  if (!r.ok) return void send(chatId, `⚠️ ${esc(r.error)}`, { reply_markup: menu() });
+  const t = (r.teachers || []).find((x: any) => x.teacherId === u.employee_id);
+  if (!t) return void send(chatId, `ℹ️ ${r.label} uchun ma’lumot yo‘q.`, { reply_markup: menu() });
+  await send(chatId,
+    `📊 <b>Mening natijam · ${r.label}</b>\n\n👥 Aktiv o‘quvchilar: <b>${t.active}</b>\n🗂 Guruhlar: ${t.groups.length}\n${t.groups.map((g: string) => '   • ' + esc(g)).join('\n')}\n\n` +
+    `➕ Kelgan: <b>${t.joined.length}</b>\n➖ Ketgan (arxiv): <b>${t.left.length}</b>\n🎓 Bitirgan: ${t.graduated.length}\n\n` +
+    `🔁 <b>Konversiya</b>: ${convTxt(t)}\n<i>Sinov darsiga kelganlardan shu oy guruhga qo‘shilganlar ulushi</i>` +
+    (t.left.length ? `\n\n<b>Arxivdagilar:</b>\n${t.left.slice(0, 25).map((x: any) => `• ${esc(x.name)} · ${esc(x.phone)} · ${dmy(new Date(x.date).getTime())}${x.reason ? ` — <i>${esc(String(x.reason).slice(0, 50))}</i>` : ''}`).join('\n')}` : ''),
+    { reply_markup: { inline_keyboard: [[ib(which === 'm' ? '• Bu oy' : 'Bu oy', 'my:m'), ib(which === 'pm' ? '• O‘tgan oy' : 'O‘tgan oy', 'my:pm')]] } });
+}
+
+// =========================================================
+// Router
+// =========================================================
+const ACCESS: Record<string, Role[]> = {
+  // matn tugmalari
+  [B_IN]: ['top'], [B_OUT]: ['top'], [B_STATS]: ['top'], [B_EXP]: ['top'], [B_TEACH]: ['top'], [B_TASKS]: ['top'], [B_ADMIN]: ['top'],
+  [B_ATT]: ['top', 'service'], [B_RISK]: ['top', 'service'], [B_FIND]: ['top', 'service'], [B_DEBT]: ['top', 'service'], [B_LEAD]: ['top', 'service'],
+  [B_MY]: ['teacher'], [B_MYTASK]: ['teacher']
+};
+function cbAllowed(data: string, r: Role) {
+  const p = data.split(':')[0];
+  const top = ['kt', 'ks', 'km', 'kb', 'ok', 'kx', 'pay', 'ex', 'exc', 'st', 'ua', 'ur', 'urs', 'adm', 'trp', 'txl', 'tnew', 'tt', 'tp', 'td', 'tc'];
+  const svc = ['att', 'ac', 'rc', 'dbt', 'lc', 'lf', 'x'];
+  const tch = ['tk', 'ti', 'my', 'x'];
+  if (r === 'top') return true;
+  if (r === 'service') return svc.includes(p);
+  if (r === 'teacher') return tch.includes(p);
+  return false;
+}
+
+async function startMsg(chatId: number, m: any) {
+  const r = role();
+  const name = esc(m.from?.first_name || '');
+  const body = r === 'top'
+    ? `💰 <b>Kirim / Chiqim</b> — Edutizim kassasi\n📅 <b>Davomat</b> — kelmaganlar va menejer izohlari\n⚠️ <b>Xavf ostida</b> — notcoming bo‘lay deganlar\n📈 <b>Statistika</b> · 🧾 <b>Xarajatlar</b>\n🔴 <b>Qarzdorlar</b> · 🔍 <b>O‘quvchi</b>\n👩‍🏫 <b>O‘qituvchilar</b> — hisobot, konversiya, Excel\n📋 <b>Vazifalar</b> — ustozlarga topshiriq\n⚙️ <b>Boshqaruv</b> — rollar, hisobot, sinxron`
+    : r === 'service'
+      ? `📅 <b>Davomat</b> — bugun kelmaganlar: qo‘ng‘iroq qilib izoh yozing\n⚠️ <b>Xavf ostida</b> — ketma-ket kelmayotganlar\n🔍 <b>O‘quvchi</b> · 🔴 <b>Qarzdorlar</b> · ➕ <b>Lid</b>`
+      : `📊 <b>Mening natijam</b> — aktiv, kelgan, ketgan, konversiya\n📋 <b>Vazifalarim</b> — top menejer topshiriqlari`;
+  const caption = `👋 Assalomu alaykum, <b>${name}</b>!\n💼 <b>Registan Globus · Moliya</b> · ${ROLE_NAME[r] || ''}\n\n${body}\n\nPastdagi tugmalardan tanlang 👇`;
+  const res = await tg(await token(), 'sendPhoto', { chat_id: chatId, photo: BANNER, caption, parse_mode: 'HTML', reply_markup: menu() });
+  if (!res?.ok) await send(chatId, caption, { reply_markup: menu() });
+}
+
 async function onMessage(m: any) {
   const chatId = m.chat.id as number;
   if (m.chat.type !== 'private') return;
   const text = String(m.text || '').trim();
   const cmd = text.startsWith('/') ? text.split(/\s+/)[0].split('@')[0].toLowerCase() : '';
-  if (!(await isAdmin(m.from?.id))) {
-    return void send(chatId, `⛔ Bu bot faqat <b>Registan LC</b> xodimlari uchun.\n\nTelegram ID’ingiz: <code>${m.from?.id}</code>\nAdmin uni CRM → 🤖 Telegram Bot → “Bot adminlari”ga qo‘shsa, bot ochiladi.`, { reply_markup: { remove_keyboard: true } });
-  }
-  if (cmd === '/start' || cmd === '/menu' || text === B_CANCEL || cmd === '/cancel') {
-    await setSession(chatId, null);
-    if (cmd === '/start') {
-      const caption = `👋 Assalomu alaykum, <b>${esc(m.from?.first_name || '')}</b>!\n\n💼 <b>Registan Globus · Moliya</b>\n\n💰 <b>Kirim</b> — o‘quvchi to‘lovi, boshqa tushumlar\n💸 <b>Chiqim</b> — xarajatlar (kanstovar, arenda…)\n🔍 <b>O‘quvchi</b> — balans, guruh, to‘lov qabul qilish\n🔴 <b>Qarzdorlar</b> — eng katta qarzlar\n➕ <b>Lid</b> — Edutizim’ga yangi mijoz\n📈 <b>Statistika</b> — aktiv o‘quvchilar va qarzdorlik\n🧾 <b>Xarajatlar</b> — kategoriya bo‘yicha, haftalik / oylik\n📊 <b>Hisobot</b> · 🔄 <b>Sinxron</b>\n\nPastdagi tugmalardan tanlang 👇`;
-      const r = await tg(await token(), 'sendPhoto', { chat_id: chatId, photo: BANNER, caption, parse_mode: 'HTML', reply_markup: MENU });
-      if (!r?.ok) await send(chatId, caption, { reply_markup: MENU });
-      return;
-    }
-    return void send(chatId, text === B_CANCEL || cmd === '/cancel' ? '❌ Bekor qilindi.' : 'Tanlang 👇', { reply_markup: MENU });
-  }
+  const r = role();
   if (cmd === '/id') return void send(chatId, `ID: <code>${m.from?.id}</code>`);
-  if (text === B_IN || cmd === '/kirim') return kassaStart(chatId, 'in');
-  if (text === B_OUT || cmd === '/chiqim') return kassaStart(chatId, 'out');
-  if (text === B_FIND || cmd === '/qidir') { await setSession(chatId, 'find', {}); return void send(chatId, '🔍 O‘quvchining ismi yoki telefon raqamini yozing:', { reply_markup: CANCEL_KB }); }
-  if (text === B_DEBT || cmd === '/qarz') return debtors(chatId);
-  if (text === B_STATS || cmd === '/statistika') return stats(chatId);
-  if (text === B_EXP || cmd === '/xarajat') return expenses(chatId, 'week');
-  if (cmd === '/xarajat_oy') return expenses(chatId, 'month');
-  if (text === B_LEAD || cmd === '/lid') { await setSession(chatId, 'lead_name', {}); return void send(chatId, '➕ <b>Yangi lid</b>\n\n👤 Familiya va ismini yozing:', { reply_markup: CANCEL_KB }); }
-  if (text === B_REPORT || cmd === '/hisobot') return report(chatId);
-  if (text === B_SYNC || cmd === '/sinxron') return sync(chatId);
+  if (r === 'none') return m.contact ? register(chatId, m) : askContact(chatId, m.from?.first_name);
+  if (r === 'pending') return void send(chatId, '⏳ So‘rovingiz top menejer tomonidan ko‘rib chiqilmoqda.', { reply_markup: { remove_keyboard: true } });
+  if (r === 'blocked') return void send(chatId, '⛔ Botdan foydalanishga ruxsat yo‘q.', { reply_markup: { remove_keyboard: true } });
+
+  if (cmd === '/start' || cmd === '/menu') { await setSession(chatId, null); return startMsg(chatId, m); }
+  if (text === B_CANCEL || cmd === '/cancel') { await setSession(chatId, null); return void send(chatId, '❌ Bekor qilindi.', { reply_markup: menu() }); }
+  if (ACCESS[text] && !ACCESS[text].includes(r)) return void send(chatId, '⛔ Bu bo‘lim sizning rolingiz uchun yopiq.', { reply_markup: menu() });
+  const isTop = r === 'top', isStaff = r === 'top' || r === 'service';
+  if (isTop && (text === B_IN || cmd === '/kirim')) return kassaStart(chatId, 'in');
+  if (isTop && (text === B_OUT || cmd === '/chiqim')) return kassaStart(chatId, 'out');
+  if (isTop && (text === B_STATS || cmd === '/statistika')) return stats(chatId);
+  if (isTop && (text === B_EXP || cmd === '/xarajat')) return expenses(chatId, 'week');
+  if (isTop && cmd === '/xarajat_oy') return expenses(chatId, 'month');
+  if (isTop && (text === B_TEACH || cmd === '/oqituvchilar')) return teachersView(chatId, 'm');
+  if (isTop && (text === B_TASKS || cmd === '/vazifalar')) return tasksTop(chatId);
+  if (isTop && (text === B_ADMIN || cmd === '/boshqaruv')) return adminPanel(chatId);
+  if (isTop && (text === B_REPORT || cmd === '/hisobot')) return report(chatId);
+  if (isTop && (text === B_SYNC || cmd === '/sinxron')) return sync(chatId);
+  if (isStaff && (text === B_ATT || cmd === '/davomat')) return attendanceView(chatId, 'today');
+  if (isStaff && (text === B_RISK || cmd === '/xavf')) return riskView(chatId);
+  if (isStaff && (text === B_FIND || cmd === '/qidir')) { await setSession(chatId, 'find', {}); return void send(chatId, '🔍 O‘quvchining ismi yoki telefon raqamini yozing:', { reply_markup: CANCEL_KB }); }
+  if (isStaff && (text === B_DEBT || cmd === '/qarz')) return debtors(chatId);
+  if (isStaff && (text === B_LEAD || cmd === '/lid')) { await setSession(chatId, 'lead_name', {}); return void send(chatId, '➕ <b>Yangi lid</b>\n\n👤 Familiya va ismini yozing:', { reply_markup: CANCEL_KB }); }
+  if (r === 'teacher' && (text === B_MY || cmd === '/natijam')) return myStats(chatId, 'm');
+  if (r === 'teacher' && (text === B_MYTASK || cmd === '/vazifalarim')) return myTasks(chatId);
 
   const s = await getSession(chatId);
   switch (s.step) {
+    case 'note':
+      if (!isStaff) break;
+      return saveStudentNote(chatId, s, text);
+    case 'task_note':
+      return taskItemSave(chatId, s, text, m.from);
     case 'find':
+      if (!isStaff) break;
       return findAnswer(chatId, text);
     case 'lead_name':
+      if (!isStaff) break;
       if (text.length < 3) return void send(chatId, 'Familiya va ismni to‘liq yozing.');
       await setSession(chatId, 'lead_phone', { name: text.replace(/\s+/g, ' ').slice(0, 80) });
       return void send(chatId, '📱 Telefon raqami (masalan: +998 90 123 45 67):', { reply_markup: CANCEL_KB });
     case 'lead_phone': {
+      if (!isStaff) break;
       const ph = normPhone(m.contact?.phone_number || text);
       if (!ph) return void send(chatId, 'Raqamni to‘g‘ri yozing: +998 90 123 45 67');
       return leadCourse(chatId, { ...s.data, phone: ph });
     }
     case 'k_student': {
+      if (!isTop) break;
       if (text.length < 3) return void send(chatId, 'Kamida 3 harf yoki telefon raqamini yozing.');
       const list = await eduFind(text);
       if (!list.length) return void send(chatId, '😕 Topilmadi. Boshqacha yozib ko‘ring.');
@@ -469,6 +859,7 @@ async function onMessage(m: any) {
       return void send(chatId, list.map(line).join('\n\n'), { reply_markup: { inline_keyboard: list.map((x, i) => [ib(`${i + 1}. ${x.name.slice(0, 34)}`, `ks:${i}`)]) } });
     }
     case 'k_amount': {
+      if (!isTop) break;
       const amount = parseAmount(text);
       const t = s.data.type || {};
       if (!amount || amount < 100) return void send(chatId, 'Summani raqamda yozing, masalan: 350000 yoki 350k');
@@ -477,28 +868,65 @@ async function onMessage(m: any) {
       return askMethod(chatId, { ...s.data, amount });
     }
     case 'k_comment':
+      if (!isTop) break;
       return confirm(chatId, { ...s.data, comment: text === B_SKIP ? '' : text.slice(0, 200) });
-    default:
-      return void send(chatId, 'Pastdagi tugmalardan tanlang 👇', { reply_markup: MENU });
   }
+  return void send(chatId, 'Pastdagi tugmalardan tanlang 👇', { reply_markup: menu() });
 }
 
 async function onCallback(q: any) {
   const chatId = (q.message?.chat?.id ?? q.from?.id) as number;
   const data = String(q.data || '');
   tg(await token(), 'answerCallbackQuery', { callback_query_id: q.id }).catch(() => {});
-  if (!(await isAdmin(q.from?.id))) return void send(chatId, '⛔ Ruxsat yo‘q.');
+  if (!cbAllowed(data, role())) return void send(chatId, '⛔ Ruxsat yo‘q.', { reply_markup: menu() });
   const s = await getSession(chatId);
-  if (data === 'x') { await setSession(chatId, null); return void send(chatId, '❌ Bekor qilindi.', { reply_markup: MENU }); }
+  if (data === 'x') { await setSession(chatId, null); return void send(chatId, '❌ Bekor qilindi.', { reply_markup: menu() }); }
+  // Rollar
+  if (data.startsWith('ua:')) { const [, id, r] = data.split(':'); return setRole(chatId, Number(id), r as Role, q.from); }
+  if (data.startsWith('ur:')) {
+    const id = data.slice(3);
+    return void send(chatId, 'Yangi rol:', { reply_markup: { inline_keyboard: [[ib('👑 Top', `ua:${id}:top`), ib('🎧 Servis', `ua:${id}:service`), ib('👩‍🏫 O‘qituvchi', `ua:${id}:teacher`)], [ib('⛔ Bloklash', `ua:${id}:blocked`)]] } });
+  }
+  if (data === 'adm:users') return usersPanel(chatId);
+  if (data === 'adm:report') return report(chatId);
+  if (data === 'adm:sync') return sync(chatId);
+  // Davomat / xavf
+  if (data.startsWith('att:')) return attendanceView(chatId, data.slice(4) as any);
+  if (data.startsWith('ac:') && s.step === 'att') { const st = s.data.list?.[Number(data.slice(3))]; if (st) return askStudentNote(chatId, st, 'att'); }
+  if (data.startsWith('rc:') && s.step === 'risk') { const st = s.data.list?.[Number(data.slice(3))]; if (st) return askStudentNote(chatId, st, 'risk'); }
+  // O'qituvchilar
+  if (data.startsWith('trp:')) return teachersView(chatId, data.slice(4) as any);
+  if (data.startsWith('txl:')) return teacherExcel(chatId, data.slice(4) as any);
+  if (data === 'tnew') return newTaskPickTeacher(chatId);
+  if (data.startsWith('tt:') && s.step === 'tnew') {
+    const teacher = s.data.teachers?.[Number(data.slice(3))];
+    if (!teacher) return;
+    await setSession(chatId, 'tnew', { ...s.data, teacher });
+    return void send(chatId, `👩‍🏫 ${esc(teacher.name)}\n\nQaysi davrdagi arxiv o‘quvchilar?`, { reply_markup: { inline_keyboard: [[ib('Bu oy', 'tp:m'), ib('O‘tgan oy', 'tp:pm')]] } });
+  }
+  if (data.startsWith('tp:') && s.step === 'tnew' && s.data.teacher) {
+    await setSession(chatId, 'tnew', { ...s.data, period: data.slice(3) });
+    return void send(chatId, '⏰ Muddat (deadline):', { reply_markup: { inline_keyboard: [[ib('1 kun', 'td:1'), ib('2 kun', 'td:2'), ib('3 kun', 'td:3'), ib('1 hafta', 'td:7')]] } });
+  }
+  if (data.startsWith('td:') && s.step === 'tnew' && s.data.period) return createTask(chatId, s, Number(data.slice(3)), q.from);
+  if (data.startsWith('tk:')) return openTask(chatId, Number(data.slice(3)));
+  if (data.startsWith('ti:')) { const [, id, idx] = data.split(':'); return taskItemAsk(chatId, Number(id), Number(idx)); }
+  if (data.startsWith('tc:')) {
+    await admin.from('crm_edu_tasks').update({ status: 'cancelled' }).eq('id', Number(data.slice(3)));
+    return void send(chatId, '⛔ Vazifa bekor qilindi.', { reply_markup: menu() });
+  }
+  if (data.startsWith('my:')) return myStats(chatId, data.slice(3) as any);
+  // Statistika, xarajatlar, qarzdorlar
   if (data === 'dbt:active' || data === 'dbt:all') return debtors(chatId, data === 'dbt:all' ? 'all' : 'active');
   if (data === 'st:sync') { await sync(chatId); return stats(chatId); }
   if (data.startsWith('ex:')) return expenses(chatId, data.slice(3) as Period);
   if (data.startsWith('exc:')) return expenseCategory(chatId, Number(data.slice(4)));
   if (data.startsWith('pay:')) {
     const st = (s.data.found || [])[Number(data.slice(4))];
-    if (!st) return void send(chatId, 'Qaytadan qidiring.', { reply_markup: MENU });
+    if (!st) return void send(chatId, 'Qaytadan qidiring.', { reply_markup: menu() });
     return kassaStart(chatId, 'in', st);
   }
+  // Lid
   if (data.startsWith('lc:') && s.step === 'lead_course') {
     const c = data === 'lc:-' ? null : (s.data.courses || [])[Number(data.slice(3))];
     const { courses: _c, ...rest } = s.data;
@@ -507,6 +935,7 @@ async function onCallback(q: any) {
     return leadPush(chatId, d, false, q.from);
   }
   if (data === 'lf' && s.step === 'lead_dup') return leadPush(chatId, s.data, true, q.from);
+  // Kassa
   if (data.startsWith('kt:') && s.step === 'k_type') {
     const t = (s.data.types || [])[Number(data.slice(3))];
     if (!t) return;
@@ -540,18 +969,33 @@ async function onCallback(q: any) {
     return askComment(chatId, { ...s.data, cashbox });
   }
   if (data === 'ok') {
-    if (s.step !== 'k_confirm') return void send(chatId, s.step === 'k_busy' ? '⏳ Yozilmoqda…' : 'Amal eskirgan. Qaytadan boshlang.', { reply_markup: MENU });
+    if (s.step !== 'k_confirm') return void send(chatId, s.step === 'k_busy' ? '⏳ Yozilmoqda…' : 'Amal eskirgan. Qaytadan boshlang.', { reply_markup: menu() });
     return execute(chatId, s.data, q.from);
   }
   if (data.startsWith('kx:')) {
     const by = q.from?.username ? '@' + q.from.username : (q.from?.first_name || '');
     const r = await edu('kassaCancel', { transactionId: data.slice(3), by });
     if (r.ok && q.message?.message_id) await tg(await token(), 'editMessageReplyMarkup', { chat_id: chatId, message_id: q.message.message_id, reply_markup: { inline_keyboard: [] } }).catch(() => {});
-    await send(chatId, r.ok ? '↩️ Kassa amali bekor qilindi (Edutizim’da “bekor qilingan” bo‘lib turadi).' : `⚠️ Bekor qilib bo‘lmadi: ${esc(r.error)}`, { reply_markup: MENU });
+    await send(chatId, r.ok ? '↩️ Kassa amali bekor qilindi (Edutizim’da “bekor qilingan” bo‘lib turadi).' : `⚠️ Bekor qilib bo‘lmadi: ${esc(r.error)}`, { reply_markup: menu() });
     if (r.ok) await notifyOthers(`↩️ Kassa amali bekor qilindi · ${esc(by)}`, q.from?.id);
     return;
   }
-  return void send(chatId, 'Amal eskirgan. Pastdagi tugmalardan qaytadan boshlang.', { reply_markup: MENU });
+  return void send(chatId, 'Amal eskirgan. Pastdagi tugmalardan qaytadan boshlang.', { reply_markup: menu() });
+}
+
+async function handle(update: any) {
+  const from = update.message?.from || update.callback_query?.from;
+  const { role: r, user } = await resolveUser(from);
+  await als.run({ role: r, user, menu: menuFor(r), from }, async () => {
+    try {
+      if (update.message) await onMessage(update.message);
+      else if (update.callback_query) await onCallback(update.callback_query);
+    } catch (e) {
+      console.error('edu-bot error', e);
+      const chatId = update.message?.chat?.id || update.callback_query?.from?.id;
+      if (chatId) await send(chatId, '⚠️ Texnik xatolik. Qaytadan urinib ko‘ring.', { reply_markup: menu() }).catch(() => {});
+    }
+  });
 }
 
 Deno.serve(async req => {
@@ -561,13 +1005,9 @@ Deno.serve(async req => {
   if (req.headers.get('X-Telegram-Bot-Api-Secret-Token') !== await webhookSecret(t)) return new Response('forbidden', { status: 403 });
   const update = await req.json().catch(() => ({}));
   console.log('edu upd', update.message ? `msg ${update.message.chat?.id} ${String(update.message.text || '').slice(0, 30)}` : update.callback_query ? `cb ${update.callback_query.from?.id} ${update.callback_query.data}` : '');
-  try {
-    if (update.message) await onMessage(update.message);
-    else if (update.callback_query) await onCallback(update.callback_query);
-  } catch (e) {
-    console.error('edu-bot error', e);
-    const chatId = update.message?.chat?.id || update.callback_query?.from?.id;
-    if (chatId) await send(chatId, '⚠️ Texnik xatolik. Qaytadan urinib ko‘ring.', { reply_markup: MENU }).catch(() => {});
-  }
+  // Og'ir hisobotlar Telegram kutish vaqtidan oshmasligi uchun fonda
+  const job = handle(update);
+  if (typeof EdgeRuntime !== 'undefined' && EdgeRuntime?.waitUntil) { EdgeRuntime.waitUntil(job); return new Response('ok'); }
+  await job;
   return new Response('ok');
 });
