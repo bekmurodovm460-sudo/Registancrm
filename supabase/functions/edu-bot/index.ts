@@ -1057,6 +1057,7 @@ async function aiAsk(chatId: number, text: string, from: any) {
     clearInterval(typingTimer);
     const msg = e instanceof Anthropic.AuthenticationError ? 'Claude API kaliti noto‘g‘ri yoki bekor qilingan — CRM’da yangilang.'
       : e instanceof Anthropic.PermissionDeniedError ? 'Claude akkauntida bu modelga ruxsat yo‘q yoki balans yetarli emas.'
+      : e instanceof Anthropic.BadRequestError && /credit balance/i.test(e.message) ? 'Claude akkauntida API balansi tugagan. Top menejer platform.claude.com → Plans & Billing bo‘limida balansni to‘ldirsin.'
       : e instanceof Anthropic.RateLimitError ? 'Claude hozir band (limit). Bir daqiqadan so‘ng qayta yozing.'
       : e instanceof Anthropic.APIError ? `Claude xatosi (${e.status}). Birozdan so‘ng urinib ko‘ring.`
       : 'Claude bilan bog‘lanib bo‘lmadi. Birozdan so‘ng urinib ko‘ring.';
