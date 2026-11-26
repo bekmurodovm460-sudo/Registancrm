@@ -158,6 +158,10 @@
         <button id="p-join2" type="button" class="btn">📱 Raqamimni tasdiqlash</button>
         <div id="p-join-msg" class="text-sm font-bold"></div>
       </div>
+      <div id="p-switch" class="grid grid-cols-2 gap-2 hidden">
+        <button type="button" class="chip on" data-pv="school">🏫 Maktab testi</button>
+        <button type="button" class="chip" data-pv="mock">🧒 Kids Mock natijalari</button>
+      </div>
       <div id="p-form" class="card p-5 space-y-4 hidden">
         <div>
           <div class="text-lg font-black">🏫 Maktab testi natijasi</div>
@@ -192,6 +196,23 @@
         <div id="p-err" class="text-sm font-bold" style="color:var(--bad)"></div>
       </div>
       <div id="p-result" class="card p-5 hidden"></div>
+      <!-- 🧒 Kids Mock natijalarini ota-onalarga yuborish -->
+      <div id="p-mock" class="card p-5 space-y-4 hidden">
+        <div>
+          <div class="text-lg font-black">🧒 Kids Mock natijalari</div>
+          <div class="text-xs muted mt-1">Imtihon tugagach, natijani har bir ota-onaga bot orqali yuboring: fanlar bo‘yicha ball, umumiy ball va o‘rni.</div>
+        </div>
+        <div class="grid grid-cols-2 gap-2">
+          <label><span>Sessiya</span><select id="pm-session" class="inp"></select></label>
+          <label><span>Xona</span><select id="pm-room" class="inp"><option value="">Hammasi</option></select></label>
+        </div>
+        <div id="pm-sum" class="text-sm font-bold p-3 rounded-2xl" style="background:var(--soft)">⏳ Yuklanmoqda…</div>
+        <div id="pm-list" class="space-y-2"></div>
+        <details><summary class="text-sm font-extrabold cursor-pointer">👁 Ota-onaga boradigan xabar namunasi</summary>
+          <div id="pm-prev" class="text-sm mt-2 p-3 rounded-2xl" style="background:var(--soft);white-space:pre-wrap"></div></details>
+        <button id="pm-send" class="btn">📨 Yuborilmaganlarga yuborish</button>
+        <div id="pm-msg" class="text-sm font-bold"></div>
+      </div>
     </section>
   </main>
 
@@ -469,6 +490,7 @@
     function showProctor(p, open) {
       $('p-lock').classList.add('hidden');
       $('p-form').classList.remove('hidden');
+      $('p-switch').classList.remove('hidden');
       $('p-join').classList.add('hidden');
       $('p-who').textContent = `${p.role === 'ustoz' ? '👩‍🏫 Ustoz' : '👮 Nazoratchi'}: ${p.name}`;
       const schools = (data.schools || []).filter(x => !p.school || x.id === p.school);
@@ -476,6 +498,57 @@
       if (schools.length) pLoadGrades();
       if (open) document.querySelector('[data-tab="proctor"]').click();
     }
+    // ---------- 🧒 Kids Mock natijalarini yuborish ----------
+    let pmData = null;
+    document.querySelectorAll('[data-pv]').forEach(b => b.onclick = () => {
+      haptic();
+      document.querySelectorAll('[data-pv]').forEach(x => x.classList.toggle('on', x === b));
+      const mock = b.dataset.pv === 'mock';
+      $('p-form').classList.toggle('hidden', mock);
+      $('p-result').classList.add('hidden');
+      $('p-mock').classList.toggle('hidden', !mock);
+      if (mock) pmLoad();
+    });
+    const pmStatus = x => x.cancelled ? '<span class="muted">bekor</span>' : !x.hasScore ? '<span class="muted">⏳ ball yo‘q</span>' : !x.chat ? '<span style="color:var(--bad)">📵 Telegram yo‘q</span>' : x.sentAt ? '<span style="color:var(--ok,#16a34a)">✅ yuborilgan</span>' : '<span style="color:var(--brand-2)">● yuborilmagan</span>';
+    const pmMedal = r => r === 1 ? '🥇' : r === 2 ? '🥈' : r === 3 ? '🥉' : r ? `#${r}` : '';
+    async function pmLoad() {
+      $('pm-sum').textContent = '⏳ Yuklanmoqda…';
+      const r = await api('mList', { session: $('pm-session').value || '', room: $('pm-room').value || '' });
+      if (!r.ok) { $('pm-sum').textContent = '⚠️ ' + r.error; return; }
+      pmData = r;
+      if (!$('pm-session').options.length) { $('pm-session').innerHTML = (r.sessions || []).map(x => `<option>${esc(x)}</option>`).join(''); if (r.sessions?.length) return pmLoad(); }
+      const curRoom = $('pm-room').value;
+      $('pm-room').innerHTML = '<option value="">Hammasi</option>' + (r.rooms || []).map(x => `<option ${x === curRoom ? 'selected' : ''}>${esc(x)}</option>`).join('');
+      const s = r.summary, pending = r.list.filter(x => x.hasScore && x.chat && !x.sentAt && !x.cancelled).length;
+      $('pm-sum').innerHTML = `👥 ${s.total} ta · 🏆 natijasi bor: ${s.withScore} · ✅ yuborilgan: ${s.sent}${s.noChat ? ` · 📵 Telegram yo‘q: ${s.noChat}` : ''}`;
+      $('pm-list').innerHTML = r.list.map(x => `
+        <div class="flex items-center gap-2 p-3 rounded-2xl" style="border:1.5px solid var(--line)">
+          <div class="text-lg w-9 text-center font-black">${pmMedal(x.rank)}</div>
+          <div class="flex-1 min-w-0">
+            <div class="font-extrabold truncate">${esc(x.name)}</div>
+            <div class="text-xs muted">${esc(x.room)} · ${x.q1}+${x.q2} → <b>${x.score}</b>/${r.maxScore} · ${pmStatus(x)}</div>
+          </div>
+          ${x.hasScore && x.chat && !x.cancelled ? `<button type="button" class="chip px-3" data-pms="${x.id}">${x.sentAt ? '🔁' : '📨'}</button>` : ''}
+        </div>`).join('') || '<div class="muted text-sm">Bu sessiyada natija yo‘q.</div>';
+      $('pm-prev').innerHTML = r.preview || 'Natija kiritilgach namuna ko‘rinadi.';
+      $('pm-send').disabled = !pending;
+      $('pm-send').textContent = pending ? `📨 Yuborilmaganlarga yuborish (${pending})` : (s.sent ? '✅ Hammasiga yuborilgan' : 'Yuboriladigan natija yo‘q');
+      document.querySelectorAll('[data-pms]').forEach(b => b.onclick = () => pmSend([Number(b.dataset.pms)]));
+    }
+    function pmConfirm(text) { return new Promise(res => tg?.showConfirm ? tg.showConfirm(text, ok => res(ok)) : res(confirm(text))); }
+    async function pmSend(ids) {
+      const n = ids ? ids.length : pmData.list.filter(x => x.hasScore && x.chat && !x.sentAt && !x.cancelled).length;
+      if (!n || !(await pmConfirm(`${n} ta ota-onaga natija yuborilsinmi?`))) return;
+      $('pm-msg').textContent = '⏳ Yuborilmoqda…';
+      const r = await api('mSend', { session: $('pm-session').value, room: $('pm-room').value, ids: ids || undefined, force: !!ids });
+      haptic(r.ok ? 'ok' : 'err');
+      $('pm-msg').innerHTML = r.ok ? `✅ Yuborildi: <b>${r.sent}</b>${r.failed ? ` · ⚠️ ${r.failed}` : ''}${r.skipped?.noChat ? ` · 📵 Telegram yo‘q: ${r.skipped.noChat}` : ''}` : '⚠️ ' + esc(r.error);
+      pmLoad();
+    }
+    $('pm-session').onchange = () => { $('pm-room').value = ''; pmLoad(); };
+    $('pm-room').onchange = pmLoad;
+    $('pm-send').onclick = () => pmSend(null);
+
     // Parolsiz: Telegram raqamini ulashadi -> bot CRM ro'yxati bilan solishtiradi -> tab ochiladi
     function pJoin(btn, msg) {
       if (!tg?.requestContact) return;

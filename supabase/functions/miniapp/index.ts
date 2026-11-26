@@ -225,6 +225,67 @@ Deno.serve(async req => {
       }
 
 
+
+      // ================= 🧒 KIDS MOCK NATIJALARINI YUBORISH (ustoz / nazoratchi) =================
+      case 'mList':
+      case 'mSend': {
+        const p = await getProctor();
+        if (!p) return json({ ok: false, error: 'Bu bo‘lim ustoz va nazoratchilar uchun. Botda “👮 Nazorat” orqali raqamingizni tasdiqlang.' }, 403);
+        const session = String(body.session || '');
+        const room = String(body.room || '');
+        const rules = await getSetting<any>('mockRules', { q1: 40, q2: 40, w1: 1.5, w2: 1 });
+        const { data: rows } = await admin.from('crm_mock_students').select('id,data');
+        const all = (rows || []).map(r => ({ id: Number(r.id), ...(r.data as any) })).filter(m => !session || (m.session || '') === session);
+        const regIds = [...new Set(all.map(m => Number(m.regId)).filter(Boolean))];
+        const { data: regs } = regIds.length ? await admin.from('crm_mock_registrations').select('id,chat_id,full_name,status,subject1,level,subject2,level2').in('id', regIds) : { data: [] as any[] };
+        const regBy = new Map((regs || []).map((r: any) => [Number(r.id), r]));
+        const hasScore = (m: any) => (Number(m.q1) || 0) + (Number(m.q2) || 0) > 0 || (Number(m.score) || 0) > 0;
+        // O'rinlar: sessiya va xona bo'yicha (bir xil ball — bir xil o'rin)
+        const rankIn = (list: any[]) => { const sorted = [...list].filter(hasScore).sort((a, b) => (Number(b.score) || 0) - (Number(a.score) || 0)); const map = new Map<number, number>(); sorted.forEach((m, i) => map.set(m.id, i && Number(sorted[i - 1].score) === Number(m.score) ? map.get(sorted[i - 1].id)! : i + 1)); return { map, n: sorted.length }; };
+        const sessRank = rankIn(all);
+        const roomRanks = new Map<string, { map: Map<number, number>; n: number }>();
+        [...new Set(all.map(m => m.room || ''))].forEach(rn => roomRanks.set(rn, rankIn(all.filter(m => (m.room || '') === rn))));
+        const list = all.filter(m => !room || (m.room || '') === room).map(m => {
+          const reg = regBy.get(Number(m.regId));
+          return { id: m.id, name: m.fullName, room: m.room || '', q1: Number(m.q1) || 0, q2: Number(m.q2) || 0, score: Number(m.score) || 0,
+            subject1: m.subject1 || reg?.subject1 || 'Matematika', level: m.level || reg?.level || '', subject2: m.subject2 || reg?.subject2 || 'Ingliz tili', level2: m.level2 || reg?.level2 || '',
+            regId: m.regId || null, chat: reg?.chat_id || null, cancelled: reg?.status === 'Bekor', hasScore: hasScore(m), sentAt: m.resultSentAt || null,
+            rank: sessRank.map.get(m.id) || null, rankN: sessRank.n, roomRank: roomRanks.get(m.room || '')?.map.get(m.id) || null, roomN: roomRanks.get(m.room || '')?.n || 0 };
+        }).sort((a, b) => b.score - a.score || String(a.name).localeCompare(String(b.name)));
+        const maxScore = Math.round(((Number(rules.q1) || 40) * (Number(rules.w1) || 1.5) + (Number(rules.q2) || 40) * (Number(rules.w2) || 1)) * 10) / 10;
+        const medal = (r: number | null) => (r === 1 ? '🥇' : r === 2 ? '🥈' : r === 3 ? '🥉' : '🏅');
+        const sIcon = (sub: string) => (/rus/i.test(sub) ? '🇷🇺' : /ingliz/i.test(sub) ? '🇬🇧' : '📐');
+        const textOf = (x: any) =>
+          `🧒 <b>Kids Mock natijasi</b>\n\n👤 <b>${esc(x.name)}</b>${x.regId ? ` · KM-${x.regId}` : ''}\n🗓 ${esc(session || '')}${x.room ? ` · 🚪 ${esc(x.room)}` : ''}\n\n` +
+          `${sIcon(x.subject1)} ${esc(x.subject1)}${x.level ? ` (${esc(x.level)})` : ''}: <b>${x.q1}</b> / ${Number(rules.q1) || 40}\n` +
+          `${sIcon(x.subject2)} ${esc(x.subject2)}${x.level2 ? ` (${esc(x.level2)})` : ''}: <b>${x.q2}</b> / ${Number(rules.q2) || 40}\n\n` +
+          `🏆 Umumiy ball: <b>${x.score}</b> / ${maxScore}\n` +
+          (x.rank ? `${medal(x.rank)} Imtihonda: <b>${x.rank}-o‘rin</b> (${x.rankN} ta ishtirokchi)${x.roomRank ? `\n🚪 Xonada: ${x.roomRank}-o‘rin (${x.roomN} ta)` : ''}\n` : '') +
+          `\n${x.rank && x.rank <= 3 ? '🎉 Tabriklaymiz! Farzandingiz eng yaxshi natija ko‘rsatganlar qatorida!' : '👏 Ishtirokingiz uchun rahmat! Keyingi imtihonda yanada yuqori natija tilaymiz.'}\n\n<i>Registan LC — you belong here! 🧡</i>\nSavollar bo‘lsa: /aloqa`;
+        if (body.action === 'mList') {
+          const sessions = await getSetting<string[]>('mockSessions', ['2026-11 (Noyabr Mock)']);
+          return json({ ok: true, sessions, rooms: [...new Set(all.map(m => m.room || '').filter(Boolean))].sort(), list, maxScore,
+            preview: list.find(x => x.hasScore) ? textOf(list.find(x => x.hasScore)) : null,
+            summary: { total: list.length, withScore: list.filter(x => x.hasScore).length, sent: list.filter(x => x.sentAt).length, noChat: list.filter(x => !x.chat).length } });
+        }
+        // mSend: tanlanganlar yoki yuborilmagan (ball bor, Telegram bor) hammasi
+        const ids = Array.isArray(body.ids) && body.ids.length ? new Set(body.ids.map(Number)) : null;
+        const targets = list.filter(x => (ids ? ids.has(x.id) : !x.sentAt || body.force) && x.hasScore && x.chat && !x.cancelled);
+        let sent = 0, failed = 0;
+        for (const x of targets) {
+          const r = await tg(token, 'sendMessage', { chat_id: x.chat, text: textOf(x), parse_mode: 'HTML' }).catch(() => null);
+          if (r?.ok) {
+            sent++;
+            const { data: cur } = await admin.from('crm_mock_students').select('data').eq('id', x.id).maybeSingle();
+            await admin.from('crm_mock_students').update({ data: { ...(cur?.data as any || {}), resultSentAt: new Date().toISOString(), resultSentBy: p.full_name } }).eq('id', x.id);
+          } else failed++;
+          await new Promise(res => setTimeout(res, 45));
+        }
+        const skipped = { noScore: list.filter(x => (ids ? ids.has(x.id) : true) && !x.hasScore).length, noChat: list.filter(x => (ids ? ids.has(x.id) : true) && x.hasScore && !x.chat).length };
+        await notifyAdmin(token, `🧒 Kids Mock natijalari yuborildi: <b>${sent}</b>${failed ? ` · ⚠️ ${failed}` : ''} · ${esc(session)}${room ? ' · ' + esc(room) : ''} · 👩‍🏫 ${esc(p.full_name)}`);
+        return json({ ok: true, sent, failed, skipped });
+      }
+
       // ================= 👮 NAZORATCHILAR =================
       case 'pGrades':
       case 'pLetters':
