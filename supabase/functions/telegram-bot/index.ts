@@ -910,14 +910,16 @@ async function sendHome(chatId: number, firstName = '', userId?: number) {
   const rows: any[] = [
     [ib('🧒 Kids Mock’ga yozilish', 'go:reg'), ib('📸 Natijani tekshirish', 'go:check')],
     [ib('🔑 Javoblar kaliti', 'go:keys'), ib('🏆 TOP-3 sovrindorlar', 'go:top')],
-    [ib('🔍 Farzandim natijasi', 'go:result'), ib('🏅 Yutuqli karta', 'go:card')]
+    [ib('🔍 Farzandim natijasi', 'go:result'), ib('🏅 Yutuqli karta', 'go:card')],
+    [ib('👩‍🏫 Ustozlar', 'go:teacher')]
   ];
   if (app) rows.push([{ text: '📱 Ilovani ochish', web_app: { url: app } }]);
   const caption = '<b>Registan LC</b> — you belong here! 🧡\n\n' +
     '🧒 <b>Kids Mock</b> — imtihonga ro‘yxatdan o‘tish\n' +
     '📸 <b>Natija</b> — varaq rasmini yuborib ballni bilish\n' +
     '🔑 <b>Javoblar</b> — imtihon kalitlari\n' +
-    '📊 <b>Natijalar</b> — TOP-3 va yutuqli kartalar\n\n' +
+    '📊 <b>Natijalar</b> — TOP-3 va yutuqli kartalar\n' +
+    '👩‍🏫 <b>Ustozlar</b> — o‘quvchilarga Kids Mock darajasini belgilash\n\n' +
     'Kerakli bo‘limni tanlang 👇';
   const r = await tg(await token(), 'sendPhoto', { chat_id: chatId, photo: BANNER_URL, caption, parse_mode: 'HTML', reply_markup: { inline_keyboard: rows } });
   if (!r?.ok) { console.error('tg sendPhoto fail', r?.error_code, r?.description); await send(chatId, caption, { reply_markup: { inline_keyboard: rows } }); }
@@ -927,7 +929,7 @@ async function sectionMock(chatId: number) {
   const app = await miniAppUrl();
   const rows: any[] = [
     [ib('📝 Ro‘yxatdan o‘tish', 'go:reg'), ib('📋 Arizalarim', 'go:mine')],
-    [ib('📸 Natijani tekshirish', 'go:check')]
+    [ib('📸 Natijani tekshirish', 'go:check'), ib('👩‍🏫 Ustozlar', 'go:teacher')]
   ];
   if (app) rows.push([{ text: '📱 Ilovada yozilish', web_app: { url: app } }]);
   await send(chatId,
@@ -1380,7 +1382,7 @@ async function routeCallback(q: any) {
   if (data.startsWith('go:')) {
     const go = data.slice(3);
     // O'z sessiyasini yozadigan bo'limlar sessiyani o'zi almashtiradi; qolganlarida tozalash parallel
-    const reset = ['reg', 'check', 'result', 'card', 'proctor'].includes(go) ? Promise.resolve() : setSession(chatId, null);
+    const reset = ['reg', 'check', 'result', 'card', 'proctor', 'teacher'].includes(go) ? Promise.resolve() : setSession(chatId, null);
     try {
       switch (go) {
         case 'reg': return await startReg(chatId);
