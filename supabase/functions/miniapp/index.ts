@@ -228,14 +228,21 @@ Deno.serve(async req => {
 
       // ================= 🧒 KIDS MOCK NATIJALARINI YUBORISH (ustoz / nazoratchi) =================
       case 'mList':
-      case 'mSend': {
+      case 'mSend':
+      case 'mSave': {
         const p = await getProctor();
         if (!p) return json({ ok: false, error: 'Bu bo‘lim ustoz va nazoratchilar uchun. Botda “👮 Nazorat” orqali raqamingizni tasdiqlang.' }, 403);
         const session = String(body.session || '');
         const room = String(body.room || '');
         const rules = await getSetting<any>('mockRules', { q1: 40, q2: 40, w1: 1.5, w2: 1 });
-        const { data: rows } = await admin.from('crm_mock_students').select('id,data');
+        const [{ data: rows }, { data: sregs }] = await Promise.all([
+          admin.from('crm_mock_students').select('id,data'),
+          admin.from('crm_mock_registrations').select('id,full_name,room,session,phone,subject1,level,subject2,level2,teacher,status').eq('session', session).neq('status', 'Bekor')
+        ]);
         const all = (rows || []).map(r => ({ id: Number(r.id), ...(r.data as any) })).filter(m => !session || (m.session || '') === session);
+        // Arizasi bor, lekin natijasi hali kiritilmaganlar ham ro'yxatda (qo'lda kiritish uchun)
+        const haveReg = new Set(all.map(m => Number(m.regId)).filter(Boolean));
+        for (const g of sregs || []) if (!haveReg.has(Number(g.id))) all.push({ id: 700000000 + Number(g.id), fullName: g.full_name, room: g.room, session: g.session, phone: g.phone, regId: g.id, subject1: g.subject1, level: g.level, subject2: g.subject2, level2: g.level2, teacher: g.teacher, q1: 0, q2: 0, score: 0, _new: true });
         const regIds = [...new Set(all.map(m => Number(m.regId)).filter(Boolean))];
         const { data: regs } = regIds.length ? await admin.from('crm_mock_registrations').select('id,chat_id,full_name,status,subject1,level,subject2,level2').in('id', regIds) : { data: [] as any[] };
         const regBy = new Map((regs || []).map((r: any) => [Number(r.id), r]));
@@ -262,9 +269,26 @@ Deno.serve(async req => {
           `🏆 Umumiy ball: <b>${x.score}</b> / ${maxScore}\n` +
           (x.rank ? `${medal(x.rank)} Imtihonda: <b>${x.rank}-o‘rin</b> (${x.rankN} ta ishtirokchi)${x.roomRank ? `\n🚪 Xonada: ${x.roomRank}-o‘rin (${x.roomN} ta)` : ''}\n` : '') +
           `\n${x.rank && x.rank <= 3 ? '🎉 Tabriklaymiz! Farzandingiz eng yaxshi natija ko‘rsatganlar qatorida!' : '👏 Ishtirokingiz uchun rahmat! Keyingi imtihonda yanada yuqori natija tilaymiz.'}\n\n<i>Registan LC — you belong here! 🧡</i>\nSavollar bo‘lsa: /aloqa`;
+        if (body.action === 'mSave') {
+          const id = Number(body.id);
+          const m = all.find(x => x.id === id);
+          if (!m) return json({ ok: false, error: 'O‘quvchi topilmadi' }, 404);
+          const max1 = Number(rules.q1) || 40, max2 = Number(rules.q2) || 40;
+          const q1 = Math.round(Number(body.q1)), q2 = Math.round(Number(body.q2));
+          if (!Number.isFinite(q1) || !Number.isFinite(q2) || q1 < 0 || q2 < 0 || q1 > max1 || q2 > max2) return json({ ok: false, error: `To‘g‘ri javoblar: 1-fan 0–${max1}, 2-fan 0–${max2}` });
+          const score = Math.round((q1 * (Number(rules.w1) || 1.5) + q2 * (Number(rules.w2) || 1)) * 10) / 10;
+          const { data: cur } = await admin.from('crm_mock_students').select('data').eq('id', id).maybeSingle();
+          const prev: any = cur?.data || {};
+          const changed = Number(prev.q1) !== q1 || Number(prev.q2) !== q2;
+          const { _new, ...base } = m as any;
+          const dataNew = { ...base, ...prev, id, q1, q2, score, source: prev.source || 'miniapp-manual', enteredBy: p.full_name, enteredAt: new Date().toISOString(), ...(changed ? { resultSentAt: null } : {}) };
+          const { error } = await admin.from('crm_mock_students').upsert({ id, data: dataNew });
+          if (error) return json({ ok: false, error: error.message });
+          return json({ ok: true, q1, q2, score, changed });
+        }
         if (body.action === 'mList') {
           const sessions = await getSetting<string[]>('mockSessions', ['2026-11 (Noyabr Mock)']);
-          return json({ ok: true, sessions, rooms: [...new Set(all.map(m => m.room || '').filter(Boolean))].sort(), list, maxScore,
+          return json({ ok: true, sessions, rooms: [...new Set(all.map(m => m.room || '').filter(Boolean))].sort(), list, maxScore, rules: { q1: Number(rules.q1) || 40, q2: Number(rules.q2) || 40, w1: Number(rules.w1) || 1.5, w2: Number(rules.w2) || 1 },
             preview: list.find(x => x.hasScore) ? textOf(list.find(x => x.hasScore)) : null,
             summary: { total: list.length, withScore: list.filter(x => x.hasScore).length, sent: list.filter(x => x.sentAt).length, noChat: list.filter(x => !x.chat).length } });
         }

@@ -207,6 +207,10 @@
           <label><span>Xona</span><select id="pm-room" class="inp"><option value="">Hammasi</option></select></label>
         </div>
         <div id="pm-sum" class="text-sm font-bold p-3 rounded-2xl" style="background:var(--soft)">⏳ Yuklanmoqda…</div>
+        <div id="pm-filter" class="grid grid-cols-2 gap-2">
+          <button type="button" class="chip on" data-pmf="all">👥 Hammasi</button>
+          <button type="button" class="chip" data-pmf="todo">✍️ Natijasi kiritilmagan</button>
+        </div>
         <div id="pm-list" class="space-y-2"></div>
         <details><summary class="text-sm font-extrabold cursor-pointer">👁 Ota-onaga boradigan xabar namunasi</summary>
           <div id="pm-prev" class="text-sm mt-2 p-3 rounded-2xl" style="background:var(--soft);white-space:pre-wrap"></div></details>
@@ -499,7 +503,8 @@
       if (open) document.querySelector('[data-tab="proctor"]').click();
     }
     // ---------- 🧒 Kids Mock natijalarini yuborish ----------
-    let pmData = null;
+    let pmData = null, pmFilter = 'all';
+    document.querySelectorAll('[data-pmf]').forEach(b => b.onclick = () => { haptic(); pmFilter = b.dataset.pmf; document.querySelectorAll('[data-pmf]').forEach(x => x.classList.toggle('on', x === b)); pmRender(); });
     document.querySelectorAll('[data-pv]').forEach(b => b.onclick = () => {
       haptic();
       document.querySelectorAll('[data-pv]').forEach(x => x.classList.toggle('on', x === b));
@@ -519,21 +524,50 @@
       if (!$('pm-session').options.length) { $('pm-session').innerHTML = (r.sessions || []).map(x => `<option>${esc(x)}</option>`).join(''); if (r.sessions?.length) return pmLoad(); }
       const curRoom = $('pm-room').value;
       $('pm-room').innerHTML = '<option value="">Hammasi</option>' + (r.rooms || []).map(x => `<option ${x === curRoom ? 'selected' : ''}>${esc(x)}</option>`).join('');
+      pmRender();
+    }
+    function pmRender() {
+      const r = pmData; if (!r) return;
       const s = r.summary, pending = r.list.filter(x => x.hasScore && x.chat && !x.sentAt && !x.cancelled).length;
+      const todo = r.list.filter(x => !x.hasScore).length;
+      document.querySelector('[data-pmf="todo"]').textContent = `✍️ Natijasi kiritilmagan (${todo})`;
+      const L = pmFilter === 'todo' ? r.list.filter(x => !x.hasScore) : r.list;
       $('pm-sum').innerHTML = `👥 ${s.total} ta · 🏆 natijasi bor: ${s.withScore} · ✅ yuborilgan: ${s.sent}${s.noChat ? ` · 📵 Telegram yo‘q: ${s.noChat}` : ''}`;
-      $('pm-list').innerHTML = r.list.map(x => `
+      $('pm-list').innerHTML = L.map(x => `
         <div class="flex items-center gap-2 p-3 rounded-2xl" style="border:1.5px solid var(--line)">
           <div class="text-lg w-9 text-center font-black">${pmMedal(x.rank)}</div>
           <div class="flex-1 min-w-0">
             <div class="font-extrabold truncate">${esc(x.name)}</div>
             <div class="text-xs muted">${esc(x.room)} · ${x.q1}+${x.q2} → <b>${x.score}</b>/${r.maxScore} · ${pmStatus(x)}</div>
           </div>
+          <button type="button" class="chip px-3" data-pme="${x.id}" title="Natijani kiritish">✍️</button>
           ${x.hasScore && x.chat && !x.cancelled ? `<button type="button" class="chip px-3" data-pms="${x.id}">${x.sentAt ? '🔁' : '📨'}</button>` : ''}
-        </div>`).join('') || '<div class="muted text-sm">Bu sessiyada natija yo‘q.</div>';
+        </div>
+        <div id="pme-${x.id}" class="hidden p-3 rounded-2xl space-y-2" style="background:var(--soft)">
+          <div class="grid grid-cols-2 gap-2">
+            <label><span>${esc(x.subject1)}${x.level ? ` (${esc(x.level)})` : ''} · 0–${r.rules.q1}</span><input class="inp" type="number" inputmode="numeric" min="0" max="${r.rules.q1}" data-q1="${x.id}" value="${x.hasScore ? x.q1 : ''}" placeholder="0" /></label>
+            <label><span>${esc(x.subject2)}${x.level2 ? ` (${esc(x.level2)})` : ''} · 0–${r.rules.q2}</span><input class="inp" type="number" inputmode="numeric" min="0" max="${r.rules.q2}" data-q2="${x.id}" value="${x.hasScore ? x.q2 : ''}" placeholder="0" /></label>
+          </div>
+          <div class="text-sm font-bold text-center" data-sc="${x.id}">Jami ball: <b>${x.hasScore ? x.score : 0}</b> / ${r.maxScore}</div>
+          <button type="button" class="btn" data-pmsave="${x.id}">💾 Saqlash</button>
+        </div>`).join('') || `<div class="muted text-sm">${pmFilter === 'todo' ? '✅ Hammasiga natija kiritilgan.' : 'Bu sessiyada o‘quvchi yo‘q.'}</div>`;
       $('pm-prev').innerHTML = r.preview || 'Natija kiritilgach namuna ko‘rinadi.';
       $('pm-send').disabled = !pending;
       $('pm-send').textContent = pending ? `📨 Yuborilmaganlarga yuborish (${pending})` : (s.sent ? '✅ Hammasiga yuborilgan' : 'Yuboriladigan natija yo‘q');
       document.querySelectorAll('[data-pms]').forEach(b => b.onclick = () => pmSend([Number(b.dataset.pms)]));
+      document.querySelectorAll('[data-pme]').forEach(b => b.onclick = () => { haptic(); const box = $('pme-' + b.dataset.pme); box.classList.toggle('hidden'); box.querySelector('input')?.focus(); });
+      const calc = id => { const a = Number(document.querySelector(`[data-q1="${id}"]`).value) || 0, c = Number(document.querySelector(`[data-q2="${id}"]`).value) || 0; return Math.round((a * r.rules.w1 + c * r.rules.w2) * 10) / 10; };
+      document.querySelectorAll('[data-q1],[data-q2]').forEach(inp => inp.oninput = () => { const id = inp.dataset.q1 || inp.dataset.q2; document.querySelector(`[data-sc="${id}"]`).innerHTML = `Jami ball: <b>${calc(id)}</b> / ${r.maxScore}`; });
+      document.querySelectorAll('[data-pmsave]').forEach(b => b.onclick = async () => {
+        const id = Number(b.dataset.pmsave);
+        const q1 = document.querySelector(`[data-q1="${id}"]`).value, q2 = document.querySelector(`[data-q2="${id}"]`).value;
+        if (q1 === '' || q2 === '') { haptic('err'); $('pm-msg').textContent = '⚠️ Ikkala fan bo‘yicha to‘g‘ri javoblar sonini kiriting'; return; }
+        b.disabled = true; b.textContent = '⏳';
+        const res = await api('mSave', { session: $('pm-session').value, id, q1: Number(q1), q2: Number(q2) });
+        haptic(res.ok ? 'ok' : 'err');
+        $('pm-msg').innerHTML = res.ok ? `✅ Saqlandi: ${res.q1}+${res.q2} → <b>${res.score}</b> ball${res.changed ? ' · yuborishga tayyor' : ''}` : '⚠️ ' + esc(res.error);
+        if (res.ok) pmLoad(); else { b.disabled = false; b.textContent = '💾 Saqlash'; }
+      });
     }
     function pmConfirm(text) { return new Promise(res => tg?.showConfirm ? tg.showConfirm(text, ok => res(ok)) : res(confirm(text))); }
     async function pmSend(ids) {
