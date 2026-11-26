@@ -38,6 +38,7 @@ Deno.serve(async req => {
           { command: 'tekshir', description: '📸 Varaqni tekshirish' },
           { command: 'royxat', description: '🧒 Kids Mock’ga yozilish' },
           { command: 'mening', description: '📋 Mening arizalarim' },
+          { command: 'ustoz', description: '👩‍🏫 Ustozlar: Kids Mock darajasi' },
           { command: 'aloqa', description: '📞 Aloqa' },
           { command: 'yordam', description: 'ℹ️ Yordam' },
           { command: 'cancel', description: '❌ Bekor qilish' }

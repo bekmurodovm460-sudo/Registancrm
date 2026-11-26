@@ -46,10 +46,11 @@ const M_RESULTS = '📊 Natijalar';
 const M_CONTACT = '📞 Aloqa';
 const M_HELP = 'ℹ️ Yordam';
 const M_PROCTOR = '👮 Nazorat';
+const M_TEACHER = '👩‍🏫 Ustozlar';
 
 const kb = (rows: string[][]) => ({ keyboard: rows.map(r => r.map(text => ({ text }))), resize_keyboard: true });
 const MENU = {
-  ...kb([[M_MOCK, M_CHECK], [M_KEYS, M_RESULTS], [M_CONTACT, M_HELP, M_PROCTOR]]),
+  ...kb([[M_MOCK, M_CHECK], [M_KEYS, M_RESULTS], [M_TEACHER, M_PROCTOR], [M_CONTACT, M_HELP]]),
   is_persistent: true,
   input_field_placeholder: 'Bo‘limni tanlang…'
 };
@@ -112,9 +113,9 @@ const baseVariant = (subject1?: string, level?: string) => `${subject1 === 'Rus 
 const variantOf = (subject1?: string, level?: string, subject2?: string, level2?: string) =>
   `${baseVariant(subject1, level)}+${SC[subject2 || ''] || 'ENG'}-${LC(level2)}`;
 
-async function notifyAdmin(text: string) {
+async function notifyAdmin(text: string, markup?: unknown) {
   const chat = await getSecret('telegram_admin_chat_id');
-  if (chat) await tg(await token(), 'sendMessage', { chat_id: chat, text, parse_mode: 'HTML' }).catch(() => {});
+  if (chat) await tg(await token(), 'sendMessage', { chat_id: chat, text, parse_mode: 'HTML', ...(markup ? { reply_markup: markup } : {}) }).catch(() => {});
 }
 
 // ---------------------------------------------------------
@@ -386,12 +387,42 @@ async function finishReg(chatId: number, s: Session, session: string, username =
     await send(chatId, `ℹ️ <b>${esc(d.name)}</b> allaqachon ro‘yxatdan o‘tgan.\nSessiya: ${esc(session)}\nXona: <b>${esc(dup.room)}</b>`, { reply_markup: MENU });
     return;
   }
+  // 🔗 Edutizim: telefon + ism bo'yicha o'quvchini topish. Ustoz allaqachon ariza ochgan bo'lsa — o'shanga qo'shiladi
+  const eduSt = await matchEduStudent(d.phone, d.name).catch(() => null);
+  if (eduSt) {
+    const { data: ex } = await admin.from('crm_mock_registrations').select(REG_T).eq('session', session).eq('edu_student_id', eduSt.id).neq('status', 'Bekor').maybeSingle();
+    if (ex) {
+      if (ex.chat_id && ex.chat_id !== chatId) {
+        await setSession(chatId, null);
+        await send(chatId, `ℹ️ <b>${esc(d.name)}</b> allaqachon ro‘yxatdan o‘tgan.\nSessiya: ${esc(session)}\nXona: <b>${esc(ex.room)}</b>`, { reply_markup: MENU });
+        return;
+      }
+      const patch: Record<string, unknown> = { chat_id: chatId, tg_username: username || d.username || null, grade: d.grade, phone: d.phone };
+      if (!ex.subject1) Object.assign(patch, { subject1: d.subject1 || 'Matematika', level: d.level || 'Oson' });
+      const s1 = (patch.subject1 as string) || ex.subject1;
+      if (!ex.subject2 && (d.subject2 || 'Ingliz tili') !== s1) Object.assign(patch, { subject2: d.subject2 || 'Ingliz tili', level2: d.level2 || 'Oson' });
+      await admin.from('crm_mock_registrations').update(patch).eq('id', ex.id);
+      const r2 = { ...ex, ...patch };
+      await setSession(chatId, null);
+      const tag = (by?: string | null) => (by ? ` — 👩‍🏫 ${esc(by)}` : '');
+      await send(chatId,
+        `✅ Ro‘yxatdan o‘tdingiz!\n\n👤 ${esc(r2.full_name)}\n🏫 ${esc(d.grade)}\n📚 ${esc(r2.subject1 || '—')} (${esc(r2.level || '—')})${tag(r2.level_by)}\n📚 ${esc(r2.subject2 || '—')} (${esc(r2.level2 || '—')})${tag(r2.level2_by)}\n🗓 ${esc(session)}\n🚪 Xona: <b>${esc(r2.room)}</b>\n🔖 Ariza raqami: <b>KM-${ex.id}</b>\n\nUstoz belgilagan daraja saqlandi. Imtihondan 1 kun va 2 soat oldin eslatma yuboramiz.`,
+        { reply_markup: MENU });
+      await askOtherTeachers(r2, await eduLinks(null, eduSt.id), null, '📝 Ota-ona Telegram bot orqali ro‘yxatdan o‘tkazdi.').catch(e => console.error('askTeachers', e));
+      return;
+    }
+  }
   const room = await pickRoom(session);
   const { data: reg } = await admin.from('crm_mock_registrations').insert({
     chat_id: chatId, tg_username: username || d.username || null, full_name: d.name, grade: d.grade, phone: d.phone, session, room,
-    subject1: d.subject1 || 'Matematika', level: d.level || 'Oson', subject2: d.subject2 || 'Ingliz tili', level2: d.level2 || 'Oson', teacher: d.teacher || null
-  }).select('id').single();
+    subject1: d.subject1 || 'Matematika', level: d.level || 'Oson', subject2: d.subject2 || 'Ingliz tili', level2: d.level2 || 'Oson', teacher: d.teacher || null,
+    edu_student_id: eduSt?.id || null
+  }).select(REG_T).single();
   await setSession(chatId, null);
+  if (eduSt && reg) {
+    const links = await eduLinks(null, eduSt.id);
+    if (links.length) await askOtherTeachers(reg, links, null, `📝 Ota-ona ro‘yxatdan o‘tkazdi: ${esc(reg.subject1)} (${esc(reg.level)}) + ${esc(reg.subject2)} (${esc(reg.level2)}). Ustoz darajasi ota-ona tanlovidan ustun turadi.`).catch(e => console.error('askTeachers', e));
+  }
   const sch = (await cachedSetting<Record<string, any>>('mockSchedule', {}))?.[session];
   const when = sch?.date ? `\n⏰ ${esc(sch.date.split('-').reverse().join('.'))}, soat ${esc(sch.time || '09:00')}${sch.place ? `\n📍 ${esc(sch.place)}` : ''}` : '';
   await send(chatId,
@@ -928,10 +959,280 @@ async function sendHelp(chatId: number) {
     `${M_CHECK} — varaq rasmini yuborib ballni bilish\n` +
     `${M_KEYS} — e’lon qilingan javoblar kaliti\n` +
     `${M_RESULTS} — farzand natijasi, TOP-3, yutuqli karta\n` +
-    `${M_PROCTOR} — nazoratchi va ustozlar uchun\n` +
+    `${M_TEACHER} — ustozlar: o‘quvchilarning Kids Mock darajasini belgilash\n` +
+    `${M_PROCTOR} — maktab testlari nazoratchilari uchun\n` +
     '📱 <b>Ilova</b> — pastki chapdagi tugma\n\n' +
     '<b>Buyruqlar:</b> /start · /royxat · /tekshir · /javoblar · /natija · /top · /karta · /mening · /aloqa · /cancel',
     { reply_markup: MENU });
+}
+
+// ---------------------------------------------------------
+// 👩‍🏫 Ustozlar — Edutizim bilan bog'langan. Ustoz o'z fanidan o'quvchisining
+// Kids Mock darajasini (Oson/Qiyin) belgilaydi; o'quvchi markazda boshqa Kids Mock
+// fanidan ham o'qisa, o'sha fan ustoziga faqat o'z fanini belgilash uchun xabar boradi.
+// ---------------------------------------------------------
+const SUPABASE_URL = Deno.env.get('SUPABASE_URL') || '';
+const SUBJ_BY_CODE: Record<string, string> = { MAT: 'Matematika', RUS: 'Rus tili', ENG: 'Ingliz tili' };
+const SUBJ_ICON: Record<string, string> = { 'Matematika': '📐', 'Rus tili': '🇷🇺', 'Ingliz tili': '🇬🇧' };
+type Link = { student_id: string; student_name: string; phone: string; parent_phone: string | null; group_id: string; group_name: string; teacher_id: string; teacher_name: string; course: string; subject: string | null };
+type Teacher = { tg_id: number; chat_id: number; edu_teacher_id: string; full_name: string; phone: string; status: string; session: string | null };
+
+async function edu(action: string, body: Record<string, unknown> = {}): Promise<any> {
+  const secret = await getSecret('cron_secret');
+  const r = await fetch(`${SUPABASE_URL}/functions/v1/edutizim-sync`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json', 'x-cron-secret': secret }, body: JSON.stringify({ action, ...body })
+  });
+  return await r.json().catch(() => ({ ok: false, error: `HTTP ${r.status}` }));
+}
+async function eduLinks(teacher: string | null, student: string | null): Promise<Link[]> {
+  const { data, error } = await admin.rpc('crm_edu_links', { p_teacher: teacher, p_student: student });
+  if (error) console.error('crm_edu_links', error.message);
+  return ((data as Link[]) || []).filter(l => l.subject);
+}
+async function getTeacher(tg?: number): Promise<Teacher | null> {
+  if (!tg) return null;
+  const { data } = await admin.from('crm_exam_teachers').select('*').eq('tg_id', tg).maybeSingle();
+  return data as Teacher | null;
+}
+async function mockSessions() { return await cachedSetting<string[]>('mockSessions', ['2026-11 (Noyabr Mock)']); }
+async function teacherSession(t: Teacher) {
+  const ss = await mockSessions();
+  return t.session && ss.includes(t.session) ? t.session : ss[0] || '';
+}
+const phone998 = (p?: string | null) => { const d = String(p || '').replace(/\D/g, ''); return d.length >= 9 ? '+998' + d.slice(-9) : ''; };
+const lvIcon = (lv?: string | null) => (lv === 'Qiyin' ? '🔴' : '🟢');
+// Arizada shu fan qaysi o'rinda (1-fan / 2-fan) va kim belgilagan
+function slotOf(reg: any, subject: string): 0 | 1 | 2 { return reg?.subject1 === subject ? 1 : reg?.subject2 === subject ? 2 : 0; }
+function levelOf(reg: any, subject: string) {
+  const s = slotOf(reg, subject);
+  return s === 1 ? { level: reg.level as string, by: reg.level_by as string | null } : s === 2 ? { level: reg.level2 as string, by: reg.level2_by as string | null } : null;
+}
+const REG_T = 'id,chat_id,full_name,phone,session,room,status,subject1,level,level_by,subject2,level2,level2_by,edu_student_id,teacher';
+
+async function sendOrEdit(chatId: number, msgId: number | undefined, text: string, markup: any) {
+  if (msgId) {
+    const r = await tg(await token(), 'editMessageText', { chat_id: chatId, message_id: msgId, text, parse_mode: 'HTML', reply_markup: markup });
+    if (r?.ok || /not modified/.test(r?.description || '')) return;
+  }
+  await send(chatId, text, { reply_markup: markup });
+}
+
+// Ism mosligi: Edutizim'dagi ism (birinchi so'z) arizadagi so'zlardan biriga mos bo'lishi shart
+const normName = (s: string) => String(s || '').toLowerCase().replace(/[’'`ʻʼ‘]/g, '').replace(/\s+/g, ' ').trim().split(' ').filter(w => w.length >= 3);
+const wordEq = (a: string, b: string) => a === b || (a.length >= 4 && b.length >= 4 && a.slice(0, 4) === b.slice(0, 4));
+async function matchEduStudent(phone: string, name: string): Promise<{ id: string; full_name: string } | null> {
+  const digits = String(phone || '').replace(/\D/g, '').slice(-9);
+  if (digits.length !== 9) return null;
+  const { data } = await admin.rpc('crm_edu_by_phone', { p_digits: digits });
+  const words = normName(name);
+  const scored = ((data as any[]) || []).map(c => {
+    const cw = normName(c.full_name);
+    const first = cw[0] && words.some(w => wordEq(w, cw[0]));
+    return { c, first, score: cw.filter(x => words.some(w => wordEq(w, x))).length };
+  }).filter(x => x.first).sort((a, b) => b.score - a.score);
+  if (!scored.length || (scored[1] && scored[1].score === scored[0].score)) return null;
+  return scored[0].c;
+}
+
+async function startTeacher(chatId: number, userId?: number) {
+  const t = await getTeacher(userId);
+  if (t?.status === 'blocked') return void send(chatId, '⛔ Ustozlar bo‘limiga kirish yopilgan. Administratorga murojaat qiling: /aloqa', { reply_markup: MENU });
+  if (t) { await setSession(chatId, null); return teacherHome(chatId, t); }
+  await setSession(chatId, 't_contact', {});
+  await send(chatId,
+    '👩‍🏫 <b>Ustozlar bo‘limi</b>\n\nBu yerda o‘quvchilaringizning Kids Mock darajasini (🟢 Oson / 🔴 Qiyin) belgilaysiz.\n\n' +
+    'Ulanish uchun <b>Edutizim’dagi raqamingizni</b> pastdagi tugma orqali yuboring 👇', {
+      reply_markup: { keyboard: [[{ text: '📱 Raqamni yuborish', request_contact: true }], [{ text: BTN_CANCEL }]], resize_keyboard: true, one_time_keyboard: true }
+    });
+}
+
+async function linkTeacher(chatId: number, m: any) {
+  if (!m.contact) return void send(chatId, 'Pastdagi “📱 Raqamni yuborish” tugmasini bosing yoki ❌ Bekor qilish.');
+  if (m.contact.user_id !== m.from?.id) return void send(chatId, 'Faqat <b>o‘zingizning</b> raqamingizni yuboring (pastdagi tugma orqali).');
+  const digits = String(m.contact.phone_number || '').replace(/\D/g, '').slice(-9);
+  const old = await getTeacher(m.from.id);
+  if (old?.status === 'blocked') { await setSession(chatId, null); return void send(chatId, '⛔ Kirish yopilgan. /aloqa', { reply_markup: MENU }); }
+  await send(chatId, '⏳ Edutizim’dan tekshirilmoqda…', { reply_markup: { remove_keyboard: true } });
+  const r = await edu('employees');
+  if (!r?.ok) { await setSession(chatId, null); return void send(chatId, '⚠️ Edutizim bilan bog‘lanib bo‘lmadi. Birozdan so‘ng qayta urinib ko‘ring.', { reply_markup: MENU }); }
+  const emps = ((r.employees || []) as any[]).filter(e => e.digits === digits);
+  let emp: any = null, links: Link[] = [];
+  for (const e of emps) { const l = await eduLinks(e.id, null); if (l.length || !emp) { emp = e; links = l; } if (l.length) break; }
+  await setSession(chatId, null);
+  if (!emp) {
+    await notifyAdmin(`👩‍🏫 Imtihon botiga ustoz bo‘lib ulanmoqchi: ${esc(m.from?.first_name || '')} · +998${digits} — Edutizim xodimlarida topilmadi.`);
+    return void send(chatId, `❌ <b>+998${digits}</b> raqami Edutizim xodimlari ro‘yxatida topilmadi.\nEdutizim’dagi raqamingiz shu raqam bilan bir xil ekanini tekshiring yoki administratorga yozing: /aloqa`, { reply_markup: MENU });
+  }
+  const t: Teacher = { tg_id: m.from.id, chat_id: chatId, edu_teacher_id: emp.id, full_name: emp.name, phone: '+998' + digits, status: 'active', session: old?.session || null };
+  await admin.from('crm_exam_teachers').upsert({ ...t, updated_at: new Date().toISOString() });
+  const subjects = [...new Set(links.map(l => l.subject!))];
+  const n = new Set(links.map(l => l.student_id)).size;
+  await notifyAdmin(`👩‍🏫 Imtihon botiga ustoz ulandi: <b>${esc(emp.name)}</b> · ${esc(subjects.join(', ') || 'Kids Mock fani yo‘q')} · ${n} o‘quvchi`, { inline_keyboard: [[ib('🚫 Bloklash', `tb:${m.from.id}`)]] });
+  await send(chatId, `✅ <b>${esc(emp.name)}</b>, siz ustoz sifatida ulandingiz!`, { reply_markup: MENU });
+  return teacherHome(chatId, t);
+}
+
+async function teacherStudents(t: Teacher, session: string) {
+  const links = await eduLinks(t.edu_teacher_id, null);
+  const ids = [...new Set(links.map(l => l.student_id))];
+  const regs: any[] = [];
+  for (let i = 0; i < ids.length; i += 150) {
+    const { data } = await admin.from('crm_mock_registrations').select(REG_T).eq('session', session).in('edu_student_id', ids.slice(i, i + 150)).neq('status', 'Bekor');
+    regs.push(...(data || []));
+  }
+  const byStudent = new Map(regs.map(r => [r.edu_student_id, r]));
+  const seen = new Set<string>();
+  const rows = links.filter(l => { const k = `${l.student_id}|${l.subject}`; if (seen.has(k)) return false; seen.add(k); return true; })
+    .map(l => { const reg = byStudent.get(l.student_id); const lv = levelOf(reg, l.subject!); return { ...l, reg, mark: lv?.by ? lv : null }; })
+    .sort((a, b) => a.student_name.localeCompare(b.student_name));
+  return rows;
+}
+
+async function teacherHome(chatId: number, t: Teacher, msgId?: number) {
+  const session = await teacherSession(t);
+  const [rows, ss] = await Promise.all([teacherStudents(t, session), mockSessions()]);
+  const subjects = [...new Set(rows.map(r => r.subject!))];
+  if (!rows.length) {
+    return sendOrEdit(chatId, msgId, `👩‍🏫 <b>${esc(t.full_name)}</b>\n\nEdutizim’da sizning aktiv guruhlaringizda Kids Mock fanlari (Matematika, Rus tili, Ingliz tili) bo‘yicha o‘quvchi topilmadi.\nGuruh yaqinda ochilgan bo‘lsa, ma’lumotlar har soatda yangilanadi.`, { inline_keyboard: [[ib('🔄 Yangilash', 'tm:h')]] });
+  }
+  const done = rows.filter(r => r.mark).length;
+  const kb: any[] = [
+    [ib(`⬜ Belgilanmaganlar (${rows.length - done})`, 'tm:u:0'), ib(`👥 Hammasi (${rows.length})`, 'tm:a:0')]
+  ];
+  if (ss.length > 1) kb.push([ib('🗓 Sessiyani almashtirish', 'tse')]);
+  kb.push([ib('🔄 Yangilash', 'tm:h')]);
+  await sendOrEdit(chatId, msgId,
+    `👩‍🏫 <b>${esc(t.full_name)}</b>\n` +
+    `📚 ${subjects.map(s => `${SUBJ_ICON[s] || ''} ${esc(s)}`).join(' · ')}\n` +
+    `🗓 Sessiya: <b>${esc(session)}</b>\n\n` +
+    `👥 O‘quvchilar: <b>${rows.length}</b>\n✅ Daraja belgilangan: <b>${done}</b>\n⬜ Qolgan: <b>${rows.length - done}</b>\n\n` +
+    'O‘quvchini tanlab, o‘z faningizdan darajasini belgilang. Ikkinchi fanidan boshqa ustozda o‘qisa, unga avtomatik xabar boradi.', { inline_keyboard: kb });
+}
+
+async function teacherList(chatId: number, t: Teacher, mode: string, page: number, msgId?: number) {
+  const session = await teacherSession(t);
+  const all = await teacherStudents(t, session);
+  const rows = mode === 'u' ? all.filter(r => !r.mark) : all;
+  const per = 10, pages = Math.max(1, Math.ceil(rows.length / per));
+  const p = Math.min(Math.max(0, page), pages - 1);
+  const multi = new Set(all.map(r => r.subject)).size > 1;
+  const kb: any[] = rows.slice(p * per, p * per + per).map(r => [ib(
+    `${r.mark ? lvIcon(r.mark.level) : '⬜'} ${r.student_name}${multi ? ` · ${SUBJ_ICON[r.subject!] || r.subject}` : ''}`.slice(0, 60), `tp:${r.student_id}:${SC[r.subject!]}`)]);
+  const nav: any[] = [];
+  if (p > 0) nav.push(ib('◀️', `tm:${mode}:${p - 1}`));
+  if (pages > 1) nav.push(ib(`${p + 1}/${pages}`, 'noop'));
+  if (p < pages - 1) nav.push(ib('▶️', `tm:${mode}:${p + 1}`));
+  if (nav.length) kb.push(nav);
+  kb.push([ib(mode === 'u' ? '👥 Hammasi' : '⬜ Belgilanmaganlar', `tm:${mode === 'u' ? 'a' : 'u'}:0`), ib('⬅️ Panel', 'tm:h')]);
+  const head = mode === 'u' ? `⬜ <b>Belgilanmagan o‘quvchilar</b> — ${rows.length} ta` : `👥 <b>Barcha o‘quvchilar</b> — ${rows.length} ta`;
+  await sendOrEdit(chatId, msgId, rows.length ? `${head}\n🗓 ${esc(session)}\n\n🟢 Oson · 🔴 Qiyin · ⬜ belgilanmagan` : '🎉 Hamma o‘quvchilaringizga daraja belgilangan!', { inline_keyboard: kb });
+}
+
+async function teacherPick(chatId: number, t: Teacher, sid: string, code: string, msgId?: number) {
+  const subject = SUBJ_BY_CODE[code];
+  const links = await eduLinks(null, sid);
+  const mine = links.find(l => l.teacher_id === t.edu_teacher_id && l.subject === subject);
+  if (!mine) return void send(chatId, '⛔ Bu o‘quvchi sizning guruhingizda emas.');
+  const session = await teacherSession(t);
+  const { data: reg } = await admin.from('crm_mock_registrations').select(REG_T).eq('session', session).eq('edu_student_id', sid).neq('status', 'Bekor').maybeSingle();
+  const cur = levelOf(reg, subject);
+  const others = [...new Set(links.filter(l => l.subject !== subject).map(l => `${SUBJ_ICON[l.subject!] || ''} ${l.subject} — ${l.teacher_name}`))];
+  await sendOrEdit(chatId, msgId,
+    `👤 <b>${esc(mine.student_name)}</b>\n👥 ${esc(mine.group_name)}\n${SUBJ_ICON[subject]} Fan: <b>${esc(subject)}</b>\n` +
+    (cur ? `Hozir: ${lvIcon(cur.level)} <b>${esc(cur.level)}</b>${cur.by ? ` (${esc(cur.by)})` : ' (ota-ona tanlagan)'}\n` : '') +
+    (others.length ? `\nIkkinchi fan: ${others.map(esc).join('; ')}\n` : '') +
+    '\nKids Mock darajasini tanlang 👇', {
+      inline_keyboard: [[ib('🟢 Oson', `tl:${sid}:${code}:O`), ib('🔴 Qiyin', `tl:${sid}:${code}:Q`)], [ib('⬅️ Ro‘yxat', 'tm:u:0')]]
+    });
+}
+
+// Arizani topish: avval Edutizim ID bo'yicha, bo'lmasa ota-ona yozgan arizani telefon+ism bilan bog'lash
+async function findOrLinkReg(session: string, l: Link) {
+  const { data: reg } = await admin.from('crm_mock_registrations').select(REG_T).eq('session', session).eq('edu_student_id', l.student_id).neq('status', 'Bekor').maybeSingle();
+  if (reg) return reg;
+  const phones = [phone998(l.phone), phone998(l.parent_phone)].filter(Boolean);
+  if (!phones.length) return null;
+  const { data: cands } = await admin.from('crm_mock_registrations').select(REG_T).eq('session', session).is('edu_student_id', null).in('phone', phones).neq('status', 'Bekor');
+  const ew = normName(l.student_name);
+  const hit = (cands || []).filter(c => { const w = normName(c.full_name); return ew[0] && w.some(x => wordEq(x, ew[0])); });
+  if (hit.length !== 1) return null;
+  await admin.from('crm_mock_registrations').update({ edu_student_id: l.student_id }).eq('id', hit[0].id);
+  return { ...hit[0], edu_student_id: l.student_id };
+}
+
+// O'quvchining boshqa Kids Mock fanlari ustozlariga "darajani belgilang" xabari
+async function askOtherTeachers(reg: any, links: Link[], exceptSubject: string | null, note: string) {
+  const notified: string[] = [], missing: string[] = [];
+  const bySubject = new Map<string, Link>();
+  links.filter(l => l.subject !== exceptSubject).forEach(l => { if (!bySubject.has(l.subject!)) bySubject.set(l.subject!, l); });
+  for (const [subject, l] of bySubject) {
+    if (levelOf(reg, subject)?.by) continue;
+    const { data: ts } = await admin.from('crm_exam_teachers').select('chat_id,full_name').eq('edu_teacher_id', l.teacher_id).eq('status', 'active');
+    if (!ts?.length) { missing.push(`${subject} — ${l.teacher_name}`); continue; }
+    for (const t of ts) {
+      await send(t.chat_id,
+        `🧒 <b>Kids Mock</b> · ${esc(reg.session || '')}\n👤 <b>${esc(l.student_name)}</b> (${esc(l.group_name)})\n${note}\n\n` +
+        `Siz o‘qitadigan ${SUBJ_ICON[subject] || ''} <b>${esc(subject)}</b> fanidan darajasini belgilang 👇`,
+        { reply_markup: { inline_keyboard: [[ib('🟢 Oson', `tl:${l.student_id}:${SC[subject]}:O`), ib('🔴 Qiyin', `tl:${l.student_id}:${SC[subject]}:Q`)]] } });
+    }
+    notified.push(`${subject} — ${l.teacher_name}`);
+  }
+  if (missing.length) await notifyAdmin(`⚠️ Kids Mock: <b>${esc(reg.full_name)}</b> (KM-${reg.id}) uchun ${missing.map(esc).join('; ')} ustozi imtihon botiga ulanmagan — darajani CRM’da kiriting yoki ustozni botga ulang (👩‍🏫 Ustozlar).`);
+  return { notified, missing };
+}
+
+async function teacherSetLevel(chatId: number, t: Teacher, sid: string, code: string, L: string, msgId?: number) {
+  const subject = SUBJ_BY_CODE[code];
+  const level = L === 'Q' ? 'Qiyin' : 'Oson';
+  if (!subject) return;
+  const links = await eduLinks(null, sid);
+  const mine = links.find(l => l.teacher_id === t.edu_teacher_id && l.subject === subject);
+  if (!mine) return void send(chatId, '⛔ Bu o‘quvchi sizning guruhingizda emas.');
+  const session = await teacherSession(t);
+  let reg: any = await findOrLinkReg(session, mine);
+  if (!reg) {
+    const { data, error } = await admin.from('crm_mock_registrations').insert({
+      full_name: mine.student_name, phone: phone998(mine.parent_phone) || phone998(mine.phone) || null, session, room: await pickRoom(session),
+      source: 'teacher', edu_student_id: sid, teacher: t.full_name
+    }).select(REG_T).single();
+    if (error || !data) { console.error('teacher reg insert', error?.message); return void send(chatId, '⚠️ Saqlab bo‘lmadi, qayta urinib ko‘ring.'); }
+    reg = data;
+  }
+  // Fan qaysi o'ringa yoziladi: 1-fan faqat Matematika/Rus tili; ustoz belgilagan o'rin boshqa ustoz tomonidan almashtirilmaydi
+  let slot = slotOf(reg, subject);
+  if (!slot) {
+    const free2 = !reg.subject2 || !reg.level2_by;
+    if (subject === 'Ingliz tili') slot = free2 ? 2 : 0;
+    else if (!reg.subject1) slot = 1;
+    else if (!reg.subject2) slot = 2;
+    else if (!reg.level_by) slot = 1;
+    else if (free2) slot = 2;
+  }
+  if (!slot) return void send(chatId, `ℹ️ <b>${esc(mine.student_name)}</b> uchun ikkala fan boshqa ustozlar tomonidan belgilangan. O‘zgartirish kerak bo‘lsa, administratorga yozing.`);
+  const patch: Record<string, unknown> = slot === 1 ? { subject1: subject, level, level_by: t.full_name } : { subject2: subject, level2: level, level2_by: t.full_name };
+  const after = { ...reg, ...patch };
+  patch.teacher = [...new Set([after.level_by, after.level2_by].filter(Boolean))].join(', ') || t.full_name;
+  const { error } = await admin.from('crm_mock_registrations').update(patch).eq('id', reg.id);
+  if (error) return void send(chatId, '⚠️ Saqlab bo‘lmadi, qayta urinib ko‘ring.');
+  Object.assign(reg, patch);
+
+  const other = await askOtherTeachers(reg, links, subject, `✅ ${SUBJ_ICON[subject]} ${esc(subject)}: <b>${esc(level)}</b> — ${esc(t.full_name)} belgiladi.`);
+  const hasOther = links.some(l => l.subject !== subject);
+  const lines = [
+    `✅ Saqlandi: <b>${esc(mine.student_name)}</b>`,
+    `${SUBJ_ICON[subject]} ${esc(subject)}: ${lvIcon(level)} <b>${esc(level)}</b>`,
+    `🔖 KM-${reg.id} · 🚪 ${esc(reg.room || '')}`
+  ];
+  if (other.notified.length) lines.push(`\n📨 Ikkinchi fan ustoziga xabar yuborildi: ${other.notified.map(esc).join('; ')}`);
+  if (other.missing.length) lines.push(`\n⚠️ ${other.missing.map(esc).join('; ')} — ustoz botga hali ulanmagan, admin xabardor qilindi.`);
+  if (!hasOther && !(slot === 1 ? reg.subject2 : reg.subject1)) lines.push('\nℹ️ O‘quvchi markazda boshqa Kids Mock fanidan o‘qimaydi — 2-fanni ota-ona ro‘yxatda tanlaydi yoki admin kiritadi.');
+  await sendOrEdit(chatId, msgId, lines.join('\n'), { inline_keyboard: [[ib('⬜ Keyingi o‘quvchi', 'tm:u:0'), ib('⬅️ Panel', 'tm:h')]] });
+  if (reg.chat_id) await send(reg.chat_id, `👩‍🏫 Ustoz <b>${esc(t.full_name)}</b> farzandingiz <b>${esc(reg.full_name)}</b> uchun Kids Mock’da ${SUBJ_ICON[subject]} ${esc(subject)} fanidan <b>${esc(level)}</b> darajani belgiladi.\n🔖 KM-${reg.id} · 🚪 ${esc(reg.room || '')}`).catch(() => {});
+}
+
+async function teacherSessions(chatId: number, msgId?: number) {
+  const ss = await mockSessions();
+  await sendOrEdit(chatId, msgId, '🗓 Qaysi Kids Mock sessiyasi uchun belgilaysiz?', { inline_keyboard: [...ss.map((x, i) => [ib(x, `tss:${i}`)]), [ib('⬅️ Panel', 'tm:h')]] });
 }
 
 // ---------------------------------------------------------
@@ -971,6 +1272,7 @@ async function onMessage(m: any) {
   if (text === '/hisobot') return answerReport(chatId);
   if (text === M_PROCTOR || text === BTN_PROCTOR || text === '/nazorat') return startProctor(chatId, m.from?.id);
   if (text === M_HELP || text === BTN_HELP || text === '/yordam' || text === '/help') return sendHelp(chatId);
+  if (text === M_TEACHER || text === '/ustoz') return startTeacher(chatId, m.from?.id);
   if (text === '/admin') return void send(chatId, `🛠 Edutizim boshqaruvi alohida botga ko‘chirildi (CRM → 🤖 Telegram Bot → “Edutizim boti”).\nTelegram ID’ingiz: <code>${m.from?.id}</code>`, { reply_markup: MENU });
 
   if (isSheetFile(m.document)) return handleEvalbeeFile(chatId, m);
@@ -979,6 +1281,8 @@ async function onMessage(m: any) {
   switch (s.step) {
     case 'pr_link':
       return linkProctor(chatId, m);
+    case 't_contact':
+      return linkTeacher(chatId, m);
     case 'pr_name':
       if (text.length < 3) return void send(chatId, 'Familiya va ismni to‘liq yozing.');
       await setSession(chatId, 'pr_sphone', { ...s.data, name: text.slice(0, 80) });
@@ -1091,11 +1395,44 @@ async function routeCallback(q: any) {
         case 'contact': return await answerContact(chatId);
         case 'help': return await sendHelp(chatId);
         case 'proctor': return await startProctor(chatId, q.from?.id);
+        case 'teacher': return await startTeacher(chatId, q.from?.id);
         default: return await sendHome(chatId, q.from?.first_name || '', q.from?.id);
       }
     } finally {
       await reset;
     }
+  }
+  if (data === 'noop') return;
+  // 👩‍🏫 Ustozlar
+  if (data.startsWith('tb:')) {
+    const adminChat = Number(await getSecret('telegram_admin_chat_id'));
+    const owners = await getSetting<number[]>('botAdmins', []);
+    if (chatId !== adminChat && !owners.map(Number).includes(Number(q.from?.id))) return;
+    const { data: bt } = await admin.from('crm_exam_teachers').update({ status: 'blocked', updated_at: new Date().toISOString() }).eq('tg_id', Number(data.slice(3))).select('full_name').maybeSingle();
+    if (q.message?.message_id) await tg(await token(), 'editMessageReplyMarkup', { chat_id: chatId, message_id: q.message.message_id, reply_markup: { inline_keyboard: [[ib('✅ Blokdan chiqarish', `tu:${data.slice(3)}`)]] } }).catch(() => {});
+    return void send(chatId, `🚫 Ustoz bloklandi: ${esc(bt?.full_name || data.slice(3))}`);
+  }
+  if (data.startsWith('tu:')) {
+    const adminChat = Number(await getSecret('telegram_admin_chat_id'));
+    const owners = await getSetting<number[]>('botAdmins', []);
+    if (chatId !== adminChat && !owners.map(Number).includes(Number(q.from?.id))) return;
+    const { data: bt } = await admin.from('crm_exam_teachers').update({ status: 'active', updated_at: new Date().toISOString() }).eq('tg_id', Number(data.slice(3))).select('full_name').maybeSingle();
+    if (q.message?.message_id) await tg(await token(), 'editMessageReplyMarkup', { chat_id: chatId, message_id: q.message.message_id, reply_markup: { inline_keyboard: [[ib('🚫 Bloklash', `tb:${data.slice(3)}`)]] } }).catch(() => {});
+    return void send(chatId, `✅ Ustoz qayta faollashtirildi: ${esc(bt?.full_name || data.slice(3))}`);
+  }
+  if (data.startsWith('tm:') || data.startsWith('tp:') || data.startsWith('tl:') || data === 'tse' || data.startsWith('tss:')) {
+    const t = await getTeacher(q.from?.id);
+    if (!t || t.status !== 'active') return void send(chatId, '⛔ Avval “👩‍🏫 Ustozlar” bo‘limida Edutizim raqamingiz bilan ulaning.', { reply_markup: MENU });
+    const mid = q.message?.message_id as number | undefined;
+    if (data === 'tm:h') return teacherHome(chatId, t, mid);
+    if (data.startsWith('tm:')) { const [, mode, pg] = data.split(':'); return teacherList(chatId, t, mode, Number(pg) || 0, mid); }
+    if (data.startsWith('tp:')) { const [, sid, code] = data.split(':'); return teacherPick(chatId, t, sid, code, mid); }
+    if (data.startsWith('tl:')) { const [, sid, code, L] = data.split(':'); return teacherSetLevel(chatId, t, sid, code, L, mid); }
+    if (data === 'tse') return teacherSessions(chatId, mid);
+    const ss = await mockSessions();
+    const session = ss[Number(data.slice(4))] || ss[0] || null;
+    await admin.from('crm_exam_teachers').update({ session, updated_at: new Date().toISOString() }).eq('tg_id', t.tg_id);
+    return teacherHome(chatId, { ...t, session }, mid);
   }
   if (data.startsWith('t:')) return pickTest(chatId, data.slice(2));
   if (data.startsWith('k:')) return showKey(chatId, data.slice(2));

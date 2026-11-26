@@ -849,7 +849,7 @@ function renderRegsTab() {
                 <td class="py-2 font-mono text-slate-400">KM-${r.id}</td>
                 <td class="font-black">${esc(r.full_name)}${r.tg_username ? `<div class="text-[10px] text-sky-600">@${esc(r.tg_username)}</div>` : ''}</td>
                 <td>${esc(r.grade)}</td>
-                <td class="whitespace-nowrap">${r.subject1 ? `${r.subject1 === 'Rus tili' ? '🇷🇺' : '📐'} ${esc(r.subject1)} · <b class="${r.level === 'Qiyin' ? 'text-rose-700' : 'text-emerald-700'}">${esc(r.level || '')}</b><div class="text-[10px] text-slate-500">+ ${esc(r.subject2 || 'Ingliz tili')} · <b class="${r.level2 === 'Qiyin' ? 'text-rose-700' : 'text-emerald-700'}">${esc(r.level2 || 'Oson')}</b></div>` : '<span class="text-slate-400">—</span>'}</td>
+                <td class="whitespace-nowrap">${r.subject1 || r.subject2 ? `${r.subject1 ? `${r.subject1 === 'Rus tili' ? '🇷🇺' : '📐'} ${esc(r.subject1)} · <b class="${r.level === 'Qiyin' ? 'text-rose-700' : 'text-emerald-700'}">${esc(r.level || '')}</b>${r.level_by ? ` <span title="Ustoz belgilagan: ${esc(r.level_by)}">👩‍🏫</span>` : ''}` : '<span class="text-slate-400">1-fan —</span>'}<div class="text-[10px] text-slate-500">+ ${esc(r.subject2 || 'Ingliz tili')} · <b class="${r.level2 === 'Qiyin' ? 'text-rose-700' : 'text-emerald-700'}">${esc(r.level2 || 'Oson')}</b>${r.level2_by ? ` <span title="Ustoz belgilagan: ${esc(r.level2_by)}">👩‍🏫</span>` : ''}</div>` : '<span class="text-slate-400">—</span>'}</td>
                 <td class="text-[11px]">${esc(r.teacher || '—')}</td>
                 <td class="font-mono">${esc(r.phone)}</td>
                 <td class="text-[11px]">${esc(r.session)}</td>
