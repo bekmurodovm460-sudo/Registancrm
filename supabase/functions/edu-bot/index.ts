@@ -226,7 +226,7 @@ async function stats(chatId: number) {
     `🟤 <b>Ketganlar qarzi</b> (guruhda emas): <b>${iDebt.length}</b> ta · ${mln(iDebtSum)}\n` +
     `💰 <b>Umumiy qarz:</b> ${mln(aDebtSum + iDebtSum)}\n\n` +
     `<i>🔄 Ma’lumot: ${t} holatiga (har soatda yangilanadi)</i>`,
-    { reply_markup: { inline_keyboard: [[ib('🔴 Aktiv qarzdorlar ro‘yxati', 'dbt:active')], [ib('📋 Barcha qarzdorlar', 'dbt:all'), ib('🔄 Yangilash', 'st:sync')], [ib('📩 Qarzdorlarga SMS', 'sms')]] } });
+    { reply_markup: { inline_keyboard: [[ib('🔴 Aktiv qarzdorlar ro‘yxati', 'dbt:active')], [ib('📋 Barcha qarzdorlar', 'dbt:all'), ib('🔄 Yangilash', 'st:sync')], [ib('📩 Qarzdorlarga SMS', 'sms')], [ib('🏫 Oy boshi → hozir (markaz va ustozlar)', 'trp:m')]] } });
 }
 
 // ---------------------------------------------------------
@@ -887,9 +887,12 @@ async function teachersView(chatId: number, which: 'm' | 'pm' = 'm') {
   if (!r.ok) return void send(chatId, `⚠️ ${esc(r.error)}`, { reply_markup: menu() });
   const T = r.teachers || [];
   const tot = T.reduce((a: any, t: any) => ({ act: a.act + t.active, j: a.j + t.joined.length, l: a.l + t.left.length, tr: a.tr + t.trials, cv: a.cv + t.converted }), { act: 0, j: 0, l: 0, tr: 0, cv: 0 });
-  const lines = T.map((t: any, i: number) => `<b>${i + 1}. ${esc(t.name)}</b>\n   👥 ${t.active} aktiv · ${t.groups.length} guruh · ➕${t.joined.length} · ➖${t.left.length}${t.graduated.length ? ` · 🎓${t.graduated.length}` : ''} · 🔁 ${convTxt(t)}`).join('\n');
+  const dl = (d: number) => (d > 0 ? `📈 +${d}` : d < 0 ? `📉 ${d}` : '➖ 0');
+  const lines = T.map((t: any, i: number) => `<b>${i + 1}. ${esc(t.name)}</b> · ${t.groups.length} guruh\n   🗓 Oy boshida <b>${t.start}</b> → hozir <b>${t.now}</b> (${dl(t.delta)})\n   ➕ kelgan ${t.joined.length} · ➖ ketgan ${t.left.length} (aktivdan ${t.leftActive.length})${t.graduated.length ? ` · 🎓${t.graduated.length}` : ''} · 🔁 ${convTxt(t)}`).join('\n');
+  const c = r.center || {};
+  const centerBlock = `🏫 <b>Markaz</b>\n🗓 Oy boshida: <b>${c.start}</b> aktiv → ${which === 'm' ? 'hozir' : 'oy oxirida'}: <b>${c.now}</b> (${dl(c.delta)}, ${c.start ? (c.delta >= 0 ? '+' : '') + Math.round((c.delta / c.start) * 100) : 0}%)\n➕ Yangi kelgan: <b>${c.joined}</b> · ➖ Ketgan: <b>${c.left}</b> (shundan oy boshida aktiv edi: ${c.leftActive})\n🎓 Bitirgan: ${c.graduated} · 🔁 Konversiya: <b>${c.conversion ?? '—'}%</b> (${c.converted}/${c.trials} sinovdan)\n<i>Har bir o‘quvchi bir marta sanaladi; muzlatilganlar guruhda deb hisoblanadi.</i>`;
   await sendLong(chatId,
-    `👩‍🏫 <b>O‘qituvchilar · ${r.label}</b>\n\n👥 Aktiv: <b>${tot.act}</b> · ➕ kelgan: <b>${tot.j}</b> · ➖ ketgan (arxiv): <b>${tot.l}</b>\n🔁 Konversiya (sinov → guruh): <b>${tot.tr ? Math.round((tot.cv / tot.tr) * 100) : 0}%</b> (${tot.cv}/${tot.tr})\n\n${lines}`,
+    `👩‍🏫 <b>O‘qituvchilar · ${r.label}</b>\n\n${centerBlock}\n\n<b>O‘qituvchilar bo‘yicha:</b>\n${lines}`,
     { reply_markup: { inline_keyboard: [
       [ib(which === 'm' ? '• Bu oy' : 'Bu oy', 'trp:m'), ib(which === 'pm' ? '• O‘tgan oy' : 'O‘tgan oy', 'trp:pm')],
       [ib('📥 Excel (har bir o‘qituvchi)', `txl:${which}`)],
@@ -914,16 +917,25 @@ async function teacherExcel(chatId: number, which: 'm' | 'pm') {
   const d = (iso: string) => (iso ? new Date(new Date(iso).getTime() + TZ).toISOString().slice(0, 10) : '');
   XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(T.map((t: any, i: number) => ({
     '№': i + 1, 'O‘qituvchi': t.name, 'Telefon': t.phone, 'Guruhlar soni': t.groups.length, 'Guruhlar': t.groups.join('; '),
+    'Oy boshida aktiv': t.start, 'Hozir aktiv': t.now, 'O‘zgarish': t.delta, 'Aktivdan ketgan': t.leftActive.length,
     'Aktiv o‘quvchilar': t.active, 'Muzlatilgan': t.frozen, 'Oy davomida kelgan': t.joined.length, 'Oy davomida ketgan (arxiv)': t.left.length,
     'Bitirgan': t.graduated.length, 'Sinov darsiga kelgan': t.trials, 'Sinovdan guruhga o‘tgan': t.converted, 'Konversiya %': t.conversion ?? ''
   }))), 'Umumiy');
+  const cc = r.center || {};
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([
+    ['Ko‘rsatkich', 'Qiymat'], ['Davr', r.label], ['Oy boshida aktiv o‘quvchilar', cc.start], ['Hozir aktiv', cc.now], ['O‘zgarish', cc.delta],
+    ['O‘zgarish %', cc.start ? Math.round((cc.delta / cc.start) * 100) : 0], ['Yangi kelgan', cc.joined], ['Ketgan (arxiv)', cc.left], ['Oy boshida aktiv bo‘lib ketgan', cc.leftActive],
+    ['Bitirgan', cc.graduated], ['Sinov darsiga kelgan', cc.trials], ['Sinovdan guruhga o‘tgan', cc.converted], ['Konversiya %', cc.conversion ?? ''], ['O‘qituvchilar soni', cc.teachers]
+  ]), 'Markaz');
+  used.add('Markaz');
   for (const t of T) {
     const rows: any[] = [];
     rows.push({ 'Bo‘lim': 'GURUHLAR', 'F.I.Sh.': '', 'Telefon': '', 'Guruh': t.groups.join('; '), 'Sana': '', 'Narx': '', 'Izoh / sabab': '' });
     t.joined.forEach((x: any) => rows.push({ 'Bo‘lim': 'Kelgan', 'F.I.Sh.': x.name, 'Telefon': x.phone, 'Guruh': x.group, 'Sana': d(x.date), 'Narx': x.price, 'Izoh / sabab': x.state }));
     t.left.forEach((x: any) => rows.push({ 'Bo‘lim': 'Ketgan (arxiv)', 'F.I.Sh.': x.name, 'Telefon': x.phone, 'Guruh': x.group, 'Sana': d(x.date), 'Narx': x.price, 'Izoh / sabab': x.reason }));
+    t.leftActive.forEach((x: any) => rows.push({ 'Bo‘lim': 'Aktivdan ketgan', 'F.I.Sh.': x?.name || '', 'Telefon': x?.phone || '', 'Guruh': '', 'Sana': '', 'Narx': '', 'Izoh / sabab': 'oy boshida aktiv edi' }));
     t.graduated.forEach((x: any) => rows.push({ 'Bo‘lim': 'Bitirgan', 'F.I.Sh.': x.name, 'Telefon': x.phone, 'Guruh': x.group, 'Sana': d(x.date), 'Narx': '', 'Izoh / sabab': '' }));
-    rows.push({ 'Bo‘lim': 'XULOSA', 'F.I.Sh.': `Aktiv: ${t.active} · Kelgan: ${t.joined.length} · Ketgan: ${t.left.length} · Konversiya: ${convTxt(t)}` });
+    rows.push({ 'Bo‘lim': 'XULOSA', 'F.I.Sh.': `Oy boshida ${t.start} → hozir ${t.now} (${t.delta >= 0 ? '+' : ''}${t.delta}) · Kelgan: ${t.joined.length} · Ketgan: ${t.left.length} (aktivdan ${t.leftActive.length}) · Konversiya: ${convTxt(t)}` });
     const ws = XLSX.utils.json_to_sheet(rows);
     ws['!cols'] = [{ wch: 16 }, { wch: 28 }, { wch: 16 }, { wch: 30 }, { wch: 12 }, { wch: 10 }, { wch: 40 }];
     XLSX.utils.book_append_sheet(wb, ws, sheetName(t.name, used));
@@ -1036,9 +1048,10 @@ async function myStats(chatId: number, which: 'm' | 'pm' = 'm') {
   const t = (r.teachers || []).find((x: any) => x.teacherId === u.employee_id);
   if (!t) return void send(chatId, `ℹ️ ${r.label} uchun ma’lumot yo‘q.`, { reply_markup: menu() });
   await send(chatId,
-    `📊 <b>Mening natijam · ${r.label}</b>\n\n👥 Aktiv o‘quvchilar: <b>${t.active}</b>\n🗂 Guruhlar: ${t.groups.length}\n${t.groups.map((g: string) => '   • ' + esc(g)).join('\n')}\n\n` +
-    `➕ Kelgan: <b>${t.joined.length}</b>\n➖ Ketgan (arxiv): <b>${t.left.length}</b>\n🎓 Bitirgan: ${t.graduated.length}\n\n` +
+    `📊 <b>Mening natijam · ${r.label}</b>\n\n🗓 Oy boshida: <b>${t.start}</b> → hozir: <b>${t.now}</b> (${t.delta > 0 ? '📈 +' + t.delta : t.delta < 0 ? '📉 ' + t.delta : '➖ 0'})\n🗂 Guruhlar: ${t.groups.length}\n${t.groups.map((g: string) => '   • ' + esc(g)).join('\n')}\n\n` +
+    `➕ Yangi kelgan: <b>${t.joined.length}</b>\n➖ Ketgan: <b>${t.left.length}</b> · shundan aktivdan: <b>${t.leftActive.length}</b>\n🎓 Bitirgan: ${t.graduated.length}\n\n` +
     `🔁 <b>Konversiya</b>: ${convTxt(t)}\n<i>Sinov darsiga kelganlardan shu oy guruhga qo‘shilganlar ulushi</i>` +
+    (t.joined.length ? `\n\n<b>Yangi kelganlar:</b>\n${t.joined.slice(0, 20).map((x: any) => `• ${esc(x.name)} · ${esc(x.group)} · ${dmy(new Date(x.date).getTime())}`).join('\n')}` : '') +
     (t.left.length ? `\n\n<b>Arxivdagilar:</b>\n${t.left.slice(0, 25).map((x: any) => `• ${esc(x.name)} · ${esc(x.phone)} · ${dmy(new Date(x.date).getTime())}${x.reason ? ` — <i>${esc(String(x.reason).slice(0, 50))}</i>` : ''}`).join('\n')}` : ''),
     { reply_markup: { inline_keyboard: [[ib(which === 'm' ? '• Bu oy' : 'Bu oy', 'my:m'), ib(which === 'pm' ? '• O‘tgan oy' : 'O‘tgan oy', 'my:pm')]] } });
 }
