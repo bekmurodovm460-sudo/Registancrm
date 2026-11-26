@@ -544,8 +544,45 @@ Deno.serve(async req => {
 
   const started = Date.now();
   try {
-    const auth = await login(base, site, phone, password);
-    const branches = auth.branches.map((b: any) => ({ id: String(b._id), name: b.name }));
+    // Yozuvchi amallar xodimning shaxsiy Edutizim akkaunti orqali (bo'lsa) — Edutizim'da uning nomi bilan tushadi
+    const WRITE = new Set(['comment', 'kassaPay', 'kassaCancel', 'sendSms', 'changePrice', 'bellDelete', 'pushLead']);
+    let personalAcc: any = null, personalErr = '';
+    if (role === 'cron' && WRITE.has(body.action) && (body.asTg || body.asPhone)) {
+      let digits = body.asPhone ? String(body.asPhone).replace(/\D/g, '').slice(-9) : '';
+      if (!digits && body.asTg) {
+        const { data: u } = await admin.from('crm_edu_bot_users').select('phone').eq('tg_id', Number(body.asTg)).maybeSingle();
+        digits = String(u?.phone || '').replace(/\D/g, '').slice(-9);
+      }
+      if (digits) { const { data: a } = await admin.from('crm_edu_accounts').select('*').eq('phone_digits', digits).maybeSingle(); personalAcc = a; }
+    }
+    if (body.action === 'linkAccount') {
+      if (role !== 'cron') return json({ ok: false, error: 'Ruxsat yo‘q' }, 403);
+      const digits = String(body.phone || '').replace(/\D/g, '').slice(-9);
+      if (digits.length !== 9 || !body.password) return json({ ok: false, error: 'Telefon va parol kerak' });
+      try { await login(base, site, '+998' + digits, String(body.password)); }
+      catch (e) { return json({ ok: false, error: String((e as Error).message || e) }); }
+      await admin.from('crm_edu_accounts').upsert({ phone_digits: digits, phone: '+998' + digits, password: String(body.password), tg_id: body.tgId || null, full_name: body.name || null, ok: true, checked_at: new Date().toISOString(), updated_at: new Date().toISOString() });
+      return json({ ok: true });
+    }
+    if (body.action === 'unlinkAccount') {
+      if (role !== 'cron') return json({ ok: false, error: 'Ruxsat yo‘q' }, 403);
+      const digits = String(body.phone || '').replace(/\D/g, '').slice(-9);
+      await admin.from('crm_edu_accounts').delete().eq('phone_digits', digits);
+      return json({ ok: true });
+    }
+    if (body.action === 'accountStatus') {
+      const digits = String(body.phone || '').replace(/\D/g, '').slice(-9);
+      const { data: a } = await admin.from('crm_edu_accounts').select('phone,ok,checked_at').eq('phone_digits', digits).maybeSingle();
+      return json({ ok: true, linked: !!a, phone: a?.phone || null, checkedAt: a?.checked_at || null });
+    }
+    let auth: any = null;
+    if (personalAcc) {
+      try { auth = await login(base, site, personalAcc.phone, personalAcc.password); }
+      catch (e) { personalErr = String((e as Error).message || e); await admin.from('crm_edu_accounts').update({ ok: false, checked_at: new Date().toISOString() }).eq('phone_digits', personalAcc.phone_digits); }
+    }
+    const personal = !!auth;
+    if (!auth) auth = await login(base, site, phone, password);
+    const branches: { id: string; name: string }[] = auth.branches.map((b: any) => ({ id: String(b._id), name: b.name }));
     if (body.action === 'test') return json({ ok: true, branches });
     // 'cron' roli = ichki chaqiruv (pg_cron yoki Telegram bot admin bo'limi, x-cron-secret bilan)
     if (['meta', 'pushLead', 'kassaMeta', 'kassaPay', 'kassaCancel', 'kassaTx', 'read', 'employees', 'absences', 'absenceRisk', 'commentsFor', 'comment', 'teacherReport', 'smsMeta', 'sendSms', 'bells', 'bellDelete', 'priceAudit', 'changePrice'].includes(body.action)) {
@@ -587,10 +624,11 @@ Deno.serve(async req => {
       }
       if (body.action === 'comment') {
         if (role !== 'cron' && role !== 'admin') return json({ ok: false, error: 'Ruxsat yo‘q' }, 403);
-        const text = String(body.text || '').trim().slice(0, 1000);
-        if (!body.studentId || !text) return json({ ok: false, error: 'studentId va matn kerak' });
+        const raw = String(body.text || '').trim().slice(0, 1000);
+        if (!body.studentId || !raw) return json({ ok: false, error: 'studentId va matn kerak' });
+        const text = personal ? raw : `${body.prefix || ''}${raw}`.slice(0, 1000);
         const r = await postJson(base, headers, '/comment', { studentId: body.studentId, text });
-        return json({ ok: !r?.code, id: r?.data?._id || null });
+        return json({ ok: !r?.code, id: r?.data?._id || null, personal, personalErr: personalErr || undefined });
       }
       if (body.action === 'kassaCancel') {
         if (role !== 'cron' && role !== 'admin') return json({ ok: false, error: 'Faqat admin' }, 403);
