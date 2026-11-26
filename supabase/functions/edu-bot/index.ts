@@ -141,9 +141,12 @@ async function findAnswer(chatId: number, q: string) {
   const list = await eduFind(q);
   if (!list.length) return void send(chatId, '😕 Topilmadi. Boshqacha yozib ko‘ring (ma’lumot har soatda yangilanadi, “🔄 Sinxron” bilan darhol yangilash mumkin).');
   await setSession(chatId, 'find', { found: list });
-  await send(chatId, `🔍 Topildi (${list.length}):\n\n${list.map(line).join('\n\n')}\n\nYana qidirish uchun ism yoki raqam yozing.`, {
-    reply_markup: { inline_keyboard: list.map((s, i) => [ib(`💰 ${i + 1}. ${s.name.slice(0, 28)} — to‘lov qabul qilish`, `pay:${i}`)]) }
-  });
+  const cm = (await edu('commentsFor', { studentIds: list.map(x => x.id), limit: 2 })).comments || {};
+  const body = list.map((x, i) => line(x, i) + ((cm[x.id] || []).length ? '\n   ' + cm[x.id].map((c: any) => noteLine(c, 90)).join('\n   ') : '\n   💬 izoh yo‘q')).join('\n\n');
+  const rows = list.map((s, i) => role() === 'top'
+    ? [ib(`💰 ${i + 1}. To‘lov`, `pay:${i}`), ib(`💬 Izohlar`, `ch:${i}`), ib('✍️ Yozish', `fn:${i}`)]
+    : [ib(`💬 ${i + 1}. ${s.name.slice(0, 18)} — izohlar`, `ch:${i}`), ib('✍️ Yozish', `fn:${i}`)]);
+  await send(chatId, `🔍 Topildi (${list.length}):\n\n${body}\n\nYana qidirish uchun ism yoki raqam yozing.`.slice(0, 4000), { reply_markup: { inline_keyboard: rows } });
 }
 
 async function debtors(chatId: number, scope: 'active' | 'all' = 'active') {
@@ -552,6 +555,16 @@ async function adminPanel(chatId: number) {
 // =========================================================
 const hm = (iso: string) => new Date(new Date(iso).getTime() + TZ).toISOString().slice(11, 16);
 const firstName = (s: string) => String(s || '').split(' ')[0];
+// Izoh manbasi: bot orqali "[Bot · Ism]", ustoz vazifasi "[Ustoz Ism]", aks holda Edutizim'da yozgan menejer
+function noteOf(c: any) {
+  const t = String(c?.text || '');
+  let m = /^\[Bot · ([^\]]+)\]\s*/.exec(t);
+  if (m) return { who: m[1], via: '🤖 bot orqali', text: t.slice(m[0].length), at: c.at };
+  m = /^\[Ustoz ([^\]]+)\]\s*/.exec(t);
+  if (m) return { who: m[1], via: '👩‍🏫 ustoz (bot)', text: t.slice(m[0].length), at: c.at };
+  return { who: c?.by || '—', via: '🗂 Edutizim', text: t, at: c.at };
+}
+const noteLine = (c: any, max = 110) => { const n = noteOf(c); return `💬 <b>${esc(n.who)}</b> · ${n.via} · ${n.at ? `${dmy(new Date(n.at).getTime())} ${hm(n.at)}` : ''}\n      <i>${esc(n.text.slice(0, max))}</i>`; };
 async function sendLong(chatId: number, text: string, extra: Record<string, unknown> = {}) {
   const parts: string[] = [];
   let cur = '';
@@ -584,7 +597,7 @@ async function attendanceView(chatId: number, day: 'today' | 'yesterday' = 'toda
   const list = rows.map((x: any, i: number) => {
     const n = todayNote(x.studentId);
     return `<b>${i + 1}. ${x.state === 'unreasonable' ? '🔴' : '🟡'} ${esc(x.name)}</b> · ${esc(x.phone)}\n   ${esc(x.group)} · ${esc(firstName(x.teacher))}${x.balance < 0 ? ` · 💳 ${sum(x.balance)}` : ''}\n   ` +
-      (n ? `💬 <i>${esc(firstName(n.by))} (${hm(n.at)}): ${esc(String(n.text).slice(0, 90))}</i>` : `⚠️ izoh yo‘q · mas’ul: ${esc(firstName(x.manager) || '—')}`);
+      (n ? noteLine(n) : `⚠️ bugun izoh yo‘q · mas’ul: ${esc(x.manager || '—')}${(comments[x.studentId] || [])[0] ? `\n   <i>oxirgi: ${esc(noteOf(comments[x.studentId][0]).who)} · ${dmy(new Date(comments[x.studentId][0].at).getTime())}</i>` : ''}`);
   }).join('\n');
   await setSession(chatId, 'att', { day, list: rows.map((x: any) => ({ id: x.studentId, name: x.name, phone: x.phone })) });
   const pending = rows.map((x: any, i: number) => ({ x, i })).filter(({ x }: any) => !todayNote(x.studentId)).slice(0, 24);
@@ -597,6 +610,15 @@ async function attendanceView(chatId: number, day: 'today' | 'yesterday' = 'toda
     { reply_markup: { inline_keyboard: kbRows } });
 }
 
+async function commentHistory(chatId: number, st: any) {
+  await typing(chatId);
+  const cm = (await edu('commentsFor', { studentIds: [st.id], limit: 15 })).comments || {};
+  const list = cm[st.id] || [];
+  await sendLong(chatId, `💬 <b>Izohlar tarixi</b> · ${esc(st.name)}${st.phone ? ' · ' + esc(st.phone) : ''}\n<i>Edutizim kartasidagi oxirgi ${list.length} ta izoh</i>\n\n${list.map((c: any) => noteLine(c, 400)).join('\n\n') || 'Hali izoh yo‘q.'}`,
+    { reply_markup: { inline_keyboard: [[ib('✍️ Izoh yozish', 'fnw')]] } });
+  await setSession(chatId, 'hist', { st });
+}
+
 async function riskView(chatId: number) {
   await typing(chatId);
   const r = await edu('absenceRisk', { days: 21 });
@@ -605,7 +627,9 @@ async function riskView(chatId: number) {
   if (!rows.length) return void send(chatId, '✅ Ketma-ket 2+ dars qoldirgan aktiv o‘quvchi yo‘q.', { reply_markup: menu() });
   const red = rows.filter((x: any) => x.streak >= 3).length;
   await setSession(chatId, 'risk', { list: rows.map((x: any) => ({ id: x.studentId, name: x.name, phone: x.phone })) });
-  const list = rows.map((x: any, i: number) => `<b>${i + 1}. ${x.streak >= 3 ? '🔴' : '🟠'} ${esc(x.name)}</b> — <b>${x.streak} dars</b> ketma-ket${x.unreasonable ? ` (sababsiz ${x.unreasonable})` : ''}\n   ${esc(x.group)} · ${esc(firstName(x.teacher))} · ${esc(x.phone)}\n   📆 ${x.dates.map((d: string) => dmy(new Date(d).getTime())).join(', ')} · mas’ul: ${esc(firstName(x.manager) || '—')}`).join('\n');
+  const cm = (await edu('commentsFor', { studentIds: rows.map((x: any) => x.studentId), limit: 1 })).comments || {};
+  const list = rows.map((x: any, i: number) => `<b>${i + 1}. ${x.streak >= 3 ? '🔴' : '🟠'} ${esc(x.name)}</b> — <b>${x.streak} dars</b> ketma-ket${x.unreasonable ? ` (sababsiz ${x.unreasonable})` : ''}\n   ${esc(x.group)} · ${esc(firstName(x.teacher))} · ${esc(x.phone)}\n   📆 ${x.dates.map((d: string) => dmy(new Date(d).getTime())).join(', ')} · mas’ul: ${esc(firstName(x.manager) || '—')}` +
+    ((cm[x.studentId] || [])[0] ? `\n   ${noteLine(cm[x.studentId][0], 80)}` : '\n   ⚠️ izoh yo‘q')).join('\n');
   const btns = rows.slice(0, 24).map((x: any, i: number) => ib(`✍️ ${i + 1}. ${x.name.slice(0, 22)}`, `rc:${i}`));
   const kbRows: any[] = [];
   for (let i = 0; i < btns.length; i += 2) kbRows.push(btns.slice(i, i + 2));
@@ -618,7 +642,7 @@ async function askStudentNote(chatId: number, st: any, back: string) {
 }
 async function saveStudentNote(chatId: number, s: Session, text: string) {
   if (text.length < 3) return void send(chatId, 'Izohni to‘liqroq yozing.');
-  const r = await edu('comment', { studentId: s.data.st.id, text: text.slice(0, 1000) });
+  const r = await edu('comment', { studentId: s.data.st.id, text: `[Bot · ${me()?.full_name || als.getStore()?.from?.first_name || 'Xodim'}] ${text.slice(0, 950)}` });
   await setSession(chatId, null);
   await send(chatId, r.ok ? `✅ Izoh Edutizim’ga yozildi: <b>${esc(s.data.st.name)}</b>` : `⚠️ Yozilmadi: ${esc(r.error)}`, { reply_markup: menu() });
   if (r.ok && s.data.back === 'att') return attendanceView(chatId, 'today');
@@ -760,7 +784,8 @@ async function taskItemAsk(chatId: number, id: number, idx: number) {
   const x = t?.items?.[idx];
   if (!t || !x || Number(t.teacher_tg) !== chatId) return void send(chatId, 'Topilmadi.', { reply_markup: menu() });
   await setSession(chatId, 'task_note', { id, idx });
-  await send(chatId, `📞 <b>${esc(x.name)}</b>\n☎️ ${esc(x.phone)}\n👥 ${esc(x.group)}${x.reason ? `\n📝 Chiqish sababi: ${esc(x.reason)}` : ''}\n\nQo‘ng‘iroq qiling va natijani yozing (masalan: “Dekabrdan qaytadi”, “Boshqa markazga o‘tgan”):`, { reply_markup: CANCEL_KB });
+  const prev = ((await edu('commentsFor', { studentIds: [x.studentId], limit: 3 })).comments || {})[x.studentId] || [];
+  await send(chatId, `📞 <b>${esc(x.name)}</b>\n☎️ ${esc(x.phone)}\n👥 ${esc(x.group)}${x.reason ? `\n📝 Chiqish sababi: ${esc(x.reason)}` : ''}${prev.length ? `\n\n<b>Oldingi izohlar:</b>\n${prev.map((c: any) => noteLine(c, 120)).join('\n')}` : ''}\n\nQo‘ng‘iroq qiling va natijani yozing (masalan: “Dekabrdan qaytadi”, “Boshqa markazga o‘tgan”):`, { reply_markup: CANCEL_KB });
 }
 
 async function taskItemSave(chatId: number, s: Session, text: string, from: any) {
@@ -819,7 +844,7 @@ const ACCESS: Record<string, Role[]> = {
 function cbAllowed(data: string, r: Role) {
   const p = data.split(':')[0];
   const top = ['kt', 'ks', 'km', 'kb', 'ok', 'kx', 'pay', 'ex', 'exc', 'st', 'ua', 'ur', 'urs', 'adm', 'trp', 'txl', 'tnew', 'tt', 'tp', 'td', 'tc'];
-  const svc = ['att', 'ac', 'rc', 'dbt', 'lc', 'lf', 'x'];
+  const svc = ['att', 'ac', 'rc', 'dbt', 'lc', 'lf', 'x', 'ch', 'fn', 'fnw'];
   const tch = ['tk', 'ti', 'my', 'x'];
   if (r === 'top') return true;
   if (r === 'service') return svc.includes(p);
@@ -939,6 +964,9 @@ async function onCallback(q: any) {
   // Davomat / xavf
   if (data.startsWith('att:')) return attendanceView(chatId, data.slice(4) as any);
   if (data.startsWith('ac:') && s.step === 'att') { const st = s.data.list?.[Number(data.slice(3))]; if (st) return askStudentNote(chatId, st, 'att'); }
+  if (data.startsWith('ch:') && s.step === 'find') { const st = s.data.found?.[Number(data.slice(3))]; if (st) return commentHistory(chatId, st); }
+  if (data.startsWith('fn:') && s.step === 'find') { const st = s.data.found?.[Number(data.slice(3))]; if (st) return askStudentNote(chatId, st, 'find'); }
+  if (data === 'fnw' && s.step === 'hist' && s.data.st) return askStudentNote(chatId, s.data.st, 'hist');
   if (data.startsWith('rc:') && s.step === 'risk') { const st = s.data.list?.[Number(data.slice(3))]; if (st) return askStudentNote(chatId, st, 'risk'); }
   // O'qituvchilar
   if (data.startsWith('trp:')) return teachersView(chatId, data.slice(4) as any);

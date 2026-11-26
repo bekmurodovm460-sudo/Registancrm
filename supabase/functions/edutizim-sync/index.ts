@@ -296,13 +296,13 @@ async function absenceRisk(base: string, headers: Record<string, string>, days =
   return out.sort((a, b) => b.streak - a.streak || a.name.localeCompare(b.name));
 }
 
-async function commentsFor(base: string, headers: Record<string, string>, ids: string[]) {
+async function commentsFor(base: string, headers: Record<string, string>, ids: string[], limit = 5) {
   const out: Record<string, any[]> = {};
   const uniq = [...new Set(ids.filter(Boolean))].slice(0, 150);
   for (let i = 0; i < uniq.length; i += 8) {
     await Promise.all(uniq.slice(i, i + 8).map(async id => {
       try {
-        const r = await postJson(base, headers, '/comments-pagin', { studentId: id, page: 1, limit: 3 });
+        const r = await postJson(base, headers, '/comments-pagin', { studentId: id, page: 1, limit });
         const list = Array.isArray(r?.data?.data) ? r.data.data : [];
         out[id] = list.map((c: any) => ({ text: c.text || '', by: fullName(c.moderator), at: c.createdAt || c.updatedAt }));
       } catch { out[id] = []; }
@@ -408,7 +408,7 @@ Deno.serve(async req => {
       if (body.action === 'employees') return json({ ok: true, employees: await employees(base, headers) });
       if (body.action === 'absences') return json({ ok: true, rows: await attendance(base, headers, ['reasonable', 'unreasonable'], body.fromDate, body.toDate) });
       if (body.action === 'absenceRisk') return json({ ok: true, rows: await absenceRisk(base, headers, Number(body.days) || 21) });
-      if (body.action === 'commentsFor') return json({ ok: true, comments: await commentsFor(base, headers, body.studentIds || []) });
+      if (body.action === 'commentsFor') return json({ ok: true, comments: await commentsFor(base, headers, body.studentIds || [], Math.min(Number(body.limit) || 5, 20)) });
       if (body.action === 'teacherReport') return json(await teacherReport(base, headers, body));
       if (body.action === 'comment') {
         if (role !== 'cron' && role !== 'admin') return json({ ok: false, error: 'Ruxsat yo‘q' }, 403);
