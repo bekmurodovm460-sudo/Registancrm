@@ -134,10 +134,15 @@ async function notifyOthers(text: string, exceptId?: number) {
 
 async function edu(action: string, body: Record<string, unknown> = {}): Promise<any> {
   const secret = await getSecret('cron_secret');
-  const r = await fetch(`${SUPABASE_URL}/functions/v1/edutizim-sync`, {
-    method: 'POST', headers: { 'Content-Type': 'application/json', 'x-cron-secret': secret }, body: JSON.stringify({ action, ...body })
-  });
-  return await r.json().catch(() => ({ ok: false, error: `HTTP ${r.status}` }));
+  // Edutizim bir vaqtdagi ko'p kirishni rad etadi — kirish xatosida biroz kutib qayta urinamiz
+  for (let attempt = 0; ; attempt++) {
+    const r = await fetch(`${SUPABASE_URL}/functions/v1/edutizim-sync`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json', 'x-cron-secret': secret }, body: JSON.stringify({ action, ...body })
+    });
+    const j = await r.json().catch(() => ({ ok: false, error: `HTTP ${r.status}` }));
+    if (j?.ok === false && /kirib bo/i.test(String(j.error || '')) && attempt < 2) { await new Promise(ok => setTimeout(ok, 1200 + attempt * 1500)); continue; }
+    return j;
+  }
 }
 
 // ---------------------------------------------------------
@@ -1110,7 +1115,9 @@ async function summaryReport(p: RepP): Promise<string> {
   try {
     const meta = await edu('kassaMeta');
     if (!meta.ok) throw new Error(meta.error);
-    const [inc, out, pinc] = await Promise.all([txFor('payIn', rr.from, rr.to, meta.cashboxes || []), txFor('payOut', rr.from, rr.to, meta.cashboxes || []), txFor('payIn', rr.prev.from, rr.prev.to, meta.cashboxes || [])]);
+    const inc = await txFor('payIn', rr.from, rr.to, meta.cashboxes || []);
+    const out = await txFor('payOut', rr.from, rr.to, meta.cashboxes || []);
+    const pinc = await txFor('payIn', rr.prev.from, rr.prev.to, meta.cashboxes || []).catch(() => []);
     const realOut = out.filter((t: any) => !isMoveOut(t));
     const incIn = inc.filter((t: any) => !/inkassa/i.test(t.method || '') || t.category !== '—');
     const sIn = incIn.reduce((a: number, t: any) => a + t.amount, 0), sOut = realOut.reduce((a: number, t: any) => a + t.amount, 0);
@@ -1165,7 +1172,8 @@ async function smsReportText(kind: 'day' | 'week' | 'month' | 'inkassa'): Promis
   const meta = await edu('kassaMeta');
   let kirim = 0, xarajat = 0;
   if (meta.ok) {
-    const [inc, out] = await Promise.all([txFor('payIn', rr.from, rr.to, meta.cashboxes || []), txFor('payOut', rr.from, rr.to, meta.cashboxes || [])]);
+    const inc = await txFor('payIn', rr.from, rr.to, meta.cashboxes || []).catch(() => []);
+    const out = await txFor('payOut', rr.from, rr.to, meta.cashboxes || []).catch(() => []);
     kirim = inc.filter((t: any) => !/inkassa/i.test(t.method || '') || t.category !== '—').reduce((a: number, t: any) => a + t.amount, 0);
     xarajat = out.filter((t: any) => !isMoveOut(t)).reduce((a: number, t: any) => a + t.amount, 0);
   }
