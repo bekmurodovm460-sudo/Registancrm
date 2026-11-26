@@ -967,17 +967,25 @@ async function sendLong(chatId: number, text: string, extra: Record<string, unkn
   for (let i = 0; i < parts.length; i++) await send(chatId, parts[i], i === parts.length - 1 ? extra : {});
 }
 
+// 📊 Animatsiyali davomat (Mini App): Toq va Juft kunlar alohida
+async function attAppRow(): Promise<any[]> {
+  const url = await getSetting<string>('eduAttendanceAppUrl', '');
+  return url ? [[{ text: '📊 Davomat: Toq / Juft (animatsiya)', web_app: { url } }]] : [];
+}
 async function attendanceView(chatId: number, day: 'today' | 'yesterday' = 'today') {
   await typing(chatId);
   const d0 = dayStart(Date.now()) - (day === 'yesterday' ? DAY : 0);
-  const r = await edu('absences', { fromDate: new Date(d0).toISOString(), toDate: new Date(d0 + DAY - 1).toISOString() });
+  // Edutizim sana filtri kun bo'yicha keng — aniq dars kunini lessonDate bo'yicha ajratamiz
+  const ymd = new Date(d0 + TZ).toISOString().slice(0, 10);
+  const r = await edu('absences', { fromDate: `${ymd}T00:00:00.000Z`, toDate: `${ymd}T23:59:59.999Z` });
   if (!r.ok) return void send(chatId, `⚠️ Edutizim: ${esc(r.error)}`, { reply_markup: menu() });
   const seen = new Set<string>();
-  const rows = (r.rows || []).filter((x: any) => { const k = `${x.studentId}|${x.groupId}`; if (seen.has(k)) return false; seen.add(k); return true; })
+  const rows = (r.rows || []).filter((x: any) => !x.lessonDate || String(x.lessonDate).slice(0, 10) === ymd).filter((x: any) => { const k = `${x.studentId}|${x.groupId}`; if (seen.has(k)) return false; seen.add(k); return true; })
     .sort((a: any, b: any) => (a.manager || '').localeCompare(b.manager || '') || a.name.localeCompare(b.name));
   const label = `${day === 'today' ? 'Bugun' : 'Kecha'} · ${dmy(d0)}`;
   const nav = [ib(day === 'today' ? '• Bugun' : 'Bugun', 'att:today'), ib(day === 'yesterday' ? '• Kecha' : 'Kecha', 'att:yesterday')];
-  if (!rows.length) return void send(chatId, `📅 <b>Davomat · ${label}</b>\n\n✅ Kelmagan o‘quvchi yo‘q (yoki davomat hali belgilanmagan).`, { reply_markup: { inline_keyboard: [nav] } });
+  const appRow = await attAppRow();
+  if (!rows.length) return void send(chatId, `📅 <b>Davomat · ${label}</b>\n\n✅ Kelmagan o‘quvchi yo‘q (yoki davomat hali belgilanmagan).`, { reply_markup: { inline_keyboard: [nav, ...appRow] } });
   const cm = await edu('commentsFor', { studentIds: rows.map((x: any) => x.studentId) });
   const comments = cm.comments || {};
   const todayNote = (sid: string) => (comments[sid] || []).find((c: any) => new Date(c.at).getTime() >= d0);
@@ -994,7 +1002,7 @@ async function attendanceView(chatId: number, day: 'today' | 'yesterday' = 'toda
   await setSession(chatId, 'att', { day, list: rows.map((x: any) => ({ id: x.studentId, name: x.name, phone: x.phone })) });
   const pending = rows.map((x: any, i: number) => ({ x, i })).filter(({ x }: any) => !todayNote(x.studentId)).slice(0, 24);
   const btns = pending.map(({ x, i }: any) => ib(`✍️ ${i + 1}. ${x.name.slice(0, 22)}`, `ac:${i}`));
-  const kbRows: any[] = [nav];
+  const kbRows: any[] = [nav, ...appRow];
   for (let i = 0; i < btns.length; i += 2) kbRows.push(btns.slice(i, i + 2));
   await sendLong(chatId,
     `📅 <b>Davomat · ${label}</b>\n\n❌ Kelmaganlar: <b>${rows.length}</b> (🔴 sababsiz ${unr} · 🟡 sababli ${rows.length - unr})\n📞 Menejer izohi: <b>${done}/${rows.length}</b>\n${mgrLines}\n\n${list}` +
@@ -1582,6 +1590,7 @@ async function startMsg(chatId: number, m: any) {
   await send(chatId, `👋 Assalomu alaykum, <b>${name}</b>!`, { reply_markup: menu() });
   const caption = `💼 <b>Registan Globus · Moliya</b> · ${ROLE_NAME[r] || ''}\n\n${body}\n\nKerakli bo‘limni tanlang 👇`;
   const hk = homeKb(r === 'teacher' && als.getStore()?.book ? 'teacherBook' : r, !!me()?.phone);
+  hk.inline_keyboard.push(...(await attAppRow()));
   const res = await tg(await token(), 'sendPhoto', { chat_id: chatId, photo: BANNER, caption, parse_mode: 'HTML', reply_markup: hk });
   if (!res?.ok) await send(chatId, caption, { reply_markup: hk });
 }

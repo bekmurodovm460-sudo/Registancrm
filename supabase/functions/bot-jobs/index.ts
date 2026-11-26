@@ -283,13 +283,14 @@ async function dailyReport(force = false) {
   await admin.from('crm_settings').upsert({ key: 'eduDailyReportSent', value: today });
   const d0 = Math.floor((now + tz) / 86400_000) * 86400_000 - tz;
   const [abs, risk, tasksRes] = await Promise.all([
-    eduCall('absences', { fromDate: new Date(d0).toISOString(), toDate: new Date(d0 + 86400_000 - 1).toISOString() }),
+    eduCall('absences', { fromDate: `${today}T00:00:00.000Z`, toDate: `${today}T23:59:59.999Z` }),
     eduCall('absenceRisk', { days: 21 }),
     admin.from('crm_edu_tasks').select('teacher_name,items,status,deadline').in('status', ['open', 'overdue'])
   ]);
   if (!abs.ok) return { error: abs.error };
   const seen = new Set<string>();
-  const rows = (abs.rows || []).filter((x: any) => { const k = `${x.studentId}|${x.groupId}`; if (seen.has(k)) return false; seen.add(k); return true; });
+  // Edutizim sana filtri kun bo'yicha keng — faqat bugungi dars kuni (lessonDate)
+  const rows = (abs.rows || []).filter((x: any) => !x.lessonDate || String(x.lessonDate).slice(0, 10) === today).filter((x: any) => { const k = `${x.studentId}|${x.groupId}`; if (seen.has(k)) return false; seen.add(k); return true; });
   const cm = rows.length ? await eduCall('commentsFor', { studentIds: rows.map((x: any) => x.studentId) }) : { comments: {} };
   const has = (sid: string) => (cm.comments?.[sid] || []).some((c: any) => new Date(c.at).getTime() >= d0);
   const done = rows.filter((x: any) => has(x.studentId)).length;
