@@ -877,6 +877,9 @@ const CMDS: Record<string, any[]> = {
 };
 async function syncCommands(chatId: number | string, r: Role) {
   await tg(await token(), 'setMyCommands', { commands: CMDS[r] || CMDS.none, scope: { type: 'chat', chat_id: Number(chatId) } }).catch(() => {});
+  // Pastki chapdagi Mini App tugmasi: xodimlarga — 📊 Davomat, qolganlarga — buyruqlar
+  const url = ['top', 'senior', 'service', 'teacher'].includes(r) ? await getSetting<string>('eduAttendanceAppUrl', '') : '';
+  await tg(await token(), 'setChatMenuButton', { chat_id: Number(chatId), menu_button: url ? { type: 'web_app', text: '📊 Davomat', web_app: { url } } : { type: 'commands' } }).catch(() => {});
 }
 
 async function resolveUser(from: any): Promise<{ role: Role; user: any }> {
