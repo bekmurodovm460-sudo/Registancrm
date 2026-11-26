@@ -152,7 +152,7 @@ async function findAnswer(chatId: number, q: string) {
   const cm = (await edu('commentsFor', { studentIds: list.map(x => x.id), limit: 2 })).comments || {};
   const body = list.map((x, i) => line(x, i) + ((cm[x.id] || []).length ? '\n   ' + cm[x.id].map((c: any) => noteLine(c, 90)).join('\n   ') : '\n   💬 izoh yo‘q')).join('\n\n');
   const rows = list.map((s, i) => role() === 'top'
-    ? [ib(`💰 ${i + 1}. To‘lov`, `pay:${i}`), ib(`💬 Izohlar`, `ch:${i}`), ib('✍️ Yozish', `fn:${i}`)]
+    ? [ib(`💰 ${i + 1}. To‘lov`, `pay:${i}`), ib('💬', `ch:${i}`), ib('✍️', `fn:${i}`), ib('📩 SMS', `sm1:${i}`)]
     : [ib(`💬 ${i + 1}. ${s.name.slice(0, 18)} — izohlar`, `ch:${i}`), ib('✍️ Yozish', `fn:${i}`)]);
   await send(chatId, `🔍 Topildi (${list.length}):\n\n${body}\n\nYana qidirish uchun ism yoki raqam yozing.`.slice(0, 4000), { reply_markup: { inline_keyboard: rows } });
 }
@@ -166,6 +166,7 @@ async function debtors(chatId: number, scope: 'active' | 'all' = 'active') {
   const total = list.reduce((a, b) => a + b.balance, 0);
   const rows = top.slice(0, 10).map((s, i) => [ib(`💰 ${i + 1}. ${s.name.slice(0, 30)} — to‘lov`, `pay:${i}`)]);
   rows.push([scope === 'active' ? ib('📋 Barcha qarzdorlar (ketganlar bilan)', 'dbt:all') : ib('✅ Faqat aktiv qarzdorlar', 'dbt:active')]);
+  if (role() === 'top') rows.push([ib('📩 Qarzdorlarga SMS yuborish', 'sms')]);
   await send(chatId, `🔴 <b>${scope === 'active' ? 'Aktiv o‘quvchilar qarzi' : 'Barcha qarzdorlar'}: ${list.length}</b> · jami <b>${sum(-total)}</b>\nEng katta 20 tasi:\n\n${top.map((s, i) => `<b>${i + 1}.</b> ${esc(s.name)} — <b>${sum(-s.balance)}</b>${s.active ? '' : ' · <i>guruhda emas</i>'}${s.phone ? ` · ${esc(s.phone)}` : ''}`).join('\n')}`, {
     reply_markup: { inline_keyboard: rows }
   });
@@ -223,7 +224,7 @@ async function stats(chatId: number) {
     `🟤 <b>Ketganlar qarzi</b> (guruhda emas): <b>${iDebt.length}</b> ta · ${mln(iDebtSum)}\n` +
     `💰 <b>Umumiy qarz:</b> ${mln(aDebtSum + iDebtSum)}\n\n` +
     `<i>🔄 Ma’lumot: ${t} holatiga (har soatda yangilanadi)</i>`,
-    { reply_markup: { inline_keyboard: [[ib('🔴 Aktiv qarzdorlar ro‘yxati', 'dbt:active')], [ib('📋 Barcha qarzdorlar', 'dbt:all'), ib('🔄 Yangilash', 'st:sync')]] } });
+    { reply_markup: { inline_keyboard: [[ib('🔴 Aktiv qarzdorlar ro‘yxati', 'dbt:active')], [ib('📋 Barcha qarzdorlar', 'dbt:all'), ib('🔄 Yangilash', 'st:sync')], [ib('📩 Qarzdorlarga SMS', 'sms')]] } });
 }
 
 // ---------------------------------------------------------
@@ -627,6 +628,94 @@ async function commentHistory(chatId: number, st: any) {
   await setSession(chatId, 'hist', { st });
 }
 
+
+// =========================================================
+// 📩 Qarzdorlarga SMS (Edutizim SMS integratsiyasi orqali) — faqat top menejer
+// =========================================================
+const DEFAULT_SMS = 'Assalomu alaykum, {ism}! Registan LC: hisobingizda {qarz} qarzdorlik bor. Iltimos, to‘lovni bugun amalga oshiring. Rahmat!';
+const fillSms = (t: string, st: any) => String(t)
+  .replace(/\{(ism|name|fio)\}/gi, st.name || '')
+  .replace(/\{(qarz|balance|debt|summa)\}/gi, sum(Math.abs(Math.min(0, Number(st.balance) || 0))));
+const smsLen = (t: string) => { const n = t.length; return n <= 160 ? 1 : Math.ceil(n / 153); };
+
+async function smsStart(chatId: number, preset: any[] | null = null) {
+  if (role() !== 'top') return void send(chatId, '⛔ SMS yuborish faqat top menejer uchun.', { reply_markup: menu() });
+  if (preset) { await setSession(chatId, 'sms', { list: preset, aud: 'one' }); return smsAskTo(chatId); }
+  await typing(chatId);
+  const all = (await allBalances()).filter(x => x.balance < 0);
+  const act = all.filter(x => x.active);
+  const cnt = (l: any[]) => l.length;
+  await setSession(chatId, 'sms', {});
+  await send(chatId, `📩 <b>Qarzdorlarga SMS</b> (Edutizim orqali)\n\nKimlarga yuboramiz?`, { reply_markup: { inline_keyboard: [
+    [ib(`✅ Aktiv qarzdorlar (${cnt(act)})`, 'sma:act')],
+    [ib(`🔴 Aktiv, qarz ≥ 500 ming (${cnt(act.filter(x => x.balance <= -500000))})`, 'sma:act500')],
+    [ib(`🔴 Aktiv, qarz ≥ 1 mln (${cnt(act.filter(x => x.balance <= -1000000))})`, 'sma:act1m')],
+    [ib(`📋 Barcha qarzdorlar, ketganlar bilan (${cnt(all)})`, 'sma:all')],
+    [ib('❌ Bekor', 'x')]
+  ] } });
+}
+async function smsPickAudience(chatId: number, aud: string) {
+  const all = (await allBalances()).filter(x => x.balance < 0);
+  const list = (aud === 'all' ? all : all.filter(x => x.active)).filter(x => aud === 'act500' ? x.balance <= -500000 : aud === 'act1m' ? x.balance <= -1000000 : true)
+    .sort((a, b) => a.balance - b.balance).slice(0, 500).map(x => ({ id: x.id, name: x.name, balance: x.balance }));
+  if (!list.length) return void send(chatId, 'Bu guruhda qarzdor yo‘q.', { reply_markup: menu() });
+  await setSession(chatId, 'sms', { list, aud });
+  return smsAskTo(chatId);
+}
+async function smsAskTo(chatId: number) {
+  const s = await getSession(chatId);
+  await send(chatId, `👥 Qabul qiluvchilar: <b>${s.data.list.length}</b> ta o‘quvchi\n\nSMS kimga borsin?`, { reply_markup: { inline_keyboard: [
+    [ib('👨‍👩‍👧 Ota-onaga', 'smt:parent'), ib('🧑‍🎓 O‘quvchiga', 'smt:student')], [ib('👥 Ikkalasiga', 'smt:both')]
+  ] } });
+}
+async function smsAskText(chatId: number) {
+  const meta = await edu('smsMeta');
+  if (!meta.ok) return void send(chatId, `⚠️ Edutizim SMS: ${esc(meta.error)}`, { reply_markup: menu() });
+  if (!(meta.integrations || []).length) return void send(chatId, '⚠️ Edutizim’da faol SMS integratsiyasi yo‘q (Sozlamalar → Integratsiyalar).', { reply_markup: menu() });
+  const tpls = (meta.templates || []).filter((t: any) => /qarz|to.?lov|mablag|minus|hisob/i.test(`${t.name} ${t.content}`)).slice(0, 8);
+  const s = await getSession(chatId);
+  await setSession(chatId, 'sms', { ...s.data, tpls, integrations: meta.integrations, devices: meta.devices || [] });
+  const rows = tpls.map((t: any, i: number) => [ib(`📄 ${String(t.name || t.content).slice(0, 40)}`, `smx:${i}`)]);
+  rows.unshift([ib('⭐ Standart: ism + qarz summasi', 'smx:def')]);
+  rows.push([ib('✍️ O‘z matnimni yozaman', 'smx:own')]);
+  await send(chatId, `📝 SMS matnini tanlang.\n<i>Matnda {ism} va {qarz} har bir o‘quvchiga alohida qo‘yiladi.</i>\n\n⭐ Standart:\n<code>${esc(DEFAULT_SMS)}</code>`, { reply_markup: { inline_keyboard: rows } });
+}
+async function smsPreview(chatId: number, text: string) {
+  const s = await getSession(chatId);
+  const d: any = { ...s.data, text };
+  const integ = d.integrations || [];
+  if (!d.integrationId && integ.length > 1) {
+    await setSession(chatId, 'sms', d);
+    return void send(chatId, '📡 Qaysi SMS xizmati orqali?', { reply_markup: { inline_keyboard: integ.map((x: any, i: number) => [ib(`📡 ${x.name}`, `smi:${i}`)]) } });
+  }
+  if (!d.integrationId) d.integrationId = integ[0]?.id;
+  await setSession(chatId, 'sms_confirm', d);
+  const sample = fillSms(text, d.list[0]);
+  const parts = smsLen(sample);
+  const mult = d.to === 'both' ? 2 : 1;
+  const iname = (integ.find((x: any) => x.id === d.integrationId) || {}).name || '';
+  await send(chatId,
+    `📩 <b>SMS — tasdiqlash</b>\n\n👥 O‘quvchilar: <b>${d.list.length}</b> · ${d.to === 'parent' ? '👨‍👩‍👧 ota-onasiga' : d.to === 'both' ? '👥 o‘quvchi va ota-onasiga' : '🧑‍🎓 o‘zlariga'}\n📡 ${esc(iname)}\n📏 Taxminan <b>${d.list.length * mult * parts}</b> ta SMS (${parts} qism)\n\n<b>Namuna</b> (${esc(d.list[0].name)}):\n<i>${esc(sample)}</i>` +
+    (d.list.length > 1 ? `\n\nRo‘yxat boshi: ${d.list.slice(0, 5).map((x: any) => esc(x.name)).join(', ')}${d.list.length > 5 ? '…' : ''}` : ''),
+    { reply_markup: { inline_keyboard: [[ib(`✅ Yuborish (${d.list.length})`, 'smok'), ib('❌ Bekor', 'x')]] } });
+}
+async function smsSend(chatId: number, from: any) {
+  const s = await getSession(chatId);
+  if (s.step !== 'sms_confirm') return void send(chatId, s.step === 'sms_busy' ? '⏳ Yuborilmoqda…' : 'Amal eskirgan.', { reply_markup: menu() });
+  const d = s.data;
+  await setSession(chatId, 'sms_busy', {});
+  await send(chatId, `⏳ ${d.list.length} ta o‘quvchiga SMS yuborilmoqda…`);
+  const personal = /\{(ism|name|fio|qarz|balance|debt|summa)\}/i.test(d.text);
+  const by = from?.username ? '@' + from.username : (from?.first_name || '');
+  const r = await edu('sendSms', personal
+    ? { messages: d.list.map((x: any) => ({ studentId: x.id, content: fillSms(d.text, x) })), to: d.to, integrationId: d.integrationId, by }
+    : { studentIds: d.list.map((x: any) => x.id), content: d.text, to: d.to, integrationId: d.integrationId, by });
+  await setSession(chatId, null);
+  if (r.sent) await sticker(chatId, 'bajarildi');
+  await send(chatId, r.sent ? `✅ SMS yuborildi: <b>${r.sent}</b>${r.failed ? ` · ⚠️ xato: ${r.failed}\n${esc((r.errors || []).join('; '))}` : ''}` : `⚠️ SMS yuborilmadi: ${esc((r.errors || [r.error]).join('; '))}`, { reply_markup: menu() });
+  if (r.sent) await notifyOthers(`📩 Qarzdorlarga SMS: ${r.sent} ta${r.failed ? ` (xato ${r.failed})` : ''} · ${esc(by)}`, from?.id);
+}
+
 async function riskView(chatId: number) {
   await typing(chatId);
   const r = await edu('absenceRisk', { days: 21 });
@@ -918,6 +1007,12 @@ async function onMessage(m: any) {
       return saveStudentNote(chatId, s, text);
     case 'task_note':
       return taskItemSave(chatId, s, text, m.from);
+    case 'sms_text':
+      if (!isTop) break;
+      if (text.length < 5) return void send(chatId, 'Matnni to‘liqroq yozing.');
+      await setSession(chatId, 'sms', s.data);
+      await send(chatId, '✅', { reply_markup: menu() });
+      return smsPreview(chatId, text.slice(0, 800));
     case 'find':
       if (!isStaff) break;
       return findAnswer(chatId, text);
@@ -969,6 +1064,21 @@ async function onCallback(q: any) {
     return onMessage({ chat: { id: chatId, type: 'private' }, from: q.from, text: GO[data.slice(3)] });
   }
   if (data === 'home') return startMsg(chatId, { from: q.from });
+  // SMS
+  if (data === 'sms') return smsStart(chatId);
+  if (data.startsWith('sm1:') && s.step === 'find') { const st = s.data.found?.[Number(data.slice(4))]; if (st) return smsStart(chatId, [{ id: st.id, name: st.name, balance: st.balance }]); }
+  if (data.startsWith('sma:') && s.step === 'sms') return smsPickAudience(chatId, data.slice(4));
+  if (data.startsWith('smt:') && s.step === 'sms' && s.data.list) { await setSession(chatId, 'sms', { ...s.data, to: data.slice(4) }); return smsAskText(chatId); }
+  if (data.startsWith('smx:') && s.step === 'sms' && s.data.to) {
+    const k = data.slice(4);
+    if (k === 'own') { await setSession(chatId, 'sms_text', s.data); return void send(chatId, '✍️ SMS matnini yozing ({ism} va {qarz} ishlatish mumkin):', { reply_markup: CANCEL_KB }); }
+    return smsPreview(chatId, k === 'def' ? DEFAULT_SMS : (s.data.tpls?.[Number(k)]?.content || DEFAULT_SMS));
+  }
+  if (data.startsWith('smi:') && (s.step === 'sms' || s.step === 'sms_confirm')) {
+    await setSession(chatId, 'sms', { ...s.data, integrationId: s.data.integrations?.[Number(data.slice(4))]?.id });
+    return smsPreview(chatId, s.data.text);
+  }
+  if (data === 'smok') return smsSend(chatId, q.from);
   // Rollar
   if (data.startsWith('ua:')) { const [, id, r] = data.split(':'); return setRole(chatId, Number(id), r as Role, q.from); }
   if (data.startsWith('ur:')) {
