@@ -245,6 +245,39 @@ async function eduCall(action: string, body: Record<string, unknown> = {}): Prom
 }
 const normName = (s: string) => String(s || '').toLowerCase().replace(/[ʻʼ‘’'`]/g, '').replace(/\s+/g, ' ').trim();
 
+// 📅 Har kuni ertalab (06:00 dan) Edutizimdagi "To'lov sanasi"ni yangilash — har 10 daqiqalik tekshiruvda 40 tadan
+const PAY_BATCH = 40;
+async function payDates(force = false) {
+  const local = new Date(Date.now() + 5 * 3600_000), today = local.toISOString().slice(0, 10);
+  if (!force && local.getUTCHours() < 6) return { skipped: 'erta' };
+  if (!force && !(await getSetting<boolean>('eduPayDatesAuto', true))) return { skipped: 'o‘chirilgan' };
+  const st = (await getSetting<any>('eduPayDateRun', {})) || {};
+  if (st.day === today && st.done) return { skipped: 'bugun tugagan' };
+  // Oldingi to'plam hali ishlayotgan bo'lsa kutamiz (5 daqiqadan eski bo'lsa — qayta urinamiz)
+  if (st.day === today && st.busyAt && Date.now() - st.busyAt < 5 * 60_000) return { skipped: 'ishlamoqda', offset: st.offset };
+  const offset = st.day === today ? Number(st.offset) || 0 : 0;
+  const base = { day: today, offset, written: st.day === today ? Number(st.written) || 0 : 0, failed: st.day === today ? Number(st.failed) || 0 : 0 };
+  await admin.from('crm_settings').upsert({ key: 'eduPayDateRun', value: { ...base, busyAt: Date.now() } });
+  EdgeRuntime.waitUntil((async () => {
+    try {
+      const r = await fetch(`${SUPABASE_URL}/functions/v1/edutizim-sync`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json', 'x-cron-secret': await getSecret('cron_secret') },
+        body: JSON.stringify({ action: 'paymentDates', offset, limit: PAY_BATCH, write: true, runId: `pd-${today}` })
+      });
+      const j = await r.json().catch(() => ({ ok: false }));
+      if (!j?.ok) { await admin.from('crm_settings').upsert({ key: 'eduPayDateRun', value: { ...base, error: String(j?.error || r.status).slice(0, 200) } }); return; }
+      const rows: any[] = j.rows || [];
+      const next = { ...base, offset: offset + (j.count || 0), written: base.written + rows.filter(x => x.ok && !x.error).length, failed: base.failed + rows.filter(x => x.ok === false).length, total: j.total };
+      const done = (j.count || 0) < PAY_BATCH || next.offset >= (j.total || 0);
+      await admin.from('crm_settings').upsert({ key: 'eduPayDateRun', value: { ...next, done } });
+      if (done) await admin.from('crm_sync_log').insert({ source: 'edutizim-paydate', ok: true, message: `To‘lov sanasi: ${next.written} ta yangilandi, ${next.failed} ta aniqlanmadi (${j.total} faol)`, stats: next });
+    } catch (e) {
+      await admin.from('crm_settings').upsert({ key: 'eduPayDateRun', value: { ...base, error: String((e as Error).message || e).slice(0, 200) } });
+    }
+  })());
+  return { started: offset };
+}
+
 // edu-bot ichki amali (rahbarga SMS, haftalik/oylik hisobot)
 async function eduBotInternal(body: Record<string, unknown>) {
   const r = await fetch(`${SUPABASE_URL}/functions/v1/edu-bot`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-cron-secret': await getSecret('cron_secret') }, body: JSON.stringify(body) });
@@ -389,11 +422,16 @@ Deno.serve(async req => {
         const daily = await dailyReport().catch(e => ({ error: String(e) }));
         const inkassa = await fridayInkassa().catch(e => ({ error: String(e) }));
         const periodic = await periodicReports().catch(e => ({ error: String(e) }));
+        const paydates = await payDates().catch(e => ({ error: String(e) }));
         // To'xtab qolgan ommaviy xabarlarni davom ettirish
         const stale = new Date(Date.now() - 3 * 60_000).toISOString();
         const { data: stuck } = await admin.from('crm_broadcasts').select('id').in('status', ['queued', 'sending']).lt('updated_at', stale).limit(3);
         for (const b of stuck || []) EdgeRuntime.waitUntil(work(Number(b.id)));
-        return json({ ok: true, reminders, tasks, daily, inkassa, periodic, resumed: (stuck || []).length });
+        return json({ ok: true, reminders, tasks, daily, inkassa, periodic, paydates, resumed: (stuck || []).length });
+      }
+      case 'paydates': {
+        if (role !== 'cron' && role !== 'admin') return json({ ok: false, error: 'Ruxsat yo‘q' }, 403);
+        return json({ ok: true, ...(await payDates(true)) });
       }
       case 'periodic': {
         if (role !== 'cron' && role !== 'admin') return json({ ok: false, error: 'Ruxsat yo‘q' }, 403);
