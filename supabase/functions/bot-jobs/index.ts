@@ -309,6 +309,40 @@ async function fridayInkassa(force = false) {
   return { sent: tops.size, sms };
 }
 
+// 🎂 Har kuni 08:00 dan keyin (bir marta) — top menejer va rahbarga: bugun va ertaga tug'ilgan kuni bo'lgan ustoz/xodimlar (Edutizimdan)
+const MONTHS_UZ = ['yanvar', 'fevral', 'mart', 'aprel', 'may', 'iyun', 'iyul', 'avgust', 'sentabr', 'oktabr', 'noyabr', 'dekabr'];
+async function birthdays(force = false) {
+  const token = await getSecret('edu_bot_token');
+  if (!token) return { skipped: 'no token' };
+  const local = new Date(Date.now() + 5 * 3600_000), today = local.toISOString().slice(0, 10);
+  if (!force) {
+    if (local.getUTCHours() < 8) return { skipped: 'early' };
+    if ((await getSetting<string>('eduBirthdaySent', '')) === today) return { skipped: 'sent' };
+  }
+  await admin.from('crm_settings').upsert({ key: 'eduBirthdaySent', value: today });
+  const r = await eduCall('employees');
+  if (!r?.ok) return { error: String(r?.error || 'employees') };
+  const md = (d: Date) => d.toISOString().slice(5, 10);
+  const tmr = new Date(local.getTime() + 86400_000);
+  const pick = (k: string) => (r.employees || []).filter((e: any) => e.birthdate && String(e.birthdate).slice(5, 10) === k);
+  const tod = pick(md(local)), tom = pick(md(tmr));
+  if (!tod.length && !tom.length) return { none: true };
+  const age = (e: any, y: number) => { const by = Number(String(e.birthdate).slice(0, 4)); return by > 1900 ? ` · ${y - by} yosh` : ''; };
+  const who = (e: any, y: number) => `• <b>${esc(e.name)}</b> — ${esc(e.isTeacher ? 'ustoz' : (e.role || 'xodim'))}${age(e, y)}${e.phone ? `\n   📱 ${esc(e.phone)}` : ''}`;
+  const dl = (d: Date) => `${d.getUTCDate()} ${MONTHS_UZ[d.getUTCMonth()]}`;
+  const text = [
+    tod.length ? `🎉 <b>Bugun tug‘ilgan kun</b> (${dl(local)})\n\n${tod.map(e => who(e, local.getUTCFullYear())).join('\n')}\n\n<i>Tabriklashni unutmang!</i>` : '',
+    tom.length ? `🔔 <b>Ertaga tug‘ilgan kun</b> (${dl(tmr)})\n\n${tom.map(e => who(e, tmr.getUTCFullYear())).join('\n')}` : ''
+  ].filter(Boolean).join('\n\n');
+  const [ids, chat, { data: users }] = await Promise.all([
+    getSetting<any[]>('botAdmins', []), getSecret('telegram_admin_chat_id'),
+    admin.from('crm_edu_bot_users').select('tg_id').in('role', ['top', 'director'])
+  ]);
+  const to = new Set<string>([...(ids || []).map(String), String(chat || ''), ...(users || []).map(u => String(u.tg_id))].filter(Boolean));
+  for (const id of to) await tg(token, 'sendMessage', { chat_id: id, text, parse_mode: 'HTML', reply_markup: { inline_keyboard: [[{ text: '🎂 Barcha tug‘ilgan kunlar', callback_data: 'ph:b' }]] } }).catch(() => {});
+  return { today: tod.length, tomorrow: tom.length, sent: to.size };
+}
+
 // 📅 Dushanba va 🗓 oyning 1-sanasi 09:00 dan keyin — rahbarga (va topga) haftalik/oylik yakun (edu-bot yasaydi)
 async function periodicReports(force?: 'week' | 'month') {
   const tz = 5 * 3600_000, local = new Date(Date.now() + tz);
@@ -423,11 +457,16 @@ Deno.serve(async req => {
         const inkassa = await fridayInkassa().catch(e => ({ error: String(e) }));
         const periodic = await periodicReports().catch(e => ({ error: String(e) }));
         const paydates = await payDates().catch(e => ({ error: String(e) }));
+        const bdays = await birthdays().catch(e => ({ error: String(e) }));
         // To'xtab qolgan ommaviy xabarlarni davom ettirish
         const stale = new Date(Date.now() - 3 * 60_000).toISOString();
         const { data: stuck } = await admin.from('crm_broadcasts').select('id').in('status', ['queued', 'sending']).lt('updated_at', stale).limit(3);
         for (const b of stuck || []) EdgeRuntime.waitUntil(work(Number(b.id)));
-        return json({ ok: true, reminders, tasks, daily, inkassa, periodic, paydates, resumed: (stuck || []).length });
+        return json({ ok: true, reminders, tasks, daily, inkassa, periodic, paydates, bdays, resumed: (stuck || []).length });
+      }
+      case 'birthdays': {
+        if (role !== 'cron' && role !== 'admin') return json({ ok: false, error: 'Ruxsat yo‘q' }, 403);
+        return json({ ok: true, ...(await birthdays(true)) });
       }
       case 'paydates': {
         if (role !== 'cron' && role !== 'admin') return json({ ok: false, error: 'Ruxsat yo‘q' }, 403);
