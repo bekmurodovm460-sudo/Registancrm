@@ -116,6 +116,30 @@ async function pushLeads(base: string, headers: Record<string, string>, body: an
     const row: any = { crm_student_id: st.crmId || null, school_id: st.schoolId || null, full_name: name, phone: phone9 ? '+998' + phone9 : '', created_by: userId };
     try {
       if (!name) throw new Error('Ism yo‘q');
+      // Mavjud Edutizim o'quvchisiga buyurtma (yangi o'quvchi yaratilmaydi) — Edutizim saytining o'zi ham shunday yuboradi
+      if (st.eduStudentId) {
+        const sid = String(st.eduStudentId);
+        row.edu_student_id = sid;
+        if (!body.force) {
+          const { data: rec } = await admin.from('crm_edu_pushes').select('created_at,message').eq('edu_student_id', sid).eq('ok', true)
+            .gte('created_at', new Date(Date.now() - 14 * 86400_000).toISOString()).order('created_at', { ascending: false }).limit(1);
+          if (rec?.length) { results.push({ ok: true, skipped: 'recent', message: `Oxirgi 14 kunda buyurtma ochilgan (${String(rec[0].created_at).slice(0, 10)})` }); continue; }
+        }
+        const { firstName, lastName } = splitName(name);
+        const payload = {
+          statusId, courseId, referredByStudentId: null, customFields: [], studentId: sid,
+          studentParams: { _id: sid, firstName, lastName, phoneNumber: phone9 ? '+998' + phone9 : '', customFields: [] }
+        };
+        const res = await fetch(`${base}/order`, { method: 'POST', headers, body: JSON.stringify(payload) });
+        const out = await res.json().catch(() => ({}));
+        if (!res.ok || (out?.code && out.code !== 0)) throw new Error(`${res.status} ${out?.message || out?.messages?.uz || ''}`.trim());
+        row.edu_order_id = out?.data?._id || null;
+        row.ok = true;
+        row.message = 'Buyurtma (mavjud o‘quvchi)';
+        results.push({ ok: true, orderId: row.edu_order_id, message: row.message });
+        await admin.from('crm_edu_pushes').insert(row);
+        continue;
+      }
       // Takroriy yuborishning oldini olish
       const { data: prev } = await admin.from('crm_edu_pushes').select('id,created_at').eq('crm_student_id', st.crmId).eq('ok', true).limit(1);
       if (st.crmId && prev?.length && !body.force) { results.push({ crmId: st.crmId, ok: true, skipped: 'already_pushed', message: 'Avval yuborilgan' }); continue; }
@@ -582,6 +606,10 @@ Deno.serve(async req => {
       catch (e) { personalErr = String((e as Error).message || e); await admin.from('crm_edu_accounts').update({ ok: false, checked_at: new Date().toISOString() }).eq('phone_digits', personalAcc.phone_digits); }
     }
     const personal = !!auth;
+    // "Menejer nomidan yozilsin" — shaxsiy akkaunt bo'lmasa umumiy akkauntga o'tmaymiz, hech narsa yozilmaydi
+    if (body.requirePersonal && WRITE.has(body.action) && !personal) {
+      return json({ ok: false, needAccount: true, error: personalErr ? `Shaxsiy Edutizim akkauntiga kirib bo‘lmadi: ${personalErr}` : 'Shaxsiy Edutizim akkaunti ulanmagan' });
+    }
     if (!auth) auth = await login(base, site, phone, password);
     const branches: { id: string; name: string }[] = auth.branches.map((b: any) => ({ id: String(b._id), name: b.name }));
     if (body.action === 'test') return json({ ok: true, branches });
@@ -638,7 +666,7 @@ Deno.serve(async req => {
       let userId: string | null = null;
       const jwt = (req.headers.get('Authorization') || '').replace(/^Bearer /, '');
       if (jwt) { const { data: u } = await admin.auth.getUser(jwt); userId = u?.user?.id || null; }
-      return json(await pushLeads(base, headers, body, userId));
+      return json({ ...(await pushLeads(base, headers, body, userId)), personal });
     }
     if (!branches.length) throw new Error('Hisobga filial biriktirilmagan');
 
