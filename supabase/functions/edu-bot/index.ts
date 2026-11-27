@@ -1352,7 +1352,7 @@ async function expenseCategory(chatId: number, idx: number) {
 
 // ---------------------------------------------------------
 // 🎟 Vaucherlar: Edutizimda ismi yoki izohida "vaucher" yozilgan o'quvchilar.
-// Vaucher bitta kurs narxidan: ingliz tili 520 000; matematika va boshqa barcha fanlar 455 000; Kids (2–6-sinf) 455 000.
+// Vaucher bitta fan narxidan: Edutizimdagi 1 dars narxi × 13 dars (bir oy); topilmasa ingliz tili 520 000, qolgani 455 000.
 // Foizli vaucher: to'lov × foiz ÷ (100 − foiz) (= oylik narxning foizi); 100% — oylik narx; aniq summa — bir marta.
 // Edutizimda vaucher "Student ga voucher" (studentBonus), to'lov "Student to'ladi" (income) bo'lib yoziladi.
 // ---------------------------------------------------------
@@ -1409,18 +1409,20 @@ async function voucherView(chatId: number, refresh = false) {
   const mustMap: Record<string, any> = txAll.must || {};
   const rows: any[] = [];
   for (const st of list) {
-    // Oylik narx — BITTA kurs narxi (bir necha guruh bo'lsa ham qo'shilmaydi): ingliz tili 520 000 (Kids emas), qolgani 455 000
-    let price = 0, estimate = false;
+    // Oylik narx — BITTA fan: Edutizimda shu o'quvchidan har darsda yechiladigan summa × 13 dars (bir oy).
+    // Dars narxi topilmasa — jadval: ingliz tili 520 000, qolgani 455 000.
+    let price = 0, estimate = false, lesson = 0;
     const subjs: string[] = [], gnames: string[] = [];
     for (const sg of st.groups) {
       const g: any = gmap.get(String(sg._id)) || {};
       const gname = String(g.data?.name || g.name || sg.name || ''), course = String(g.data?.course?.name || '');
       gnames.push(gname);
-      // Kids: guruh nomida “kids” yoki o'quvchi ismida/izohida 2–6-sinf (“6-sinf”, “5 sinf”)
       const kids = /kids/i.test(gname) || /kids/i.test(course) || /(^|[^\d])[2-6]\s*-?\s*sinf/i.test(`${st.raw} ${st.comment || ''}`);
-      const p1 = kids ? prices.kids : /ingliz/i.test(course) ? prices.english : /matem/i.test(course) ? prices.math : prices.other;
       subjs.push(subjectOf(course) + (kids ? ' · Kids' : ''));
-      price = Math.max(price, Number(p1) || 0);
+      const pl = (pmap.get(st.id) || []).find((x: any) => x.gid === String(sg._id));
+      const per = Number(pl?.price) || 0;
+      const p1 = per ? per * 13 : (kids ? prices.kids : /ingliz/i.test(course) ? prices.english : /matem/i.test(course) ? prices.math : prices.other);
+      if (p1 > price) { price = p1; lesson = per; estimate = !per; }
     }
     const gname = gnames.join(' + '), subj = subjs.join(' + ');
     // Edutizim: to'lovlar va vaucherlar
@@ -1441,7 +1443,7 @@ async function voucherView(chatId: number, refresh = false) {
     const m = mustMap[st.id];
     // Edutizimdagi "To'lanish kerak"dan ortiq vaucher kiritilmaydi; 0 bo'lsa — oy allaqachon yopilgan
     if (m && due > m.mustPay) { if (m.mustPay <= 0) note = 'oy allaqachon yopilgan (Edutizim: to‘lanish kerak 0)'; due = Math.max(0, m.mustPay); }
-    rows.push({ ...st, gname, subj, price, estimate, P, Vd, due, monthly, share, note, lastPay: paid.length ? paid[paid.length - 1].createdAt : null, must: m ? m.mustPay : null, balance: m ? m.balance : st.balance });
+    rows.push({ ...st, gname, subj, price, estimate, lesson, P, Vd, due, monthly, share, note, lastPay: paid.length ? paid[paid.length - 1].createdAt : null, must: m ? m.mustPay : null, balance: m ? m.balance : st.balance });
   }
   rows.sort((a, b) => b.due - a.due || a.name.localeCompare(b.name));
   const totDue = rows.reduce((a, x) => a + x.due, 0), totGiven = rows.reduce((a, x) => a + x.Vd, 0), totPaid = rows.reduce((a, x) => a + x.P, 0);
@@ -1455,7 +1457,8 @@ async function voucherView(chatId: number, refresh = false) {
     const rest = x.must - x.due;
     return rest <= 0 ? `✅ Oy yopiladi (Edutizim: to‘lanish kerak ${num(x.must)})` : `❗ O‘quvchi yana <b>${num(rest)} so‘m</b> to‘lashi kerak (Edutizim: ${num(x.must)})`;
   };
-  const card = (x: any) => `<b>${esc(x.name)}</b> — ${vLabel(x)}\n📱 ${phone(x)}\n${x.P ? `To‘lagan ${num(x.P)} · ` : ''}Vaucher <b>${num(x.due)} so‘m</b>\n${closes(x)}`;
+  const priceLine = (x: any) => x.lesson ? `📚 1 dars ${num(x.lesson)} × 13 = ${num(x.price)}${x.v.kind === 'pct' ? ` → ${x.v.pct}% = ${num(x.monthly)}` : ''}` : `📚 Oylik ${num(x.price)}${x.v.kind === 'pct' ? ` → ${x.v.pct}% = ${num(x.monthly)}` : ''}`;
+  const card = (x: any) => `<b>${esc(x.name)}</b> — ${vLabel(x)}\n📱 ${phone(x)}\n${priceLine(x)}\n${x.P ? `To‘lagan ${num(x.P)} · ` : ''}Vaucher <b>${num(x.due)} so‘m</b>\n${closes(x)}`;
   // Vaucher kiritilmaydiganlar (bir martalik berilgan va h.k.), lekin Edutizimda to'lov kerak
   const unpaid = rows.filter(x => !x.due && (x.must || 0) > 0);
   const totPay = unpaid.reduce((a, x) => a + (x.must || 0), 0);
