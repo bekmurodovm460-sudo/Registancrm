@@ -18,6 +18,7 @@ declare const EdgeRuntime: { waitUntil(p: Promise<unknown>): void } | undefined;
 const B_LEAD = '➕ Lid qo‘shish';
 const B_ORDER = '📝 O‘quvchiga buyurtma';
 const B_LREQ = '📥 Lid so‘rovlari';
+const B_VOUCH = '🎟 Vaucherlar';
 const B_FIND = '🔍 O‘quvchi';
 const B_DEBT = '🔴 Qarzdorlar';
 const B_IN = '💰 Kirim';
@@ -51,18 +52,18 @@ const B_SKIP = '⏭ O‘tkazib yuborish';
 
 const kb = (rows: string[][]) => ({ keyboard: rows.map(r => r.map(text => ({ text }))), resize_keyboard: true });
 const persist = (rows: string[][], ph = 'Bo‘limni tanlang…') => ({ ...kb(rows), is_persistent: true, input_field_placeholder: ph });
-const MENU = persist([[B_IN, B_OUT], [B_INK, B_EXP], [B_BELL, B_PRICE], [B_NEW, B_MGR], [B_ATT, B_RISK], [B_STATS, B_SCHED], [B_BOOKS, B_STOCK], [B_MEDIA, B_AI], [B_REPORTS, B_PHONES], [B_DEBT, B_FIND], [B_TEACH, B_TASKS], [B_LEAD, B_ORDER], [B_LREQ, B_ADMIN]]);
-const MENU_SENIOR = persist([[B_ATT, B_RISK], [B_NEW, B_MGR], [B_STATS, B_EXP], [B_INK, B_SCHED], [B_STOCK, B_MEDIA], [B_AI, B_REPORTS], [B_PHONES], [B_BELL, B_PRICE], [B_DEBT, B_FIND], [B_TEACH, B_TASKS], [B_LEAD, B_ORDER], [B_LREQ]]);
+const MENU = persist([[B_IN, B_OUT], [B_INK, B_EXP], [B_BELL, B_PRICE], [B_NEW, B_MGR], [B_ATT, B_RISK], [B_STATS, B_SCHED], [B_BOOKS, B_STOCK], [B_MEDIA, B_AI], [B_REPORTS, B_PHONES], [B_DEBT, B_FIND], [B_TEACH, B_TASKS], [B_LEAD, B_ORDER], [B_LREQ, B_VOUCH], [B_ADMIN]]);
+const MENU_SENIOR = persist([[B_ATT, B_RISK], [B_NEW, B_MGR], [B_STATS, B_EXP], [B_INK, B_SCHED], [B_STOCK, B_MEDIA], [B_AI, B_REPORTS], [B_PHONES], [B_BELL, B_PRICE], [B_DEBT, B_FIND], [B_TEACH, B_TASKS], [B_LEAD, B_ORDER], [B_LREQ, B_VOUCH]]);
 const MENU_SERVICE = persist([[B_ATT, B_RISK], [B_NEW, B_MY], [B_FIND, B_DEBT], [B_LEAD, B_ORDER], [B_LREQ, B_SCHED], [B_AI, B_PHONES]]);
 const MENU_TEACHER = persist([[B_MY, B_MYTASK], [B_SCHED, B_PHONES], [B_AI]]);
 const MENU_DIRECTOR = persist([[B_REPORTS], [B_STATS, B_EXP], [B_INK, B_ATT], [B_TEACH, B_NEW], [B_RISK, B_STOCK], [B_SCHED, B_AI], [B_PHONES]]);
 const MENU_MEDIA = persist([[B_MEDIA, B_AI], [B_SCHED, B_PHONES]]);
 const MENU_TEACHER_BOOK = persist([[B_MY, B_MYTASK], [B_BOOK, B_SCHED], [B_AI, B_PHONES]]);
 // Bosh sahifadagi bosib tanlanadigan (inline) bo'limlar — rolga qarab
-const GO: Record<string, string> = { kirim: B_IN, chiqim: B_OUT, davomat: B_ATT, xavf: B_RISK, stat: B_STATS, xarajat: B_EXP, inkassa: B_INK, jadval: B_SCHED, raqam: B_PHONES, kitob: B_BOOK, kitoblar: B_BOOKS, ombor: B_STOCK, montaj: B_MEDIA, ai: B_AI, hisobot: B_REPORTS, qarz: B_DEBT, qidir: B_FIND, ustoz: B_TEACH, vazifa: B_TASKS, lid: B_LEAD, buyurtma: B_ORDER, lidsorov: B_LREQ, admin: B_ADMIN, natijam: B_MY, myvazifa: B_MYTASK, bell: B_BELL, narx: B_PRICE, yangi: B_NEW, mgr: B_MGR };
+const GO: Record<string, string> = { kirim: B_IN, chiqim: B_OUT, davomat: B_ATT, xavf: B_RISK, stat: B_STATS, xarajat: B_EXP, inkassa: B_INK, jadval: B_SCHED, raqam: B_PHONES, kitob: B_BOOK, kitoblar: B_BOOKS, ombor: B_STOCK, montaj: B_MEDIA, ai: B_AI, hisobot: B_REPORTS, qarz: B_DEBT, qidir: B_FIND, ustoz: B_TEACH, vazifa: B_TASKS, lid: B_LEAD, buyurtma: B_ORDER, lidsorov: B_LREQ, vaucher: B_VOUCH, admin: B_ADMIN, natijam: B_MY, myvazifa: B_MYTASK, bell: B_BELL, narx: B_PRICE, yangi: B_NEW, mgr: B_MGR };
 const GO_ROWS: Record<string, string[][]> = {
-  top: [['kirim', 'chiqim'], ['inkassa', 'xarajat'], ['bell', 'narx'], ['yangi', 'mgr'], ['davomat', 'xavf'], ['stat', 'jadval'], ['kitoblar', 'ombor'], ['montaj', 'ai'], ['hisobot', 'raqam'], ['qarz', 'qidir'], ['ustoz', 'vazifa'], ['lid', 'buyurtma'], ['lidsorov', 'admin']],
-  senior: [['davomat', 'xavf'], ['yangi', 'mgr'], ['stat', 'xarajat'], ['inkassa', 'jadval'], ['ombor', 'montaj'], ['ai', 'hisobot'], ['raqam'], ['bell', 'narx'], ['qarz', 'qidir'], ['ustoz', 'vazifa'], ['lid', 'buyurtma'], ['lidsorov']],
+  top: [['kirim', 'chiqim'], ['inkassa', 'xarajat'], ['bell', 'narx'], ['yangi', 'mgr'], ['davomat', 'xavf'], ['stat', 'jadval'], ['kitoblar', 'ombor'], ['montaj', 'ai'], ['hisobot', 'raqam'], ['qarz', 'qidir'], ['ustoz', 'vazifa'], ['lid', 'buyurtma'], ['lidsorov', 'vaucher'], ['admin']],
+  senior: [['davomat', 'xavf'], ['yangi', 'mgr'], ['stat', 'xarajat'], ['inkassa', 'jadval'], ['ombor', 'montaj'], ['ai', 'hisobot'], ['raqam'], ['bell', 'narx'], ['qarz', 'qidir'], ['ustoz', 'vazifa'], ['lid', 'buyurtma'], ['lidsorov', 'vaucher']],
   service: [['davomat', 'xavf'], ['yangi', 'natijam'], ['qidir', 'qarz'], ['lid', 'buyurtma'], ['lidsorov', 'jadval'], ['ai', 'raqam']],
   teacher: [['natijam', 'myvazifa'], ['jadval', 'raqam'], ['ai']],
   media: [['montaj', 'ai'], ['jadval', 'raqam']],
@@ -1350,6 +1351,101 @@ async function expenseCategory(chatId: number, idx: number) {
 }
 
 // ---------------------------------------------------------
+// 🎟 Vaucherlar: Edutizimda ismi yoki izohida "vaucher" yozilgan o'quvchilar.
+// Oylik narx: ingliz tili 520 000, matematika 455 000, Kids (2–6-sinf) hamma kurs 455 000; boshqa fanlar — 1 dars × 13 (taxminiy).
+// Foizli vaucher: to'lov × foiz ÷ (100 − foiz) (= oylik narxning foizi); 100% — oylik narx; aniq summa — bir marta.
+// Edutizimda vaucher "Student ga voucher" (studentBonus), to'lov "Student to'ladi" (income) bo'lib yoziladi.
+// ---------------------------------------------------------
+const VOUCH_RE = /va[uo]?cher|voucher|ваучер/i;
+function parseVoucher(text: string) {
+  const t = String(text || '').replace(/\s+/g, ' ');
+  if (!VOUCH_RE.test(t)) return null;
+  const pct = t.match(/(\d{1,3})\s*(%|foiz)/i);
+  if (pct && Number(pct[1]) > 0 && Number(pct[1]) <= 100) return { kind: 'pct' as const, pct: Number(pct[1]) };
+  const sum = t.match(/(\d[\d\s.,]{2,})\s*(so['‘’ʻ`]?m|som)/i);
+  if (sum) { const v = Number(sum[1].replace(/\D/g, '')); if (v >= 1000) return { kind: 'sum' as const, sum: v }; }
+  const bare = t.match(/(\d[\d\s.,]*)\s*va[uo]?cher/i);
+  if (bare) { const v = Number(bare[1].replace(/\D/g, '')); if (v > 0 && v <= 100) return { kind: 'pct' as const, pct: v, guess: true }; if (v >= 1000) return { kind: 'sum' as const, sum: v, guess: true }; }
+  return { kind: 'unknown' as const };
+}
+const cleanName = (n: string) => String(n || '').replace(/\s*\d[\d\s.,]*\s*(%|foiz|so['‘’ʻ`]?m|som)?\s*va[uo]?cher\s*/ig, ' ').replace(/\s+/g, ' ').trim();
+async function voucherPrices() {
+  return { english: 520000, math: 455000, kids: 455000, ...((await getSetting<any>('eduVoucherPrices', {})) || {}) };
+}
+let vouchCache: { at: number; text: string } | null = null;
+async function voucherView(chatId: number, refresh = false) {
+  if (!refresh && vouchCache && Date.now() - vouchCache.at < 10 * 60_000) return void send(chatId, vouchCache.text, { reply_markup: { inline_keyboard: [[ib('🔄 Yangilash', 'vch:r')]] } });
+  await typing(chatId);
+  const { data: all } = await admin.from('crm_edu_students').select('id,full_name,data').gt('data->>groupsCount', '0').limit(5000);
+  const list = (all || []).map((x: any) => {
+    const src = `${x.full_name || ''} ${x.data?.additional?.comment || ''}`;
+    const v = parseVoucher(src);
+    const groups = (x.data?.groupsList || []).filter((g: any) => g?.state === 'active');
+    return v && groups.length ? { id: String(x.id), name: cleanName(x.full_name), raw: x.full_name, balance: Number(x.data?.balance) || 0, v, groups, fromComment: !VOUCH_RE.test(x.full_name || '') } : null;
+  }).filter(Boolean) as any[];
+  if (!list.length) return void send(chatId, '🎟 Faol guruhda vaucherli o‘quvchi topilmadi.\n\n<i>Edutizimda o‘quvchi ismiga yoki izohiga “vaucher” so‘zini foiz yoki summa bilan yozing: “20% vaucher”, “100 000 so‘m vaucher”.</i>');
+  const prices = await voucherPrices();
+  const gids = [...new Set(list.flatMap((x: any) => x.groups.map((g: any) => g._id)))];
+  const [{ data: grs }, { data: plans }] = await Promise.all([
+    admin.from('crm_edu_groups').select('id,name,data').in('id', gids),
+    admin.from('crm_edu_pay_plan').select('student_id,groups').in('student_id', list.map((x: any) => x.id))
+  ]);
+  const gmap = new Map((grs || []).map((g: any) => [String(g.id), g]));
+  const pmap = new Map((plans || []).map((p: any) => [p.student_id, p.groups || []]));
+  const local = new Date(Date.now() + 5 * 3600_000), monthKey = local.toISOString().slice(0, 7);
+  const monthName = ['Yanvar', 'Fevral', 'Mart', 'Aprel', 'May', 'Iyun', 'Iyul', 'Avgust', 'Sentabr', 'Oktabr', 'Noyabr', 'Dekabr'][local.getUTCMonth()];
+  const dm = (iso: string) => { const d = new Date(new Date(iso).getTime() + 5 * 3600_000); return `${String(d.getUTCDate()).padStart(2, '0')}.${String(d.getUTCMonth() + 1).padStart(2, '0')}`; };
+  const rows: any[] = [];
+  for (const st of list) {
+    // Oylik narx (birinchi faol guruh bo'yicha)
+    const g: any = gmap.get(String(st.groups[0]._id)) || {};
+    const gname = String(g.data?.name || g.name || st.groups[0].name || '');
+    const course = String(g.data?.course?.name || '');
+    let price = 0, estimate = false, subj = subjectOf(course);
+    if (/kids/i.test(gname) || /kids/i.test(course)) { price = prices.kids; subj += ' · Kids'; }
+    else if (/ingliz/i.test(course)) price = prices.english;
+    else if (/matem/i.test(course)) price = prices.math;
+    else { const pl = (pmap.get(st.id) || []).find((x: any) => x.gid === String(st.groups[0]._id)); price = (Number(pl?.price) || 0) * 13; estimate = true; }
+    // Edutizim: to'lovlar va vaucherlar
+    const r = await edu('read', { path: '/student/transactions-pagin', body: { studentId: st.id }, limit: 200, pages: 5 });
+    const tx: any[] = (r.items || []).filter((t: any) => t.type !== 'attendance');
+    const isVoucher = (t: any) => t.type === 'studentBonus' || /voucher|vaucher/i.test(t.paymentTransaction?.name || '');
+    const isPay = (t: any) => t.type === 'income' && !isVoucher(t);
+    const inMonth = (t: any) => new Date(new Date(t.createdAt).getTime() + 5 * 3600_000).toISOString().slice(0, 7) === monthKey;
+    const paid = tx.filter(t => isPay(t) && inMonth(t)), given = tx.filter(t => isVoucher(t) && inMonth(t)), everGiven = tx.filter(isVoucher);
+    const P = paid.reduce((a, t) => a + (Number(t.amount) || 0), 0), Vd = given.reduce((a, t) => a + (Number(t.amount) || 0), 0);
+    let due = 0, monthly = 0, share = 0, note = '';
+    if (st.v.kind === 'pct' && st.v.pct < 100) {
+      monthly = Math.round(price * st.v.pct / 100); share = price - monthly;
+      due = Math.max(0, Math.round(P * st.v.pct / (100 - st.v.pct)) - Vd);
+      if (!P) note = 'bu oy hali to‘lov yo‘q';
+    } else if (st.v.kind === 'pct') { monthly = price; share = 0; due = Math.max(0, price - Vd); }
+    else if (st.v.kind === 'sum') { monthly = st.v.sum; due = everGiven.length ? 0 : st.v.sum; if (everGiven.length) note = `bir martalik — ${dm(everGiven[everGiven.length - 1].createdAt)} da kiritilgan`; }
+    else note = 'foiz yoki summa yozilmagan';
+    rows.push({ ...st, gname, subj, price, estimate, P, Vd, due, monthly, share, note, lastPay: paid.length ? paid[paid.length - 1].createdAt : null });
+  }
+  rows.sort((a, b) => b.due - a.due || a.name.localeCompare(b.name));
+  const totDue = rows.reduce((a, x) => a + x.due, 0), totGiven = rows.reduce((a, x) => a + x.Vd, 0), totPaid = rows.reduce((a, x) => a + x.P, 0);
+  const vLabel = (x: any) => x.v.kind === 'pct' ? `${x.v.pct}%${x.v.guess ? '?' : ''}` : x.v.kind === 'sum' ? `${sum(x.v.sum)} (bir marta)` : '—';
+  const card = (x: any, i: number) => [
+    `<b>${i + 1}. ${esc(x.name)}</b> — 🎟 <b>${vLabel(x)}</b>${x.fromComment ? ' <i>(izohda)</i>' : ''}`,
+    `   📚 ${esc(x.subj)} · ${esc(x.gname.slice(0, 28))}`,
+    x.v.kind === 'pct' ? `   💵 Oylik ${sum(x.price)}${x.estimate ? ' <i>(taxminiy)</i>' : ''} → o‘quvchi ${sum(x.share)} · vaucher ${sum(x.monthly)}` : '',
+    `   🧾 ${monthName}: to‘ladi <b>${sum(x.P)}</b>${x.lastPay ? ` (${dm(x.lastPay)})` : ''} · vaucher kiritilgan <b>${sum(x.Vd)}</b>`,
+    x.due ? `   👉 <b>Kiritish kerak: ${sum(x.due)}</b>` : `   ✅ ${x.note || 'Bu oy uchun vaucher to‘liq kiritilgan'}`,
+    x.due && x.note ? `   <i>${esc(x.note)}</i>` : '',
+    `   💳 Balans: ${x.balance < 0 ? '🔴 ' : ''}${sum(x.balance)}`
+  ].filter(Boolean).join('\n');
+  const head = `🎟 <b>VAUCHERLI O‘QUVCHILAR</b>\n${monthName} ${local.getUTCFullYear()} · <i>Edutizim ma’lumoti, ${dm(new Date().toISOString())} ${String(local.getUTCHours()).padStart(2, '0')}:${String(local.getUTCMinutes()).padStart(2, '0')}</i>\n\n` +
+    `👥 Faol vaucherli o‘quvchi: <b>${rows.length}</b>\n💰 Bu oy ular to‘lagan: <b>${sum(totPaid)}</b>\n🎟 Bu oy kiritilgan vaucher: <b>${sum(totGiven)}</b>\n👉 <b>Kiritilishi kerak: ${sum(totDue)}</b>\n━━━━━━━━━━━━━━━`;
+  const foot = `━━━━━━━━━━━━━━━\n<i>Hisob: foizli vaucher = to‘lov × foiz ÷ (100 − foiz). Narxlar: ingliz tili ${sum(prices.english)}, matematika ${sum(prices.math)}, Kids ${sum(prices.kids)}. Edutizimda vaucher “Student ga voucher” bilan kiritiladi.</i>`;
+  let text = `${head}\n\n${rows.map(card).join('\n\n')}\n\n${foot}`;
+  if (text.length > 4000) text = `${head}\n\n${rows.map(card).join('\n\n')}`.slice(0, 3990) + '\n…';
+  vouchCache = { at: Date.now(), text };
+  await send(chatId, text, { reply_markup: { inline_keyboard: [[ib('🔄 Yangilash', 'vch:r')]] } });
+}
+
+// ---------------------------------------------------------
 // ➕ Lid / 📝 O'quvchiga buyurtma → menejerga so'rov → menejer tasdiqlasa,
 // Edutizimga MENEJERNING shaxsiy akkaunti nomidan yoziladi (umumiy akkauntga o'tilmaydi)
 // ---------------------------------------------------------
@@ -1593,7 +1689,7 @@ async function sticker(chatId: number | string, key: string) {
 }
 const STICKER_OF: Record<string, string> = {
   [B_IN]: 'kirim', [B_OUT]: 'chiqim', [B_ATT]: 'davomat', [B_RISK]: 'xavf', [B_STATS]: 'statistika', [B_EXP]: 'xarajat', [B_INK]: 'hisobot', '/inkassa': 'hisobot',
-  [B_DEBT]: 'qarz', [B_FIND]: 'qidir', [B_TEACH]: 'oqituvchi', [B_TASKS]: 'vazifa', [B_LEAD]: 'lid', [B_ORDER]: 'lid', [B_LREQ]: 'lid', [B_ADMIN]: 'boshqaruv',
+  [B_DEBT]: 'qarz', [B_FIND]: 'qidir', [B_TEACH]: 'oqituvchi', [B_TASKS]: 'vazifa', [B_LEAD]: 'lid', [B_ORDER]: 'lid', [B_LREQ]: 'lid', [B_VOUCH]: 'statistika', [B_ADMIN]: 'boshqaruv',
   [B_MY]: 'natijam', [B_MYTASK]: 'vazifa', [B_BELL]: 'qongiroq', [B_PRICE]: 'narx', [B_NEW]: 'lid', [B_MGR]: 'oqituvchi', '/qongiroq': 'qongiroq', '/narx': 'narx',
   '/kirim': 'kirim', '/chiqim': 'chiqim', '/davomat': 'davomat', '/xavf': 'xavf', '/statistika': 'statistika', '/xarajat': 'xarajat', '/xarajat_oy': 'xarajat',
   '/qarz': 'qarz', '/qidir': 'qidir', '/oqituvchilar': 'oqituvchi', '/vazifalar': 'vazifa', '/lid': 'lid', '/boshqaruv': 'boshqaruv', '/natijam': 'natijam', '/vazifalarim': 'vazifa'
@@ -1606,12 +1702,12 @@ const CMDS: Record<string, any[]> = {
     C('kirim', '💰 Kassaga kirim'), C('chiqim', '💸 Kassadan chiqim'), C('statistika', '📈 Aktiv o‘quvchilar va qarz'),
     C('xarajat', '🧾 Xarajatlar — haftalik'), C('xarajat_oy', '🗓 Xarajatlar — oylik'), C('inkassa', '💵 Naqd inkassa — Juma bankka'), C('jadval', '🗓 Dars jadvali (PDF)'), C('kitoblar', '📚 Kitob buyurtmalari'), C('ombor', '📦 Kitoblar ombori'), C('montaj', '🎬 Video montaj'), C('ai', '🤖 AI yordamchi'), C('raqamlar', '📞 Kerakli raqamlar'), C('qarz', '🔴 Qarzdorlar'),
     C('qidir', '🔍 O‘quvchini qidirish'), C('oqituvchilar', '👩‍🏫 O‘qituvchilar hisoboti va Excel'), C('yangilar', '🆕 Yangi talabalar'), C('menejerlar', '🎧 Menejerlar konversiyasi'), C('vazifalar', '📋 Ustozlar vazifalari'),
-    C('lid', '➕ Yangi lid'), C('buyurtma', '📝 O‘quvchiga buyurtma'), C('lidsorov', '📥 Menga kelgan lid so‘rovlari'), C('boshqaruv', '⚙️ Rollar, hisobot, sinxron'), C('akkaunt', '🔑 Edutizim akkauntim'), C('cancel', '❌ Bekor qilish')],
+    C('lid', '➕ Yangi lid'), C('buyurtma', '📝 O‘quvchiga buyurtma'), C('lidsorov', '📥 Menga kelgan lid so‘rovlari'), C('vaucher', '🎟 Vaucherlar — kiritilishi kerak summa'), C('boshqaruv', '⚙️ Rollar, hisobot, sinxron'), C('akkaunt', '🔑 Edutizim akkauntim'), C('cancel', '❌ Bekor qilish')],
   senior: [C('start', '🏠 Bosh menyu'), C('davomat', '📅 Davomat — kelmaganlar va izohlar'), C('xavf', '⚠️ Xavf ostida — notcoming'),
     C('yangilar', '🆕 Yangi talabalar'), C('menejerlar', '🎧 Menejerlar konversiyasi'), C('statistika', '📈 Aktiv o‘quvchilar va qarz'),
     C('xarajat', '🧾 Xarajatlar — haftalik'), C('xarajat_oy', '🗓 Xarajatlar — oylik'), C('inkassa', '💵 Naqd inkassa — Juma bankka'), C('jadval', '🗓 Dars jadvali (PDF)'), C('ombor', '📦 Kitoblar ombori'), C('raqamlar', '📞 Kerakli raqamlar'), C('qongiroq', '🔔 Kassa qo‘ng‘iroqchalari'), C('narx', '💲 Narx nazorati'),
     C('qarz', '🔴 Qarzdorlar'), C('qidir', '🔍 O‘quvchini qidirish'), C('oqituvchilar', '👩‍🏫 O‘qituvchilar hisoboti va Excel'), C('vazifalar', '📋 Ustozlar vazifalari'),
-    C('lid', '➕ Yangi lid'), C('buyurtma', '📝 O‘quvchiga buyurtma'), C('lidsorov', '📥 Menga kelgan lid so‘rovlari'), C('akkaunt', '🔑 Edutizim akkauntim'), C('cancel', '❌ Bekor qilish')],
+    C('lid', '➕ Yangi lid'), C('buyurtma', '📝 O‘quvchiga buyurtma'), C('lidsorov', '📥 Menga kelgan lid so‘rovlari'), C('vaucher', '🎟 Vaucherlar — kiritilishi kerak summa'), C('akkaunt', '🔑 Edutizim akkauntim'), C('cancel', '❌ Bekor qilish')],
   service: [C('start', '🏠 Bosh menyu'), C('davomat', '📅 Davomat — kelmaganlar va izohlar'), C('xavf', '⚠️ Xavf ostida — notcoming'),
     C('yangilar', '🆕 Yangi talabalar'), C('natijam', '📊 Mening konversiyam'), C('jadval', '🗓 Dars jadvali (PDF)'), C('raqamlar', '📞 Kerakli raqamlar'), C('qidir', '🔍 O‘quvchini qidirish'), C('qarz', '🔴 Qarzdorlar'), C('lid', '➕ Yangi lid'), C('buyurtma', '📝 O‘quvchiga buyurtma'), C('lidsorov', '📥 Menga kelgan lid so‘rovlari'), C('akkaunt', '🔑 Edutizim akkauntim'), C('cancel', '❌ Bekor qilish')],
   teacher: [C('start', '🏠 Bosh menyu'), C('natijam', '📊 Mening natijam — konversiya'), C('vazifalarim', '📋 Vazifalarim'), C('jadval', '🗓 Dars jadvali (PDF)'), C('kitob', '📚 Kitob olish (guruh bo‘yicha)'), C('raqamlar', '📞 Kerakli raqamlar'), C('akkaunt', '🔑 Edutizim akkauntim'), C('cancel', '❌ Bekor qilish')],
@@ -2406,7 +2502,7 @@ async function myStats(chatId: number, which: 'm' | 'pm' = 'm') {
 const ACCESS: Record<string, Role[]> = {
   // matn tugmalari
   [B_IN]: ['top'], [B_OUT]: ['top'], [B_STATS]: ['top', 'senior'], [B_EXP]: ['top', 'senior'], [B_INK]: ['top', 'senior'], [B_SCHED]: ['top', 'senior', 'service', 'teacher', 'media'], [B_PHONES]: ['top', 'senior', 'service', 'teacher', 'media'], [B_BOOK]: ['teacher'], [B_BOOKS]: ['top'], [B_STOCK]: ['top', 'senior'], [B_MEDIA]: ['top', 'senior', 'media'], [B_REPORTS]: ['top', 'senior'], [B_AI]: ['top', 'senior', 'service', 'teacher', 'media'], [B_TEACH]: ['top', 'senior'], [B_TASKS]: ['top', 'senior'], [B_ADMIN]: ['top'], [B_BELL]: ['top', 'senior'], [B_PRICE]: ['top', 'senior'], [B_NEW]: ['top', 'senior', 'service'], [B_MGR]: ['top', 'senior'],
-  [B_ATT]: ['top', 'senior', 'service'], [B_RISK]: ['top', 'senior', 'service'], [B_FIND]: ['top', 'senior', 'service'], [B_DEBT]: ['top', 'senior', 'service'], [B_LEAD]: ['top', 'senior', 'service'], [B_ORDER]: ['top', 'senior', 'service'], [B_LREQ]: ['top', 'senior', 'service'],
+  [B_ATT]: ['top', 'senior', 'service'], [B_RISK]: ['top', 'senior', 'service'], [B_FIND]: ['top', 'senior', 'service'], [B_DEBT]: ['top', 'senior', 'service'], [B_LEAD]: ['top', 'senior', 'service'], [B_ORDER]: ['top', 'senior', 'service'], [B_LREQ]: ['top', 'senior', 'service'], [B_VOUCH]: ['top', 'senior'],
   [B_MY]: ['teacher', 'service'], [B_MYTASK]: ['teacher']
 };
 function cbAllowed(data: string, r: Role) {
@@ -2520,6 +2616,7 @@ async function onMessage(m: any) {
   if (isStaff && (text === B_LEAD || cmd === '/lid')) { await setSession(chatId, 'lead_name', {}); return void send(chatId, '➕ <b>Yangi lid</b>\nKiritasiz → menejer tasdiqlaydi → Edutizimga uning nomidan yoziladi.\n\n👤 Familiya va ismini yozing:', { reply_markup: CANCEL_KB }); }
   if (isStaff && (text === B_ORDER || cmd === '/buyurtma')) { await setSession(chatId, 'ord_q', {}); return void send(chatId, '📝 <b>O‘quvchiga buyurtma</b>\nEdutizimdagi o‘quvchiga yangi kursga buyurtma (takror o‘quvchi yaratilmaydi).\n\n🔍 O‘quvchining ismi yoki telefonini yozing:', { reply_markup: CANCEL_KB }); }
   if (isStaff && (text === B_LREQ || cmd === '/lidsorov')) return leadInbox(chatId);
+  if ((text === B_VOUCH || cmd === '/vaucher') && ['top', 'senior'].includes(r)) return voucherView(chatId);
   if (r === 'teacher' && (text === B_MY || cmd === '/natijam')) return myStats(chatId, 'm');
   if (r === 'teacher' && (text === B_MYTASK || cmd === '/vazifalarim')) return myTasks(chatId);
 
@@ -2718,6 +2815,7 @@ async function onCallback(q: any) {
   }
   if (data === 'adm:users') return usersPanel(chatId);
   if (data === 'ub:list') return blockedPanel(chatId);
+  if (data === 'vch:r') return voucherView(chatId, true);
   if (/^ue:[np]:\d+$/.test(data)) { const [, f, id] = data.split(':'); await setSession(chatId, 'ue_edit', { tgId: Number(id), field: f }); return void send(chatId, f === 'p' ? '📱 Yangi raqamni yozing (+998 90 123 45 67):' : '👤 Yangi ism-familiyani yozing:', { reply_markup: CANCEL_KB }); }
   if (/^ue:\d+$/.test(data)) return userEditMenu(chatId, Number(data.slice(3)));
   if (data === 'adm:report') return report(chatId);
@@ -2871,6 +2969,13 @@ Deno.serve(async req => {
     const b = await req.json().catch(() => ({}));
     if (b.action === 'autoReport' && (b.kind === 'week' || b.kind === 'month')) return new Response(JSON.stringify({ ok: true, ...(await sendAutoReport(b.kind)) }), { headers: { 'Content-Type': 'application/json' } });
     if (b.action === 'smsReport' && ['day', 'inkassa'].includes(b.kind)) return new Response(JSON.stringify({ ok: true, ...(await smsReport(b.kind)) }), { headers: { 'Content-Type': 'application/json' } });
+    // 🎟 Vaucher hisobotini top menejerga (yoki ko'rsatilgan chatga) post qilish
+    if (b.action === 'voucherPost') {
+      const to = Number(b.chatId) || Number((await adminIds())[0]);
+      if (!to) return new Response('{"ok":false}', { status: 400 });
+      await als.run({ role: 'top', user: null, menu: MENU, from: { id: to }, book: false } as any, () => voucherView(to, true));
+      return new Response(JSON.stringify({ ok: true, to, chars: vouchCache?.text.length || 0, preview: vouchCache?.text.slice(0, 3500) }), { headers: { 'Content-Type': 'application/json' } });
+    }
     // Top menejer so'rovi bo'yicha rol berish (botdagi "✏️ Rolni o'zgartirish" bilan bir xil: menyu + xodimga xabar)
     if (b.action === 'grantRole' && Number(b.tgId) && ['top', 'senior', 'director', 'service', 'teacher', 'media'].includes(b.role)) {
       const patch: Record<string, unknown> = {};
