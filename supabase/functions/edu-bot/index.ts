@@ -1417,8 +1417,11 @@ async function voucherView(chatId: number, refresh = false) {
     let due = 0, monthly = 0, share = 0, note = '';
     if (st.v.kind === 'pct' && st.v.pct < 100) {
       monthly = Math.round(price * st.v.pct / 100); share = price - monthly;
-      due = Math.max(0, Math.round(P * st.v.pct / (100 - st.v.pct)) - Vd);
+      // To'lovga qarab, lekin bir oylik vaucherdan oshmaydi (ortiqcha to'lov — qarz uchun)
+      const byPay = Math.round(P * st.v.pct / (100 - st.v.pct));
+      due = Math.max(0, Math.min(byPay, monthly) - Vd);
       if (!P) note = 'bu oy hali to‘lov yo‘q';
+      else if (byPay > monthly) note = `to‘lov oylik ulushdan ko‘p (${sum(P)}) — ortig‘i qarzga, vaucher bir oylik`;
     } else if (st.v.kind === 'pct') { monthly = price; share = 0; due = Math.max(0, price - Vd); }
     else if (st.v.kind === 'sum') { monthly = st.v.sum; due = everGiven.length ? 0 : st.v.sum; if (everGiven.length) note = `bir martalik — ${dm(everGiven[everGiven.length - 1].createdAt)} da kiritilgan`; }
     else note = 'foiz yoki summa yozilmagan';
