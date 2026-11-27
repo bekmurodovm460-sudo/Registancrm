@@ -771,12 +771,19 @@ Deno.serve(async req => {
       if (body.action === 'studentTxMany') {
         const ids: string[] = (Array.isArray(body.ids) ? body.ids : []).map(String).slice(0, 60);
         const out: Record<string, any[]> = {};
+        const must: Record<string, any> = {};
         for (let i = 0; i < ids.length; i += 4) {
           await Promise.all(ids.slice(i, i + 4).map(async id => {
             out[id] = await pageAll(base, headers, '/student/transactions-pagin', { studentId: id }, 200, 10).catch(() => []);
+            // Edutizim kartasidagi "To'lanish kerak": qolgan darslar summasi − balans (sayt formulasi bilan bir xil)
+            const st = await getStudent(base, headers, id).catch(() => null);
+            if (st) {
+              const left = Number(st.leftAmountAndLessonsCount?.leftPriceAmount) || 0, bal = Number(st.balance) || 0;
+              must[id] = { left, lessons: Number(st.leftAmountAndLessonsCount?.lessonsCount) || 0, balance: bal, mustPay: Math.max(0, left - bal) };
+            }
           }));
         }
-        return json({ ok: true, tx: out });
+        return json({ ok: true, tx: out, must });
       }
       if (body.action === 'employees') return json({ ok: true, employees: await employees(base, headers) });
       if (body.action === 'absences') return json({ ok: true, rows: await attendance(base, headers, ['reasonable', 'unreasonable'], body.fromDate, body.toDate) });
