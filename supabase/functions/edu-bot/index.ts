@@ -1371,7 +1371,7 @@ function parseVoucher(text: string) {
 }
 const cleanName = (n: string) => String(n || '').replace(new RegExp(String.raw`\s*\d[\d\s.,]*\s*(%|foiz\w*|so['‘’ʻ\x60]?m|som)?\s*(${VW})`, 'ig'), ' ').replace(new RegExp(VW, 'ig'), ' ').replace(/\s\d{1,3}\s*(%|foiz\w*)(?=\s|$)/ig, ' ').replace(/\s+/g, ' ').trim();
 async function voucherPrices() {
-  return { english: 520000, math: 455000, kids: 455000, other: 455000, ...((await getSetting<any>('eduVoucherPrices', {})) || {}) };
+  return { english: 520000, math: 455000, kids: 455000, other: 455000, roundUp: 10000, ...((await getSetting<any>('eduVoucherPrices', {})) || {}) };
 }
 let vouchCache: { at: number; text: string } | null = null;
 async function voucherView(chatId: number, refresh = false) {
@@ -1443,7 +1443,11 @@ async function voucherView(chatId: number, refresh = false) {
     const m = mustMap[st.id];
     // Edutizimdagi "To'lanish kerak"dan ortiq vaucher kiritilmaydi; 0 bo'lsa — oy allaqachon yopilgan
     if (m && due > m.mustPay) { if (m.mustPay <= 0) note = 'oy allaqachon yopilgan (Edutizim: to‘lanish kerak 0)'; due = Math.max(0, m.mustPay); }
-    rows.push({ ...st, gname, subj, price, estimate, lesson, P, Vd, due, monthly, share, note, lastPay: paid.length ? paid[paid.length - 1].createdAt : null, must: m ? m.mustPay : null, balance: m ? m.balance : st.balance });
+    // Oyni yopishga kam summa (≤ 10 000) yetmasa — shu farq ham vaucherga qo'shiladi
+    let extra = 0;
+    const roundUp = Number(prices.roundUp ?? 10000);
+    if (m && due > 0 && m.mustPay - due > 0 && m.mustPay - due <= roundUp) { extra = m.mustPay - due; due = m.mustPay; }
+    rows.push({ ...st, gname, subj, price, estimate, lesson, extra, P, Vd, due, monthly, share, note, lastPay: paid.length ? paid[paid.length - 1].createdAt : null, must: m ? m.mustPay : null, balance: m ? m.balance : st.balance });
   }
   rows.sort((a, b) => b.due - a.due || a.name.localeCompare(b.name));
   const totDue = rows.reduce((a, x) => a + x.due, 0), totGiven = rows.reduce((a, x) => a + x.Vd, 0), totPaid = rows.reduce((a, x) => a + x.P, 0);
@@ -1458,7 +1462,7 @@ async function voucherView(chatId: number, refresh = false) {
     return rest <= 0 ? `✅ Oy yopiladi (Edutizim: to‘lanish kerak ${num(x.must)})` : `❗ O‘quvchi yana <b>${num(rest)} so‘m</b> to‘lashi kerak (Edutizim: ${num(x.must)})`;
   };
   const priceLine = (x: any) => x.lesson ? `📚 1 dars ${num(x.lesson)} × 13 = ${num(x.price)}${x.v.kind === 'pct' ? ` → ${x.v.pct}% = ${num(x.monthly)}` : ''}` : `📚 Oylik ${num(x.price)}${x.v.kind === 'pct' ? ` → ${x.v.pct}% = ${num(x.monthly)}` : ''}`;
-  const card = (x: any) => `<b>${esc(x.name)}</b> — ${vLabel(x)}\n📱 ${phone(x)}\n${priceLine(x)}\n${x.P ? `To‘lagan ${num(x.P)} · ` : ''}Vaucher <b>${num(x.due)} so‘m</b>\n${closes(x)}`;
+  const card = (x: any) => `<b>${esc(x.name)}</b> — ${vLabel(x)}\n📱 ${phone(x)}\n${priceLine(x)}\n${x.P ? `To‘lagan ${num(x.P)} · ` : ''}Vaucher <b>${num(x.due)} so‘m</b>${x.extra ? ` <i>(+${num(x.extra)} oyni yopish uchun)</i>` : ''}\n${closes(x)}`;
   // Vaucher kiritilmaydiganlar (bir martalik berilgan va h.k.), lekin Edutizimda to'lov kerak
   const unpaid = rows.filter(x => !x.due && (x.must || 0) > 0);
   const totPay = unpaid.reduce((a, x) => a + (x.must || 0), 0);
