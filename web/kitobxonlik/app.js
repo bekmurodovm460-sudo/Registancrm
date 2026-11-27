@@ -5,7 +5,9 @@
 import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/+esm';
 
 const { SUPABASE_URL, SUPABASE_KEY } = window.KA_CONFIG;
-const sb = createClient(SUPABASE_URL, SUPABASE_KEY, { auth: { persistSession: true, autoRefreshToken: true } });
+// Registan CRM bilan bitta domen va bitta Supabase loyiha — sessiya alohida kalitda saqlanadi,
+// aks holda Registan'ga kirgan hisob Akademiya paneliga ham avtomatik kirib qolardi.
+const sb = createClient(SUPABASE_URL, SUPABASE_KEY, { auth: { persistSession: true, autoRefreshToken: true, storageKey: 'ka-academy-auth' } });
 
 const S = { me: null, view: 'dashboard', settings: {}, cache: {} };
 const $ = id => document.getElementById(id);
@@ -64,7 +66,7 @@ $('a-btn').onclick = async () => {
   $('a-msg').textContent = '';
   if (!email || password.length < 6) { $('a-msg').textContent = 'Email va kamida 6 belgili parol kiriting'; return; }
   const r = signUp
-    ? await sb.auth.signUp({ email, password, options: { data: { app: 'ka', full_name: $('a-name').value.trim() || email.split('@')[0] }, emailRedirectTo: location.origin } })
+    ? await sb.auth.signUp({ email, password, options: { data: { app: 'ka', full_name: $('a-name').value.trim() || email.split('@')[0] }, emailRedirectTo: location.origin + location.pathname } })
     : await sb.auth.signInWithPassword({ email, password });
   if (r.error) { $('a-msg').textContent = r.error.message; return; }
   if (signUp && !r.data.session) { $('a-msg').style.color = '#059669'; $('a-msg').textContent = 'Emailingizga tasdiqlash xati yuborildi.'; return; }

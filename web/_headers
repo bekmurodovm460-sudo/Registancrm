@@ -10,3 +10,9 @@
 
 /parent.html
   X-Frame-Options: DENY
+
+/kitobxonlik/
+  X-Frame-Options: DENY
+
+/kitobxonlik/index.html
+  X-Frame-Options: DENY

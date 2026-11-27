@@ -22,7 +22,7 @@ Guruhga havola orqali qo‘shilish: `https://t.me/<bot>?start=g_<KOD>` yoki `/gu
 
 **Ball:** kitob = test% / 10 + taqriz bahosi (maks. 20); tanlov = test% / 10 + 30/20/10 (1–3-o‘rin).
 
-## CRM (`web/index.html`)
+## CRM (`web/kitobxonlik/index.html`)
 
 | Bo‘lim | Admin | Moderator | Kassir |
 |---|:-:|:-:|:-:|
@@ -48,7 +48,7 @@ Guruhga havola orqali qo‘shilish: `https://t.me/<bot>?start=g_<KOD>` yoki `/gu
 ## Tuzilma
 
 ```
-web/                    Netlify (publish = web)
+../web/kitobxonlik/     Registan saytining bo‘limi (Netlify, publish = web)
   index.html, app.js    CRM
   miniapp.html          Telegram Mini App (chat, uchrashuvlar, guruhga qo‘shilish)
   config.js             Supabase URL + publishable kalit
@@ -65,8 +65,8 @@ supabase/
 
 - ✅ Baza: `001_schema.sql`, `002_cron.sql` qo‘llangan; `functions_url` yozilgan, `ka-cron` har 5 daqiqada ishlaydi.
 - ✅ Funksiyalar: `ka-bot`, `ka-admin`, `ka-miniapp` joylangan (`--no-verify-jwt`).
-- ⏳ Sayt: Netlify loyihasi `kitobxonlik-akademiya` yaratilgan, lekin hisobdagi Netlify kreditlari tugagani uchun joylash to‘xtatilgan.
-- ⏳ Bot: @BotFather tokeni CRM’ga kiritilishi kerak.
+- 🌐 Sayt: Registan sayti ichidagi bo‘lim — `web/kitobxonlik/` → `https://crmimtihon.netlify.app/kitobxonlik/` (CRM) va `/kitobxonlik/miniapp.html` (Mini App). Registan menyusida “📚 Kitobxonlik Akademiyasi ↗” havolasi bor. Sessiya Registan’dan alohida saqlanadi (`storageKey: ka-academy-auth`).
+- ✅ Bot: @Kitobchaxonbot ulangan (webhook → `ka-bot`).
 
 ## Joylash (yangi loyihaga ko‘chirish uchun)
 
@@ -81,7 +81,7 @@ supabase/
    supabase functions deploy ka-admin --no-verify-jwt
    supabase functions deploy ka-miniapp --no-verify-jwt
    ```
-3. **Sayt:** `web/config.js` ga loyiha URL va publishable kalitni yozing → Netlify’da yangi sayt, base directory `kitobxonlik`. Supabase → Authentication → URL Configuration → Site URL = Netlify manzili.
+3. **Sayt:** `web/kitobxonlik/config.js` ga loyiha URL va publishable kalitni yozing — Registan sayti bilan birga joylanadi (`/kitobxonlik/`). Supabase → Authentication → URL Configuration → Site URL = Netlify manzili.
 4. **Bot:** @BotFather → yangi bot → CRM ⚙️ Sozlamalar → token → “Saqlash va botni ulash” (webhook, buyruqlar, 📱 Ilova tugmasi avtomatik o‘rnatiladi).
 
 ## Eslatmalar
