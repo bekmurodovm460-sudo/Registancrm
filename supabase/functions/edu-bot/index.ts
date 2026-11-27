@@ -2813,6 +2813,17 @@ Deno.serve(async req => {
     const b = await req.json().catch(() => ({}));
     if (b.action === 'autoReport' && (b.kind === 'week' || b.kind === 'month')) return new Response(JSON.stringify({ ok: true, ...(await sendAutoReport(b.kind)) }), { headers: { 'Content-Type': 'application/json' } });
     if (b.action === 'smsReport' && ['day', 'inkassa'].includes(b.kind)) return new Response(JSON.stringify({ ok: true, ...(await smsReport(b.kind)) }), { headers: { 'Content-Type': 'application/json' } });
+    // Top menejer so'rovi bo'yicha rol berish (botdagi "✏️ Rolni o'zgartirish" bilan bir xil: menyu + xodimga xabar)
+    if (b.action === 'grantRole' && Number(b.tgId) && ['top', 'senior', 'director', 'service', 'teacher', 'media'].includes(b.role)) {
+      const patch: Record<string, unknown> = {};
+      if (b.phone) patch.phone = normPhone(String(b.phone)) || undefined;
+      if (b.employeeId) patch.employee_id = String(b.employeeId);
+      if (Object.keys(patch).length) await admin.from('crm_edu_bot_users').update(patch).eq('tg_id', Number(b.tgId));
+      const owner = Number((await adminIds())[0]) || Number(b.tgId);
+      await setRole(owner, Number(b.tgId), b.role as Role, null);
+      const { data: u } = await admin.from('crm_edu_bot_users').select('tg_id,full_name,role,phone,employee_id').eq('tg_id', Number(b.tgId)).maybeSingle();
+      return new Response(JSON.stringify({ ok: !!u && u.role === b.role, user: u }), { headers: { 'Content-Type': 'application/json' } });
+    }
     return new Response('{"ok":false}', { status: 400 });
   }
   if (req.headers.get('X-Telegram-Bot-Api-Secret-Token') !== await webhookSecret(t)) return new Response('forbidden', { status: 403 });
