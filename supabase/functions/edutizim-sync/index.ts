@@ -239,7 +239,7 @@ async function kassaTx(base: string, headers: Record<string, string>, b: any) {
 const READ_PATHS = new Set([
   '/attendance-histoy-pagin', '/comments-pagin', '/analitics/student/teacher', '/analitics/teacher/students',
   '/teacher-students-pagin', '/hr/employees-pagin', '/group-pagin', '/shift-bells-pagin', '/student-list/students-pagin',
-  '/courses-pagin', '/reasons/attendance', '/analitics/headcount'
+  '/courses-pagin', '/reasons/attendance', '/analitics/headcount', '/student/transactions-pagin'
 ]);
 async function eduRead(base: string, headers: Record<string, string>, b: any) {
   const path = String(b.path || '');
