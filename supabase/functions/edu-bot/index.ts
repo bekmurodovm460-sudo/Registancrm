@@ -1374,17 +1374,6 @@ async function voucherPrices() {
   return { english: 520000, math: 455000, kids: 455000, other: 455000, ...((await getSetting<any>('eduVoucherPrices', {})) || {}) };
 }
 let vouchCache: { at: number; text: string } | null = null;
-// Uzun postni bloklar (bo'sh qator) bo'yicha 4000 belgidan bo'lib yuborish; tugma oxirgi xabarda
-async function sendLong(chatId: number, text: string, extra: Record<string, unknown> = {}) {
-  const parts: string[] = [];
-  let cur = '';
-  for (const block of text.split('\n\n')) {
-    if ((cur + '\n\n' + block).length > 3900 && cur) { parts.push(cur); cur = block; }
-    else cur = cur ? cur + '\n\n' + block : block;
-  }
-  if (cur) parts.push(cur);
-  for (let i = 0; i < parts.length; i++) await send(chatId, parts[i], i === parts.length - 1 ? extra : {});
-}
 async function voucherView(chatId: number, refresh = false) {
   if (!refresh && vouchCache && Date.now() - vouchCache.at < 10 * 60_000) return sendLong(chatId, vouchCache.text, { reply_markup: { inline_keyboard: [[ib('🔄 Yangilash', 'vch:r')]] } });
   await typing(chatId);
