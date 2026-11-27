@@ -1440,9 +1440,14 @@ async function voucherView(chatId: number, refresh = false) {
   const num = (n: number) => String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
   const phone = (x: any) => x.phones.length ? x.phones.map((p: string) => `<code>${esc(p)}</code>`).join(' · ') : '—';
   const need = rows.filter(x => x.due > 0);
-  const card = (x: any) => `<b>${esc(x.name)}</b> — ${vLabel(x)}\n📱 ${phone(x)}\nTo‘ladi ${num(x.P)} → vaucher <b>${num(x.due)} so‘m</b>`;
+  // Oy yopiladimi: bu oy to'lovi + kiritilgan + kiritiladigan vaucher ≥ bitta kurs oylik narxi
+  const closes = (x: any) => {
+    const tot = x.P + x.Vd + x.due, gap = x.price - tot;
+    return gap <= 0 ? `✅ Oy yopiladi: ${num(tot)} / ${num(x.price)}` : `❗ Oy yopilmaydi: <b>${num(gap)} so‘m</b> yetmaydi (${num(tot)} / ${num(x.price)})`;
+  };
+  const card = (x: any) => `<b>${esc(x.name)}</b> — ${vLabel(x)}\n📱 ${phone(x)}\nTo‘ladi ${num(x.P)} → vaucher <b>${num(x.due)} so‘m</b>\n${closes(x)}`;
   let text = `🎟 <b>Vaucherlar · ${monthName}</b>\n` +
-    (need.length ? `Kiritish kerak: <b>${sum(totDue)}</b> (${need.length} ta)\n\n${need.map(card).join('\n\n')}` : '✅ Bu oy kiritilishi kerak bo‘lgan vaucher yo‘q.');
+    (need.length ? `Kiritish kerak: <b>${sum(totDue)}</b> (${need.length} ta)\n${(() => { const n = need.filter(x => x.price - (x.P + x.Vd + x.due) > 0).length; return n ? `❗ ${n} ta o‘quvchida oy yopilmaydi` : '✅ Hammasida oy yopiladi'; })()}\n\n${need.map(card).join('\n\n')}` : '✅ Bu oy kiritilishi kerak bo‘lgan vaucher yo‘q.');
   if (text.length > 4000) text = text.slice(0, 3990) + '\n…';
   vouchCache = { at: Date.now(), text };
   await send(chatId, text, { reply_markup: { inline_keyboard: [[ib('🔄 Yangilash', 'vch:r')]] } });
