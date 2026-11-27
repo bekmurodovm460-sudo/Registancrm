@@ -1374,8 +1374,19 @@ async function voucherPrices() {
   return { english: 520000, math: 455000, kids: 455000, other: 455000, ...((await getSetting<any>('eduVoucherPrices', {})) || {}) };
 }
 let vouchCache: { at: number; text: string } | null = null;
+// Uzun postni bloklar (bo'sh qator) bo'yicha 4000 belgidan bo'lib yuborish; tugma oxirgi xabarda
+async function sendLong(chatId: number, text: string, extra: Record<string, unknown> = {}) {
+  const parts: string[] = [];
+  let cur = '';
+  for (const block of text.split('\n\n')) {
+    if ((cur + '\n\n' + block).length > 3900 && cur) { parts.push(cur); cur = block; }
+    else cur = cur ? cur + '\n\n' + block : block;
+  }
+  if (cur) parts.push(cur);
+  for (let i = 0; i < parts.length; i++) await send(chatId, parts[i], i === parts.length - 1 ? extra : {});
+}
 async function voucherView(chatId: number, refresh = false) {
-  if (!refresh && vouchCache && Date.now() - vouchCache.at < 10 * 60_000) return void send(chatId, vouchCache.text, { reply_markup: { inline_keyboard: [[ib('🔄 Yangilash', 'vch:r')]] } });
+  if (!refresh && vouchCache && Date.now() - vouchCache.at < 10 * 60_000) return sendLong(chatId, vouchCache.text, { reply_markup: { inline_keyboard: [[ib('🔄 Yangilash', 'vch:r')]] } });
   await typing(chatId);
   const { data: all } = await admin.from('crm_edu_students').select('id,full_name,phone,data').gt('data->>groupsCount', '0').limit(5000);
   const list = (all || []).map((x: any) => {
@@ -1441,17 +1452,28 @@ async function voucherView(chatId: number, refresh = false) {
   const num = (n: number) => String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
   const phone = (x: any) => x.phones.length ? x.phones.map((p: string) => `<code>${esc(p)}</code>`).join(' · ') : '—';
   const need = rows.filter(x => x.due > 0);
-  // Oy yopiladimi: bu oy to'lovi + kiritilgan + kiritiladigan vaucher ≥ bitta kurs oylik narxi
+  // O'quvchi ulushi (oylik narx − oylik vaucher) va oyni yopish uchun yana qancha to'lashi kerak
+  const plan = (x: any) => {
+    if (x.v.kind === 'pct' && x.v.pct >= 100) return { pay: 0, after: 0 };
+    if (x.v.kind === 'pct') { const share = x.price - x.monthly; const pay = Math.max(0, share - x.P); return { pay, after: Math.max(0, x.monthly - x.Vd - x.due) }; }
+    return { pay: Math.max(0, x.price - x.P - x.Vd - x.due), after: 0 };
+  };
   const closes = (x: any) => {
-    const tot = x.P + x.Vd + x.due, gap = x.price - tot;
-    return gap <= 0 ? `✅ Oy yopiladi: ${num(tot)} / ${num(x.price)}` : `❗ Oy yopilmaydi: <b>${num(gap)} so‘m</b> yetmaydi (${num(tot)} / ${num(x.price)})`;
+    const tot = x.P + x.Vd + x.due, pl = plan(x);
+    if (tot >= x.price || !pl.pay) return `✅ Oy yopiladi: ${num(tot)} / ${num(x.price)}`;
+    return `❗ Oy yopilmaydi: yana <b>${num(pl.pay)} so‘m</b> to‘lashi kerak${pl.after ? ` (shunda vaucher yana +${num(pl.after)})` : ''}`;
   };
   const card = (x: any) => `<b>${esc(x.name)}</b> — ${vLabel(x)}\n📱 ${phone(x)}\nTo‘ladi ${num(x.P)} → vaucher <b>${num(x.due)} so‘m</b>\n${closes(x)}`;
+  // Noyabrda hali to'lamaganlar (vaucher kiritish kerak emas, lekin to'lovi bor)
+  const unpaid = rows.filter(x => !x.due && plan(x).pay > 0);
+  const totPay = unpaid.reduce((a, x) => a + plan(x).pay, 0);
+  const payCard = (x: any) => { const pl = plan(x); return `<b>${esc(x.name)}</b> — ${vLabel(x)}\n📱 ${phone(x)}\nTo‘lashi kerak: <b>${num(pl.pay)} so‘m</b>${pl.after ? ` → keyin vaucher ${num(pl.after)}` : ''}${x.P ? ` (to‘lagan: ${num(x.P)})` : ''}`; };
+  const notClosed = need.filter(x => x.P + x.Vd + x.due < x.price && plan(x).pay > 0).length;
   let text = `🎟 <b>Vaucherlar · ${monthName}</b>\n` +
-    (need.length ? `Kiritish kerak: <b>${sum(totDue)}</b> (${need.length} ta)\n${(() => { const n = need.filter(x => x.price - (x.P + x.Vd + x.due) > 0).length; return n ? `❗ ${n} ta o‘quvchida oy yopilmaydi` : '✅ Hammasida oy yopiladi'; })()}\n\n${need.map(card).join('\n\n')}` : '✅ Bu oy kiritilishi kerak bo‘lgan vaucher yo‘q.');
-  if (text.length > 4000) text = text.slice(0, 3990) + '\n…';
+    (need.length ? `Kiritish kerak: <b>${sum(totDue)}</b> (${need.length} ta)\n${notClosed ? `❗ ${notClosed} ta o‘quvchida oy yopilmaydi` : '✅ Hammasida oy yopiladi'}\n\n${need.map(card).join('\n\n')}` : '✅ Bu oy kiritilishi kerak bo‘lgan vaucher yo‘q.') +
+    (unpaid.length ? `\n\n━━━━━━━━━━\n💳 <b>${monthName}da to‘lov qilishi kerak</b>: ${sum(totPay)} (${unpaid.length} ta)\n\n${unpaid.map(payCard).join('\n\n')}` : '');
   vouchCache = { at: Date.now(), text };
-  await send(chatId, text, { reply_markup: { inline_keyboard: [[ib('🔄 Yangilash', 'vch:r')]] } });
+  await sendLong(chatId, text, { reply_markup: { inline_keyboard: [[ib('🔄 Yangilash', 'vch:r')]] } });
 }
 
 // ---------------------------------------------------------
@@ -2983,7 +3005,7 @@ Deno.serve(async req => {
       const to = Number(b.chatId) || Number((await adminIds())[0]);
       if (!to) return new Response('{"ok":false}', { status: 400 });
       await als.run({ role: 'top', user: null, menu: MENU, from: { id: to }, book: false } as any, () => voucherView(to, true));
-      return new Response(JSON.stringify({ ok: true, to, chars: vouchCache?.text.length || 0, preview: vouchCache?.text.slice(0, 3500) }), { headers: { 'Content-Type': 'application/json' } });
+      return new Response(JSON.stringify({ ok: true, to, chars: vouchCache?.text.length || 0, preview: vouchCache?.text }), { headers: { 'Content-Type': 'application/json' } });
     }
     // Top menejer so'rovi bo'yicha rol berish (botdagi "✏️ Rolni o'zgartirish" bilan bir xil: menyu + xodimga xabar)
     if (b.action === 'grantRole' && Number(b.tgId) && ['top', 'senior', 'director', 'service', 'teacher', 'media'].includes(b.role)) {
