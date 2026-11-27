@@ -1406,6 +1406,7 @@ async function voucherView(chatId: number, refresh = false) {
     return void send(chatId, `⚠️ Edutizimdan ma’lumot olinmadi: ${esc(txAll?.error || 'javob yo‘q')}. Birozdan keyin “🔄 Yangilash”ni bosing.`, { reply_markup: { inline_keyboard: [[ib('🔄 Yangilash', 'vch:r')]] } });
   }
   const txMap: Record<string, any[]> = txAll.tx || {};
+  const mustMap: Record<string, any> = txAll.must || {};
   const rows: any[] = [];
   for (const st of list) {
     // Oylik narx — BITTA kurs narxi (bir necha guruh bo'lsa ham qo'shilmaydi): ingliz tili 520 000 (Kids emas), qolgani 455 000
@@ -1440,7 +1441,8 @@ async function voucherView(chatId: number, refresh = false) {
     } else if (st.v.kind === 'pct') { monthly = price; share = 0; due = Math.max(0, price - Vd); }
     else if (st.v.kind === 'sum') { monthly = st.v.sum; due = everGiven.length ? 0 : st.v.sum; if (everGiven.length) note = `bir martalik — ${dm(everGiven[everGiven.length - 1].createdAt)} da kiritilgan`; }
     else note = 'foiz yoki summa yozilmagan';
-    rows.push({ ...st, gname, subj, price, estimate, P, Vd, due, monthly, share, note, lastPay: paid.length ? paid[paid.length - 1].createdAt : null });
+    const m = mustMap[st.id];
+    rows.push({ ...st, gname, subj, price, estimate, P, Vd, due, monthly, share, note, lastPay: paid.length ? paid[paid.length - 1].createdAt : null, must: m ? m.mustPay : null, balance: m ? m.balance : st.balance });
   }
   rows.sort((a, b) => b.due - a.due || a.name.localeCompare(b.name));
   const totDue = rows.reduce((a, x) => a + x.due, 0), totGiven = rows.reduce((a, x) => a + x.Vd, 0), totPaid = rows.reduce((a, x) => a + x.P, 0);
@@ -1448,23 +1450,23 @@ async function voucherView(chatId: number, refresh = false) {
   const num = (n: number) => String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
   const phone = (x: any) => x.phones.length ? x.phones.map((p: string) => `<code>${esc(p)}</code>`).join(' · ') : '—';
   const need = rows.filter(x => x.due > 0);
-  // O'quvchi ulushi (oylik narx − oylik vaucher) va oyni yopish uchun yana qancha to'lashi kerak
-  const plan = (x: any) => {
-    if (x.v.kind === 'pct' && x.v.pct >= 100) return { pay: 0, after: 0 };
-    if (x.v.kind === 'pct') { const share = x.price - x.monthly; const pay = Math.max(0, share - x.P); return { pay, after: Math.max(0, x.monthly - x.Vd - x.due) }; }
-    return { pay: Math.max(0, x.price - x.P - x.Vd - x.due), after: 0 };
-  };
+  // Edutizim kartasidagi "To'lanish kerak" bilan solishtirish (qolgan darslar summasi − balans)
   const closes = (x: any) => {
-    const tot = x.P + x.Vd + x.due, pl = plan(x);
-    if (tot >= x.price || !pl.pay) return `✅ Oy yopiladi: ${num(tot)} / ${num(x.price)}`;
-    return `❗ Oy yopilmaydi: yana <b>${num(pl.pay)} so‘m</b> to‘lashi kerak${pl.after ? ` (shunda vaucher yana +${num(pl.after)})` : ''}`;
+    if (x.must === null || x.must === undefined) return '⚪ Edutizimdan “To‘lanish kerak” olinmadi';
+    const rest = x.must - x.due;
+    return rest <= 0 ? `✅ Oy yopiladi (Edutizim: to‘lanish kerak ${num(x.must)})` : `❗ Vaucherdan keyin ham <b>${num(rest)} so‘m</b> to‘lanishi kerak (Edutizim: ${num(x.must)})`;
   };
   const card = (x: any) => `<b>${esc(x.name)}</b> — ${vLabel(x)}\n📱 ${phone(x)}\nTo‘ladi ${num(x.P)} → vaucher <b>${num(x.due)} so‘m</b>\n${closes(x)}`;
-  // Noyabrda hali to'lamaganlar (vaucher kiritish kerak emas, lekin to'lovi bor)
-  const unpaid = rows.filter(x => !x.due && plan(x).pay > 0);
-  const totPay = unpaid.reduce((a, x) => a + plan(x).pay, 0);
-  const payCard = (x: any) => { const pl = plan(x); return `<b>${esc(x.name)}</b> — ${vLabel(x)}\n📱 ${phone(x)}\nTo‘lashi kerak: <b>${num(pl.pay)} so‘m</b>${pl.after ? ` → keyin vaucher ${num(pl.after)}` : ''}${x.P ? ` (to‘lagan: ${num(x.P)})` : ''}`; };
-  const notClosed = need.filter(x => x.P + x.Vd + x.due < x.price && plan(x).pay > 0).length;
+  // Hali to'lamaganlar: Edutizimda "To'lanish kerak" bor, vaucher hali kiritilmaydi. Foizli bo'lsa — o'quvchi ulushi va vaucher shu summani yopadi
+  const split = (x: any) => {
+    const X = x.must || 0;
+    if (x.v.kind === 'pct' && x.v.pct < 100) { const v = Math.min(Math.round(X * x.v.pct / 100), Math.max(0, x.monthly - x.Vd)); return { pay: X - v, v }; }
+    return { pay: X, v: 0 };
+  };
+  const unpaid = rows.filter(x => !x.due && (x.must || 0) > 0);
+  const totPay = unpaid.reduce((a, x) => a + split(x).pay, 0);
+  const payCard = (x: any) => { const sp = split(x); return `<b>${esc(x.name)}</b> — ${vLabel(x)}\n📱 ${phone(x)}\nEdutizim: to‘lanish kerak ${num(x.must)}\nO‘quvchi to‘laydi: <b>${num(sp.pay)} so‘m</b>${sp.v ? ` + vaucher ${num(sp.v)}` : ''}`; };
+  const notClosed = need.filter(x => x.must !== null && x.must !== undefined && x.must - x.due > 0).length;
   let text = `🎟 <b>Vaucherlar · ${monthName}</b>\n` +
     (need.length ? `Kiritish kerak: <b>${sum(totDue)}</b> (${need.length} ta)\n${notClosed ? `❗ ${notClosed} ta o‘quvchida oy yopilmaydi` : '✅ Hammasida oy yopiladi'}\n\n${need.map(card).join('\n\n')}` : '✅ Bu oy kiritilishi kerak bo‘lgan vaucher yo‘q.') +
     (unpaid.length ? `\n\n━━━━━━━━━━\n💳 <b>${monthName}da to‘lov qilishi kerak</b>: ${sum(totPay)} (${unpaid.length} ta)\n\n${unpaid.map(payCard).join('\n\n')}` : '');
