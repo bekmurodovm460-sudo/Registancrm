@@ -1376,12 +1376,14 @@ let vouchCache: { at: number; text: string } | null = null;
 async function voucherView(chatId: number, refresh = false) {
   if (!refresh && vouchCache && Date.now() - vouchCache.at < 10 * 60_000) return void send(chatId, vouchCache.text, { reply_markup: { inline_keyboard: [[ib('🔄 Yangilash', 'vch:r')]] } });
   await typing(chatId);
-  const { data: all } = await admin.from('crm_edu_students').select('id,full_name,data').gt('data->>groupsCount', '0').limit(5000);
+  const { data: all } = await admin.from('crm_edu_students').select('id,full_name,phone,data').gt('data->>groupsCount', '0').limit(5000);
   const list = (all || []).map((x: any) => {
     const src = `${x.full_name || ''} ${x.data?.additional?.comment || ''}`;
     const v = parseVoucher(src);
     const groups = (x.data?.groupsList || []).filter((g: any) => g?.state === 'active');
-    return v && groups.length ? { id: String(x.id), name: cleanName(x.full_name), raw: x.full_name, balance: Number(x.data?.balance) || 0, v, groups, fromComment: !VOUCH_RE.test(x.full_name || '') } : null;
+    const par = x.data?.parent || {};
+    const phones = [...new Set([x.data?.phoneNumber, par.motherPhoneNumber, par.fatherPhoneNumber, x.phone].filter(Boolean).map((p: string) => fmtPhone(p)))].slice(0, 2);
+    return v && groups.length ? { id: String(x.id), name: cleanName(x.full_name), raw: x.full_name, phones, own: !!x.data?.phoneNumber, balance: Number(x.data?.balance) || 0, v, groups, fromComment: !VOUCH_RE.test(x.full_name || '') } : null;
   }).filter(Boolean) as any[];
   if (!list.length) return void send(chatId, '🎟 Faol guruhda vaucherli o‘quvchi topilmadi.\n\n<i>Edutizimda o‘quvchi ismiga yoki izohiga “vaucher” so‘zini foiz yoki summa bilan yozing: “20% vaucher”, “100 000 so‘m vaucher”.</i>');
   const prices = await voucherPrices();
@@ -1432,6 +1434,7 @@ async function voucherView(chatId: number, refresh = false) {
   const vLabel = (x: any) => x.v.kind === 'pct' ? `${x.v.pct}%${x.v.guess ? '?' : ''}` : x.v.kind === 'sum' ? `${sum(x.v.sum)} (bir marta)` : '—';
   const card = (x: any, i: number) => [
     `<b>${i + 1}. ${esc(x.name)}</b> — 🎟 <b>${vLabel(x)}</b>${x.fromComment ? ' <i>(izohda)</i>' : ''}`,
+    x.phones.length ? `   📱 ${x.phones.map((p: string) => `<code>${esc(p)}</code>`).join(' · ')}${x.own ? '' : ' <i>(ota-ona)</i>'}` : '   📱 —',
     `   📚 ${esc(x.subj)} · ${esc(x.gname.slice(0, 28))}`,
     x.v.kind === 'pct' ? `   💵 Oylik ${sum(x.price)}${x.estimate ? ' <i>(taxminiy)</i>' : ''} → o‘quvchi ${sum(x.share)} · vaucher ${sum(x.monthly)}` : '',
     `   🧾 ${monthName}: to‘ladi <b>${sum(x.P)}</b>${x.lastPay ? ` (${dm(x.lastPay)})` : ''} · vaucher kiritilgan <b>${sum(x.Vd)}</b>`,
