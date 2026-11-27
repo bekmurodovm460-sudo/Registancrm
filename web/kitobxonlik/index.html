@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="uz">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Kitobxonlik Akademiyasi CRM</title>
+  <meta name="description" content="Laylo Pardayeva Kitobxonlik Akademiyasi — boshqaruv paneli">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&family=Playfair+Display:wght@700;900&display=swap" rel="stylesheet">
+  <script src="https://cdn.tailwindcss.com/3.4.16"></script>
+  <script>
+    tailwind.config = { theme: { extend: {
+      fontFamily: { sans: ['Inter', 'system-ui', 'sans-serif'], serif: ['"Playfair Display"', 'serif'] },
+      colors: { gold: { 50: '#fbf6ea', 100: '#f4e8c8', 300: '#e2bf6a', 500: '#b8892d', 600: '#9c6f1e', 700: '#7a5616' }, ink: '#1f2a37', cream: '#fbf8f1' }
+    } } };
+  </script>
+  <script src="config.js"></script>
+  <style>
+    body { background: #f6f2e9; }
+    .nav-item.active { background: #1f2a37; color: #fff; }
+    .inp { width: 100%; padding: .55rem .75rem; border-radius: .75rem; border: 1px solid #d9d2c3; background: #fff; font-size: .85rem; }
+    .inp:focus { outline: 2px solid #e2bf6a; border-color: transparent; }
+    .btn { display: inline-flex; align-items: center; gap: .35rem; padding: .5rem .9rem; border-radius: .75rem; font-weight: 700; font-size: .8rem; background: #1f2a37; color: #fff; }
+    .btn:hover { opacity: .9; }
+    .btn-gold { background: #b8892d; }
+    .btn-soft { background: #efe7d6; color: #1f2a37; }
+    .btn-red { background: #e11d48; }
+    .btn-green { background: #059669; }
+    .btn-sm { padding: .3rem .6rem; font-size: .72rem; border-radius: .6rem; }
+    .card { background: #fff; border-radius: 1.25rem; border: 1px solid #ebe3d2; padding: 1.25rem; }
+    .tbl { width: 100%; font-size: .8rem; }
+    .tbl th { text-align: left; color: #7b8491; font-weight: 700; padding: .5rem .5rem; border-bottom: 1px solid #ebe3d2; white-space: nowrap; }
+    .tbl td { padding: .55rem .5rem; border-bottom: 1px solid #f3eee3; vertical-align: top; }
+    .badge { display: inline-block; padding: .1rem .5rem; border-radius: 999px; font-size: .68rem; font-weight: 800; }
+    label.f { display: block; font-size: .75rem; font-weight: 700; color: #4b5563; }
+    label.f > .inp, label.f > select, label.f > textarea { margin-top: .25rem; }
+    #toast { transition: all .25s; }
+  </style>
+</head>
+<body class="font-sans text-ink">
+  <!-- Kirish -->
+  <div id="auth" class="hidden min-h-screen flex items-center justify-center p-4">
+    <div class="card w-full max-w-sm shadow-xl">
+      <div class="text-center mb-5">
+        <div class="text-[11px] tracking-[0.2em] font-extrabold text-gold-500">LAYLO PARDAYEVA</div>
+        <h1 class="font-serif text-3xl font-black mt-1">Kitobxonlik Akademiyasi</h1>
+        <p class="text-xs text-slate-500 mt-1">Boshqaruv paneli</p>
+      </div>
+      <div class="space-y-3">
+        <label class="f" id="name-wrap" style="display:none">Ism-familiya<input id="a-name" class="inp"></label>
+        <label class="f">Email<input id="a-email" type="email" class="inp" autocomplete="email"></label>
+        <label class="f">Parol<input id="a-pass" type="password" class="inp" autocomplete="current-password"></label>
+        <button id="a-btn" class="btn btn-gold w-full justify-center py-2.5">Kirish</button>
+        <button id="a-toggle" class="text-xs text-gold-600 font-bold w-full">Yangi xodim — ro‘yxatdan o‘tish</button>
+        <div id="a-msg" class="text-xs text-center text-rose-600 font-semibold"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Ilova -->
+  <div id="app" class="hidden min-h-screen lg:flex">
+    <aside class="lg:w-64 lg:min-h-screen bg-cream border-r border-[#ebe3d2] lg:sticky lg:top-0 lg:h-screen flex flex-col">
+      <div class="p-5 flex items-center justify-between lg:block">
+        <div>
+          <div class="text-[10px] tracking-[0.18em] font-extrabold text-gold-500">LAYLO PARDAYEVA</div>
+          <div class="font-serif text-xl font-black leading-tight">Kitobxonlik<br class="hidden lg:block"> Akademiyasi</div>
+        </div>
+        <button class="lg:hidden btn btn-soft btn-sm" onclick="document.getElementById('nav').classList.toggle('hidden')">☰ Menyu</button>
+      </div>
+      <nav id="nav" class="hidden lg:block px-3 space-y-1 flex-1 overflow-y-auto"></nav>
+      <div class="p-4 border-t border-[#ebe3d2] text-xs">
+        <div class="font-bold" id="me-name"></div>
+        <div class="text-slate-500" id="me-role"></div>
+        <button class="text-rose-600 font-bold mt-2" onclick="logout()">Chiqish</button>
+      </div>
+    </aside>
+    <main class="flex-1 p-4 lg:p-8 min-w-0">
+      <div id="view"></div>
+    </main>
+  </div>
+
+  <div id="pending" class="hidden min-h-screen flex items-center justify-center p-4">
+    <div class="card max-w-md text-center">
+      <div class="text-4xl">⏳</div>
+      <h2 class="font-serif text-2xl font-black mt-2">Tasdiq kutilmoqda</h2>
+      <p class="text-sm text-slate-600 mt-2">Hisobingiz yaratildi. Admin sizga rol (moderator yoki kassir) berganidan so‘ng panel ochiladi.</p>
+      <button class="btn btn-soft mt-4" onclick="logout()">Chiqish</button>
+    </div>
+  </div>
+
+  <div id="modal" class="hidden fixed inset-0 bg-black/40 z-40 flex items-start justify-center p-4 overflow-y-auto">
+    <div class="card w-full max-w-2xl my-8 relative" id="modal-box"></div>
+  </div>
+  <div id="toast" class="fixed bottom-5 right-5 z-50 opacity-0 translate-y-4 pointer-events-none bg-ink text-white text-sm font-semibold px-4 py-3 rounded-xl shadow-lg"></div>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>

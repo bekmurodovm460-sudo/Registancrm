@@ -23,6 +23,17 @@
   [headers.values]
     X-Frame-Options = "DENY"
 
+# Kitobxonlik Akademiyasi CRM (Mini App esa /kitobxonlik/miniapp.html — Telegram ichida ochiladi)
+[[headers]]
+  for = "/kitobxonlik/"
+  [headers.values]
+    X-Frame-Options = "DENY"
+
+[[headers]]
+  for = "/kitobxonlik/index.html"
+  [headers.values]
+    X-Frame-Options = "DENY"
+
 [[headers]]
   for = "/*.js"
   [headers.values]
