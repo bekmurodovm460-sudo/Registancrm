@@ -1368,7 +1368,7 @@ function parseVoucher(text: string) {
   if (bare) { const v = Number(bare[1].replace(/\D/g, '')); if (v > 0 && v <= 100) return { kind: 'pct' as const, pct: v, guess: true }; if (v >= 1000) return { kind: 'sum' as const, sum: v, guess: true }; }
   return { kind: 'unknown' as const };
 }
-const cleanName = (n: string) => String(n || '').replace(/\s*\d[\d\s.,]*\s*(%|foiz|so['‘’ʻ`]?m|som)?\s*va[uo]?cher\s*/ig, ' ').replace(/\s+/g, ' ').trim();
+const cleanName = (n: string) => String(n || '').replace(/\s*\d[\d\s.,]*\s*(%|foiz|so['‘’ʻ`]?m|som)?\s*va[uo]?cher\s*/ig, ' ').replace(/\s\d{1,3}\s*(%|foiz)(?=\s|$)/ig, ' ').replace(/\s+/g, ' ').trim();
 async function voucherPrices() {
   return { english: 520000, math: 455000, kids: 455000, ...((await getSetting<any>('eduVoucherPrices', {})) || {}) };
 }
