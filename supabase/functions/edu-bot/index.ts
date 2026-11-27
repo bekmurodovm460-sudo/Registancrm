@@ -1431,22 +1431,14 @@ async function voucherView(chatId: number, refresh = false) {
   }
   rows.sort((a, b) => b.due - a.due || a.name.localeCompare(b.name));
   const totDue = rows.reduce((a, x) => a + x.due, 0), totGiven = rows.reduce((a, x) => a + x.Vd, 0), totPaid = rows.reduce((a, x) => a + x.P, 0);
-  const vLabel = (x: any) => x.v.kind === 'pct' ? `${x.v.pct}%${x.v.guess ? '?' : ''}` : x.v.kind === 'sum' ? `${sum(x.v.sum)} (bir marta)` : '—';
-  const card = (x: any, i: number) => [
-    `<b>${i + 1}. ${esc(x.name)}</b> — 🎟 <b>${vLabel(x)}</b>${x.fromComment ? ' <i>(izohda)</i>' : ''}`,
-    x.phones.length ? `   📱 ${x.phones.map((p: string) => `<code>${esc(p)}</code>`).join(' · ')}${x.own ? '' : ' <i>(ota-ona)</i>'}` : '   📱 —',
-    `   📚 ${esc(x.subj)} · ${esc(x.gname.slice(0, 28))}`,
-    x.v.kind === 'pct' ? `   💵 Oylik ${sum(x.price)}${x.estimate ? ' <i>(taxminiy)</i>' : ''} → o‘quvchi ${sum(x.share)} · vaucher ${sum(x.monthly)}` : '',
-    `   🧾 ${monthName}: to‘ladi <b>${sum(x.P)}</b>${x.lastPay ? ` (${dm(x.lastPay)})` : ''} · vaucher kiritilgan <b>${sum(x.Vd)}</b>`,
-    x.due ? `   👉 <b>Kiritish kerak: ${sum(x.due)}</b>` : `   ✅ ${x.note || 'Bu oy uchun vaucher to‘liq kiritilgan'}`,
-    x.due && x.note ? `   <i>${esc(x.note)}</i>` : '',
-    `   💳 Balans: ${x.balance < 0 ? '🔴 ' : ''}${sum(x.balance)}`
-  ].filter(Boolean).join('\n');
-  const head = `🎟 <b>VAUCHERLI O‘QUVCHILAR</b>\n${monthName} ${local.getUTCFullYear()} · <i>Edutizim ma’lumoti, ${dm(new Date().toISOString())} ${String(local.getUTCHours()).padStart(2, '0')}:${String(local.getUTCMinutes()).padStart(2, '0')}</i>\n\n` +
-    `👥 Faol vaucherli o‘quvchi: <b>${rows.length}</b>\n💰 Bu oy ular to‘lagan: <b>${sum(totPaid)}</b>\n🎟 Bu oy kiritilgan vaucher: <b>${sum(totGiven)}</b>\n👉 <b>Kiritilishi kerak: ${sum(totDue)}</b>\n━━━━━━━━━━━━━━━`;
-  const foot = `━━━━━━━━━━━━━━━\n<i>Hisob: foizli vaucher = to‘lov × foiz ÷ (100 − foiz). Narxlar: ingliz tili ${sum(prices.english)}, matematika ${sum(prices.math)}, Kids ${sum(prices.kids)}. Edutizimda vaucher “Student ga voucher” bilan kiritiladi.</i>`;
-  let text = `${head}\n\n${rows.map(card).join('\n\n')}\n\n${foot}`;
-  if (text.length > 4000) text = `${head}\n\n${rows.map(card).join('\n\n')}`.slice(0, 3990) + '\n…';
+  const vLabel = (x: any) => x.v.kind === 'pct' ? `${x.v.pct}%` : x.v.kind === 'sum' ? `${sum(x.v.sum)} (bir marta)` : 'vaucher';
+  const num = (n: number) => String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+  const phone = (x: any) => x.phones.length ? x.phones.map((p: string) => `<code>${esc(p)}</code>`).join(' · ') : '—';
+  const need = rows.filter(x => x.due > 0);
+  const card = (x: any) => `<b>${esc(x.name)}</b> — ${vLabel(x)}\n📱 ${phone(x)}\nTo‘ladi ${num(x.P)} → vaucher <b>${num(x.due)} so‘m</b>`;
+  let text = `🎟 <b>Vaucherlar · ${monthName}</b>\n` +
+    (need.length ? `Kiritish kerak: <b>${sum(totDue)}</b> (${need.length} ta)\n\n${need.map(card).join('\n\n')}` : '✅ Bu oy kiritilishi kerak bo‘lgan vaucher yo‘q.');
+  if (text.length > 4000) text = text.slice(0, 3990) + '\n…';
   vouchCache = { at: Date.now(), text };
   await send(chatId, text, { reply_markup: { inline_keyboard: [[ib('🔄 Yangilash', 'vch:r')]] } });
 }
