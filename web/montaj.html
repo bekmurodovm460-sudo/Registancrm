@@ -1,0 +1,494 @@
+<!doctype html>
+<html lang="uz">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Video montaj · Registan</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Montserrat:wght@700;800;900&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #F6F4F0; --card: #FFFFFF; --ink: #0F1F45; --muted: #6B7280; --line: #E7E3DC; --soft: #EEF2F6;
+    --accent: #F2642A; --navy: #0F1F45; --ok: #16A34A; --bad: #DC2626; --shadow: 0 6px 24px rgba(15,31,69,.08);
+  }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --bg: #0B1324; --card: #131D33; --ink: #EEF2FF; --muted: #93A0B8; --line: #22304D; --soft: #1B2742; --shadow: 0 6px 24px rgba(0,0,0,.35); } }
+  :root[data-theme="dark"] { --bg: #0B1324; --card: #131D33; --ink: #EEF2FF; --muted: #93A0B8; --line: #22304D; --soft: #1B2742; --shadow: 0 6px 24px rgba(0,0,0,.35); }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; background: var(--bg); color: var(--ink); font-family: Inter, system-ui, sans-serif; }
+  body { padding: 0 16px 120px; overflow-x: hidden; }
+  .hero { margin: 0 -16px 14px; padding: 16px; background: linear-gradient(135deg, #0F1F45, #1B3270); color: #fff; display: flex; align-items: center; justify-content: space-between; }
+  .hero h1 { margin: 0; font-size: 19px; font-weight: 800; }
+  .hero p { margin: 3px 0 0; font-size: 12.5px; color: #C7D2FE; }
+  .card { background: var(--card); border-radius: 18px; padding: 14px; box-shadow: var(--shadow); margin-bottom: 12px; }
+  .card h2 { margin: 0 0 10px; font-size: 14px; font-weight: 700; display: flex; align-items: center; gap: 6px; }
+  .chips { display: flex; gap: 6px; flex-wrap: wrap; }
+  .chip { border: 1px solid var(--line); background: var(--card); color: var(--ink); border-radius: 999px; padding: 7px 12px; font: 600 12.5px Inter, sans-serif; cursor: pointer; transition: all .2s; }
+  .chip.on { background: var(--navy); color: #fff; border-color: var(--navy); }
+  .stage { position: relative; display: flex; justify-content: center; background: #05080F; border-radius: 16px; padding: 10px; }
+  .stage canvas { max-width: 100%; max-height: 52vh; border-radius: 10px; background: #000; }
+  .controls { display: flex; align-items: center; gap: 10px; margin-top: 10px; }
+  .btn { border: 0; border-radius: 12px; padding: 11px 14px; font: 700 14px Inter, sans-serif; cursor: pointer; background: var(--soft); color: var(--ink); transition: transform .12s; }
+  .btn:active { transform: scale(.96); }
+  .btn.primary { background: linear-gradient(135deg, var(--accent), #FF8A4C); color: #fff; box-shadow: 0 8px 18px rgba(242,100,42,.35); }
+  .btn.small { padding: 7px 10px; font-size: 12.5px; border-radius: 10px; }
+  .btn:disabled { opacity: .45; }
+  .time { font-variant-numeric: tabular-nums; font-size: 13px; color: var(--muted); flex: 1; text-align: right; }
+  .seek { width: 100%; margin-top: 8px; accent-color: var(--accent); }
+  .strip { display: flex; gap: 8px; overflow-x: auto; padding: 2px 2px 8px; scroll-snap-type: x mandatory; }
+  .clip { flex: none; width: 86px; scroll-snap-align: start; border-radius: 12px; overflow: hidden; border: 2px solid transparent; background: var(--soft); cursor: pointer; position: relative; animation: pop .35s cubic-bezier(.22,1,.36,1); }
+  .clip.sel { border-color: var(--accent); }
+  .clip img, .clip .ph { width: 100%; height: 120px; object-fit: cover; display: block; background: #222; }
+  .clip span { position: absolute; left: 4px; bottom: 4px; font-size: 10.5px; font-weight: 700; color: #fff; background: rgba(0,0,0,.55); padding: 2px 6px; border-radius: 6px; }
+  .clip b { position: absolute; left: 4px; top: 4px; font-size: 10.5px; color: #fff; background: rgba(15,31,69,.8); padding: 1px 6px; border-radius: 6px; }
+  .add { flex: none; width: 86px; height: 124px; border-radius: 12px; border: 2px dashed var(--line); display: grid; place-content: center; text-align: center; color: var(--muted); font-size: 12px; font-weight: 600; cursor: pointer; }
+  .add i { font-style: normal; font-size: 26px; display: block; }
+  @keyframes pop { from { transform: scale(.85); opacity: 0; } }
+  label.row { display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: 13.5px; padding: 7px 0; }
+  label.row input[type=range] { flex: 1; max-width: 60%; accent-color: var(--accent); }
+  input[type=text], select { width: 100%; border: 1px solid var(--line); background: var(--bg); color: var(--ink); border-radius: 10px; padding: 9px 11px; font: 500 14px Inter, sans-serif; }
+  .muted { color: var(--muted); font-size: 12px; }
+  .switch { position: relative; width: 44px; height: 26px; flex: none; }
+  .switch input { display: none; }
+  .switch i { position: absolute; inset: 0; border-radius: 999px; background: var(--line); transition: .2s; }
+  .switch i::after { content: ""; position: absolute; top: 3px; left: 3px; width: 20px; height: 20px; border-radius: 50%; background: #fff; transition: .2s; box-shadow: 0 1px 3px rgba(0,0,0,.3); }
+  .switch input:checked + i { background: var(--accent); }
+  .switch input:checked + i::after { transform: translateX(18px); }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .bar { position: fixed; left: 0; right: 0; bottom: 0; padding: 12px 16px calc(12px + env(safe-area-inset-bottom)); background: var(--card); box-shadow: 0 -6px 24px rgba(15,31,69,.12); z-index: 5; }
+  .bar .btn { width: 100%; padding: 14px; font-size: 15px; }
+  .progress { height: 8px; border-radius: 6px; background: var(--soft); overflow: hidden; margin-bottom: 8px; display: none; }
+  .progress i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, var(--accent), #FFB27D); transition: width .3s; }
+  .status { font-size: 12.5px; color: var(--muted); text-align: center; margin-bottom: 8px; min-height: 16px; }
+  .empty { text-align: center; color: var(--muted); font-size: 13px; padding: 6px 0 2px; }
+  .hidden { display: none !important; }
+  @media (prefers-reduced-motion: reduce) { * { animation-duration: .01ms !important; transition-duration: .01ms !important; } }
+</style>
+</head>
+<body>
+<div class="hero"><div><h1>🎬 Video montaj</h1><p>Rasm va videolardan Reels · Stories · Post</p></div></div>
+
+<div class="card">
+  <h2>📐 Format</h2>
+  <div class="chips" id="formats">
+    <button class="chip on" data-f="916">9:16 Reels / Stories</button>
+    <button class="chip" data-f="11">1:1 Post</button>
+    <button class="chip" data-f="169">16:9 YouTube</button>
+  </div>
+</div>
+
+<div class="card">
+  <div class="stage"><canvas id="cv" width="720" height="1280"></canvas></div>
+  <input class="seek" id="seek" type="range" min="0" max="1000" value="0">
+  <div class="controls">
+    <button class="btn" id="play">▶️ Ko‘rish</button>
+    <button class="btn" id="stop">⏹</button>
+    <div class="time" id="time">0:00 / 0:00</div>
+  </div>
+</div>
+
+<div class="card">
+  <h2>🎞 Kliplar <span class="muted" id="count"></span></h2>
+  <div class="strip" id="strip"></div>
+  <input type="file" id="file" accept="image/*,video/*" multiple class="hidden">
+  <div class="muted">Bosib tanlang — pastda sozlamalari ochiladi. 20 tagacha klip, jami 90 soniyagacha.</div>
+</div>
+
+<div class="card hidden" id="editor">
+  <h2 id="edTitle">✏️ Klip</h2>
+  <div id="edVideo">
+    <label class="row">Boshi <input type="range" id="tStart" min="0" max="100" step="0.1"><span id="tStartV" class="muted"></span></label>
+    <label class="row">Oxiri <input type="range" id="tEnd" min="0" max="100" step="0.1"><span id="tEndV" class="muted"></span></label>
+    <label class="row">Video ovozi <span class="switch"><input type="checkbox" id="vSound" checked><i></i></span></label>
+  </div>
+  <div id="edImage">
+    <label class="row">Davomiyligi <input type="range" id="dur" min="1" max="10" step="0.5"><span id="durV" class="muted"></span></label>
+    <label class="row">Kattalashish effekti <span class="switch"><input type="checkbox" id="zoom" checked><i></i></span></label>
+  </div>
+  <div style="margin-top:8px"><input type="text" id="txt" maxlength="80" placeholder="Matn (ixtiyoriy): masalan “IELTS 7.5 🎉”"></div>
+  <div class="chips" id="txtPos" style="margin-top:8px">
+    <button class="chip" data-p="top">Tepada</button><button class="chip" data-p="mid">O‘rtada</button><button class="chip on" data-p="bot">Pastda</button>
+  </div>
+  <div class="controls" style="justify-content:space-between">
+    <button class="btn small" id="left">⬅️ Oldinga</button>
+    <button class="btn small" id="right">Orqaga ➡️</button>
+    <button class="btn small" id="del" style="color:var(--bad)">🗑 O‘chirish</button>
+  </div>
+</div>
+
+<div class="card">
+  <h2>✨ Bezak</h2>
+  <div class="muted" style="margin-bottom:6px">O‘tish effekti</div>
+  <div class="chips" id="trans">
+    <button class="chip" data-t="none">Yo‘q</button><button class="chip on" data-t="fade">Fade</button><button class="chip" data-t="slide">Slayd</button><button class="chip" data-t="zoom">Zoom</button>
+  </div>
+  <label class="row">Logotip (burchakda) <span class="switch"><input type="checkbox" id="logo" checked><i></i></span></label>
+  <label class="row">Kirish (intro) <span class="switch"><input type="checkbox" id="intro" checked><i></i></span></label>
+  <div id="introBox" class="grid2"><input type="text" id="iTitle" maxlength="40" placeholder="Sarlavha" value="Registan LC"><input type="text" id="iSub" maxlength="50" placeholder="Pastki matn" value="you belong here! 🧡"></div>
+  <label class="row">Yakun (outro) <span class="switch"><input type="checkbox" id="outro" checked><i></i></span></label>
+  <div id="outroBox"><input type="text" id="oText" maxlength="60" placeholder="Telefon yoki manzil: +998 ..." value=""></div>
+</div>
+
+<div class="card">
+  <h2>🎵 Musiqa</h2>
+  <input type="file" id="music" accept="audio/*" class="hidden">
+  <div class="controls" style="margin-top:0"><button class="btn small" id="musicBtn">🎵 Musiqa tanlash</button><span class="muted" id="musicName">tanlanmagan</span></div>
+  <label class="row">Musiqa balandligi <input type="range" id="mVol" min="0" max="1" step="0.05" value="0.7"></label>
+  <label class="row">Video ovozi <input type="range" id="vVol" min="0" max="1" step="0.05" value="1"></label>
+</div>
+
+<div class="card">
+  <h2>⚙️ Sifat</h2>
+  <div class="chips" id="quality"><button class="chip on" data-q="720">720p (tez, kichik)</button><button class="chip" data-q="1080">1080p (yuqori)</button></div>
+  <div class="muted" style="margin-top:8px">Tayyorlash video uzunligicha vaqt oladi — shu vaqt ichida ilovani yopmang. Tayyor video botga keladi.</div>
+</div>
+
+<div class="bar">
+  <div class="progress" id="prog"><i></i></div>
+  <div class="status" id="status"></div>
+  <button class="btn primary" id="export">🎬 Tayyorlash va botga yuborish</button>
+</div>
+
+<script>
+const API = 'https://bbnakgvgoydahagiwltn.supabase.co/functions/v1/edu-app';
+const LOGO = 'https://raw.githubusercontent.com/bekmurodovm460-sudo/Registancrm/claude/html-site-web-platform-pltyl0/brand/edu-bot-avatar.png';
+const tgw = window.Telegram?.WebApp;
+try { tgw?.ready(); tgw?.expand(); if (tgw?.colorScheme) document.documentElement.dataset.theme = tgw.colorScheme; } catch {}
+const $ = id => document.getElementById(id);
+const haptic = (k = 'light') => { try { tgw?.HapticFeedback?.impactOccurred(k); } catch {} };
+const T = 0.5; // o'tish davomiyligi
+const FMT = { '916': [720, 1280], '11': [1080, 1080], '169': [1280, 720] };
+const S = { fmt: '916', q: 720, trans: 'fade', clips: [], sel: -1, playing: false, t: 0, music: null, exporting: false };
+const cv = $('cv'), ctx = cv.getContext('2d');
+const logoImg = new Image(); logoImg.crossOrigin = 'anonymous'; logoImg.src = LOGO;
+let AC = null, dest = null, musicEl = null, musicGain = null;
+
+function ensureAudio() {
+  if (AC) return;
+  AC = new (window.AudioContext || window.webkitAudioContext)();
+  dest = AC.createMediaStreamDestination();
+}
+function route(el, gainVal) {
+  ensureAudio();
+  if (!el._src) { el._src = AC.createMediaElementSource(el); el._gain = AC.createGain(); el._src.connect(el._gain); el._gain.connect(AC.destination); el._gain.connect(dest); }
+  el._gain.gain.value = gainVal;
+}
+
+// ---------- Kliplar ----------
+$('strip').addEventListener('click', e => {
+  if (e.target.closest('.add')) return $('file').click();
+  const c = e.target.closest('.clip'); if (!c) return;
+  haptic(); S.sel = Number(c.dataset.i); renderStrip(); openEditor(); seekTo(startOf(S.sel) + 0.05);
+});
+async function addMedia(f) {
+    const url = URL.createObjectURL(f);
+    if (f.type.startsWith('video')) {
+      const v = document.createElement('video'); v.src = url; v.playsInline = true; v.preload = 'auto'; v.crossOrigin = 'anonymous';
+      await new Promise(r => { v.onloadedmetadata = r; v.onerror = r; });
+      const d = isFinite(v.duration) ? v.duration : 5;
+      const thumb = await snap(v, Math.min(0.5, d / 2));
+      S.clips.push({ type: 'video', el: v, url, thumb, len: d, a: 0, b: Math.min(d, 30), sound: true, text: '', pos: 'bot' });
+    } else {
+      const im = new Image(); im.src = url; await new Promise(r => { im.onload = r; im.onerror = r; });
+      S.clips.push({ type: 'image', el: im, url, thumb: url, dur: 3, zoom: true, text: '', pos: 'bot' });
+    }
+}
+$('file').onchange = async e => {
+  const files = [...e.target.files].slice(0, 20 - S.clips.length);
+  for (const f of files) await addMedia(f);
+  e.target.value = '';
+  if (S.sel < 0 && S.clips.length) S.sel = 0;
+  haptic('medium'); renderStrip(); openEditor(); draw(S.t);
+};
+function snap(v, t) {
+  return new Promise(r => { const done = () => { const c = document.createElement('canvas'); c.width = 160; c.height = 240; const k = Math.max(160 / v.videoWidth, 240 / v.videoHeight) || 1; c.getContext('2d').drawImage(v, (160 - v.videoWidth * k) / 2, (240 - v.videoHeight * k) / 2, v.videoWidth * k, v.videoHeight * k); r(c.toDataURL('image/jpeg', .7)); }; v.onseeked = done; v.currentTime = t; setTimeout(done, 1500); });
+}
+const clipDur = c => c.type === 'video' ? Math.max(0.5, c.b - c.a) : c.dur;
+function items() {
+  const it = [];
+  if ($('intro').checked) it.push({ type: 'intro', dur: 2.5 });
+  S.clips.forEach(c => it.push(c));
+  if ($('outro').checked) it.push({ type: 'outro', dur: 3 });
+  return it;
+}
+const overlap = () => S.trans === 'none' ? 0 : T;
+function timeline() {
+  const it = items(), ov = overlap(); let t = 0;
+  return it.map((x, i) => { const d = x.type === 'intro' || x.type === 'outro' ? x.dur : clipDur(x); const s = i === 0 ? 0 : t - ov; t = s + d; return { x, s, e: t }; });
+}
+const total = () => { const tl = timeline(); return tl.length ? tl[tl.length - 1].e : 0; };
+function startOf(ci) { const tl = timeline(); const k = tl.findIndex(z => z.x === S.clips[ci]); return k >= 0 ? tl[k].s : 0; }
+const fmt = s => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
+
+function renderStrip() {
+  $('strip').innerHTML = S.clips.map((c, i) => `<div class="clip ${i === S.sel ? 'sel' : ''}" data-i="${i}"><img src="${c.thumb}" alt=""><b>${i + 1}</b><span>${c.type === 'video' ? '🎥' : '🖼'} ${clipDur(c).toFixed(1)}s</span></div>`).join('') +
+    (S.clips.length < 20 ? '<div class="add"><i>＋</i>Rasm / video</div>' : '');
+  $('count').textContent = S.clips.length ? `· ${S.clips.length} ta · ${fmt(total())}` : '';
+  $('time').textContent = `${fmt(S.t)} / ${fmt(total())}`;
+}
+function openEditor() {
+  const c = S.clips[S.sel];
+  $('editor').classList.toggle('hidden', !c);
+  if (!c) return;
+  $('edTitle').textContent = `✏️ ${S.sel + 1}-klip · ${c.type === 'video' ? 'video' : 'rasm'}`;
+  $('edVideo').classList.toggle('hidden', c.type !== 'video');
+  $('edImage').classList.toggle('hidden', c.type !== 'image');
+  if (c.type === 'video') { for (const id of ['tStart', 'tEnd']) $(id).max = c.len.toFixed(1); $('tStart').value = c.a; $('tEnd').value = c.b; $('vSound').checked = c.sound; }
+  else { $('dur').value = c.dur; $('zoom').checked = c.zoom; }
+  $('txt').value = c.text;
+  document.querySelectorAll('#txtPos .chip').forEach(b => b.classList.toggle('on', b.dataset.p === c.pos));
+  labels();
+}
+function labels() { const c = S.clips[S.sel]; if (!c) return; $('tStartV').textContent = (+c.a || 0).toFixed(1) + 's'; $('tEndV').textContent = (+c.b || 0).toFixed(1) + 's'; $('durV').textContent = (c.dur || 0) + 's'; }
+const cur = () => S.clips[S.sel];
+$('tStart').oninput = e => { const c = cur(); c.a = Math.min(+e.target.value, c.b - 0.5); e.target.value = c.a; labels(); renderStrip(); seekTo(startOf(S.sel) + 0.05); };
+$('tEnd').oninput = e => { const c = cur(); c.b = Math.max(+e.target.value, c.a + 0.5); e.target.value = c.b; labels(); renderStrip(); };
+$('vSound').onchange = e => { cur().sound = e.target.checked; };
+$('dur').oninput = e => { cur().dur = +e.target.value; labels(); renderStrip(); };
+$('zoom').onchange = e => { cur().zoom = e.target.checked; draw(S.t); };
+$('txt').oninput = e => { cur().text = e.target.value; draw(S.t); };
+$('txtPos').onclick = e => { const b = e.target.closest('.chip'); if (!b) return; cur().pos = b.dataset.p; openEditor(); draw(S.t); };
+function move(d) { const i = S.sel, j = i + d; if (j < 0 || j >= S.clips.length) return; [S.clips[i], S.clips[j]] = [S.clips[j], S.clips[i]]; S.sel = j; haptic(); renderStrip(); openEditor(); }
+$('left').onclick = () => move(-1); $('right').onclick = () => move(1);
+$('del').onclick = () => { const c = cur(); if (!c) return; S.clips.splice(S.sel, 1); S.sel = Math.min(S.sel, S.clips.length - 1); haptic('medium'); renderStrip(); openEditor(); draw(S.t); };
+
+// ---------- Global sozlamalar ----------
+const chipGroup = (id, key, cb) => $(id).onclick = e => { const b = e.target.closest('.chip'); if (!b) return; haptic(); document.querySelectorAll(`#${id} .chip`).forEach(x => x.classList.toggle('on', x === b)); cb(b.dataset[key]); };
+chipGroup('formats', 'f', v => { S.fmt = v; resize(); });
+chipGroup('trans', 't', v => { S.trans = v; renderStrip(); });
+chipGroup('quality', 'q', v => { S.q = +v; resize(); });
+['logo', 'intro', 'outro'].forEach(id => $(id).onchange = () => { $('introBox').classList.toggle('hidden', !$('intro').checked); $('outroBox').classList.toggle('hidden', !$('outro').checked); renderStrip(); draw(S.t); });
+['iTitle', 'iSub', 'oText'].forEach(id => $(id).oninput = () => draw(S.t));
+$('musicBtn').onclick = () => $('music').click();
+$('music').onchange = e => { const f = e.target.files[0]; if (!f) return; if (musicEl) musicEl.pause(); musicEl = new Audio(URL.createObjectURL(f)); musicEl.loop = true; $('musicName').textContent = '🎵 ' + f.name.slice(0, 28); haptic(); };
+function resize() {
+  const [w, h] = FMT[S.fmt]; const k = S.q === 1080 ? Math.max(1, 1080 / Math.min(w, h)) : Math.min(1, 720 / Math.min(w, h));
+  cv.width = Math.round(w * k / 2) * 2; cv.height = Math.round(h * k / 2) * 2; draw(S.t);
+}
+
+// ---------- Chizish ----------
+function cover(el, w0, h0, scale = 1) {
+  const W = cv.width, H = cv.height; if (!w0 || !h0) return;
+  const k = Math.max(W / w0, H / h0) * scale; const w = w0 * k, h = h0 * k;
+  ctx.drawImage(el, (W - w) / 2, (H - h) / 2, w, h);
+}
+function wrapText(text, maxW) {
+  const words = text.split(/\s+/), lines = []; let l = '';
+  for (const w of words) { const t = l ? l + ' ' + w : w; if (ctx.measureText(t).width > maxW && l) { lines.push(l); l = w; } else l = t; }
+  if (l) lines.push(l); return lines.slice(0, 3);
+}
+function caption(text, pos, p) {
+  if (!text) return;
+  const W = cv.width, H = cv.height, fs = Math.round(Math.min(W, H) * 0.06);
+  ctx.save(); ctx.font = `800 ${fs}px Montserrat, Inter, sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  const lines = wrapText(text, W * 0.82), lh = fs * 1.25, bh = lines.length * lh + fs * 0.8;
+  const bw = Math.min(W * 0.9, Math.max(...lines.map(l => ctx.measureText(l).width)) + fs * 1.4);
+  const y = pos === 'top' ? H * 0.12 : pos === 'mid' ? H / 2 : H * 0.82;
+  const a = Math.min(1, p * 3); ctx.globalAlpha = a; ctx.translate(W / 2, y + (1 - a) * fs * 0.6);
+  ctx.fillStyle = 'rgba(15,31,69,.72)'; roundRect(-bw / 2, -bh / 2, bw, bh, fs * 0.45); ctx.fill();
+  ctx.fillStyle = '#F2642A'; ctx.fillRect(-bw / 2 + fs * 0.4, bh / 2 - fs * 0.22, bw - fs * 0.8, fs * 0.09);
+  ctx.fillStyle = '#fff'; lines.forEach((l, i) => ctx.fillText(l, 0, -((lines.length - 1) * lh) / 2 + i * lh));
+  ctx.restore();
+}
+function roundRect(x, y, w, h, r) { ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r); ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath(); }
+function brandBg(p) {
+  const W = cv.width, H = cv.height, g = ctx.createLinearGradient(0, 0, W, H);
+  g.addColorStop(0, '#0F1F45'); g.addColorStop(1, '#1B3270'); ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+  ctx.save(); ctx.globalAlpha = .55; const r = Math.min(W, H) * (0.45 + 0.08 * Math.sin(p * 6.28));
+  const rg = ctx.createRadialGradient(W * 0.85, H * 0.15, 0, W * 0.85, H * 0.15, r); rg.addColorStop(0, 'rgba(242,100,42,.9)'); rg.addColorStop(1, 'rgba(242,100,42,0)');
+  ctx.fillStyle = rg; ctx.fillRect(0, 0, W, H); ctx.restore();
+}
+function drawIntro(p) {
+  const W = cv.width, H = cv.height, s = Math.min(W, H); brandBg(p);
+  const e = 1 - Math.pow(1 - Math.min(1, p * 2), 3);
+  ctx.save(); ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillStyle = '#fff';
+  ctx.globalAlpha = e; ctx.font = `900 ${Math.round(s * 0.11)}px Montserrat, sans-serif`; ctx.fillText($('iTitle').value || '', W / 2, H / 2 - s * 0.04 + (1 - e) * 40);
+  ctx.fillStyle = '#F2642A'; ctx.fillRect(W / 2 - s * 0.18 * e, H / 2 + s * 0.035, s * 0.36 * e, s * 0.012);
+  ctx.globalAlpha = Math.max(0, Math.min(1, (p - 0.25) * 3)); ctx.fillStyle = '#C7D2FE'; ctx.font = `600 ${Math.round(s * 0.05)}px Inter, sans-serif`; ctx.fillText($('iSub').value || '', W / 2, H / 2 + s * 0.1);
+  ctx.restore();
+}
+function drawOutro(p) {
+  const W = cv.width, H = cv.height, s = Math.min(W, H); brandBg(p);
+  const e = 1 - Math.pow(1 - Math.min(1, p * 2.2), 3), L = s * 0.28 * (0.7 + 0.3 * e);
+  ctx.save(); ctx.globalAlpha = e;
+  if (logoImg.complete && logoImg.naturalWidth) { ctx.save(); ctx.beginPath(); ctx.arc(W / 2, H / 2 - s * 0.12, L / 2, 0, 6.283); ctx.clip(); ctx.drawImage(logoImg, W / 2 - L / 2, H / 2 - s * 0.12 - L / 2, L, L); ctx.restore(); }
+  ctx.textAlign = 'center'; ctx.fillStyle = '#fff'; ctx.font = `900 ${Math.round(s * 0.085)}px Montserrat, sans-serif`; ctx.fillText('Registan LC', W / 2, H / 2 + s * 0.1);
+  ctx.fillStyle = '#F2642A'; ctx.font = `700 ${Math.round(s * 0.045)}px Inter, sans-serif`; ctx.fillText('you belong here! 🧡', W / 2, H / 2 + s * 0.17);
+  if ($('oText').value) { ctx.fillStyle = '#C7D2FE'; ctx.font = `600 ${Math.round(s * 0.042)}px Inter, sans-serif`; ctx.fillText($('oText').value, W / 2, H / 2 + s * 0.25); }
+  ctx.restore();
+}
+function drawItem(x, local, d) {
+  const p = Math.max(0, Math.min(1, local / d));
+  if (x.type === 'intro') return drawIntro(p);
+  if (x.type === 'outro') return drawOutro(p);
+  ctx.fillStyle = '#000'; ctx.fillRect(0, 0, cv.width, cv.height);
+  if (x.type === 'image') cover(x.el, x.el.naturalWidth, x.el.naturalHeight, x.zoom ? 1 + 0.12 * p : 1);
+  else cover(x.el, x.el.videoWidth, x.el.videoHeight);
+  caption(x.text, x.pos, p);
+}
+function watermark() {
+  if (!$('logo').checked || !logoImg.complete || !logoImg.naturalWidth) return;
+  const s = Math.min(cv.width, cv.height) * 0.11, m = s * 0.3;
+  ctx.save(); ctx.globalAlpha = .9; ctx.beginPath(); ctx.arc(cv.width - m - s / 2, m + s / 2, s / 2, 0, 6.283); ctx.clip(); ctx.drawImage(logoImg, cv.width - m - s, m, s, s); ctx.restore();
+}
+function draw(t) {
+  const tl = timeline();
+  if (!tl.length) { ctx.fillStyle = '#05080F'; ctx.fillRect(0, 0, cv.width, cv.height); ctx.fillStyle = '#93A0B8'; ctx.textAlign = 'center'; ctx.font = `600 ${Math.round(cv.width * 0.045)}px Inter`; ctx.fillText('➕ Rasm yoki video qo‘shing', cv.width / 2, cv.height / 2); return; }
+  const ov = overlap();
+  let k = tl.findIndex(z => t >= z.s && t < z.e); if (k < 0) k = tl.length - 1;
+  // O'tish: keyingi element boshlangan, oldingisi hali tugamagan
+  const nxt = tl[k + 1] && t >= tl[k + 1].s ? k + 1 : -1;
+  const A = tl[k];
+  if (nxt < 0) drawItem(A.x, t - A.s, A.e - A.s);
+  else {
+    const B = tl[nxt], p = Math.min(1, (t - B.s) / ov), W = cv.width;
+    if (S.trans === 'fade') { drawItem(A.x, t - A.s, A.e - A.s); ctx.save(); ctx.globalAlpha = p; drawItem(B.x, t - B.s, B.e - B.s); ctx.restore(); }
+    else if (S.trans === 'slide') { const e = 1 - Math.pow(1 - p, 3); ctx.save(); ctx.translate(-W * e, 0); drawItem(A.x, t - A.s, A.e - A.s); ctx.restore(); ctx.save(); ctx.translate(W * (1 - e), 0); drawItem(B.x, t - B.s, B.e - B.s); ctx.restore(); }
+    else { drawItem(A.x, t - A.s, A.e - A.s); ctx.save(); const sc = 1.25 - 0.25 * p; ctx.globalAlpha = p; ctx.translate(cv.width / 2, cv.height / 2); ctx.scale(sc, sc); ctx.translate(-cv.width / 2, -cv.height / 2); drawItem(B.x, t - B.s, B.e - B.s); ctx.restore(); }
+  }
+  watermark();
+}
+
+// ---------- Ijro (real vaqt) ----------
+let raf = 0, t0 = 0, onEnd = null;
+function syncVideos(t, playing) {
+  const tl = timeline(), vv = +$('vVol').value;
+  tl.forEach(z => {
+    if (z.x.type !== 'video') return;
+    const v = z.x.el, active = t >= z.s - 0.05 && t < z.e;
+    if (active) {
+      const want = z.x.a + (t - z.s);
+      if (Math.abs(v.currentTime - want) > 0.35) v.currentTime = want;
+      if (AC) route(v, z.x.sound ? vv : 0);
+      if (playing && v.paused) v.play().catch(() => {});
+      if (!playing && !v.paused) v.pause();
+    } else {
+      if (!v.paused) v.pause();
+      if (t < z.s && z.s - t < 1.2 && Math.abs(v.currentTime - z.x.a) > 0.2) v.currentTime = z.x.a; // oldindan tayyorlash
+    }
+  });
+}
+function loop(now) {
+  S.t = (now - t0) / 1000;
+  const D = total();
+  if (S.t >= D) { S.t = D; draw(D - 0.001); stopPlay(); onEnd && onEnd(); return; }
+  syncVideos(S.t, true); draw(S.t);
+  $('seek').value = Math.round(S.t / Math.max(0.001, D) * 1000); $('time').textContent = `${fmt(S.t)} / ${fmt(D)}`;
+  if (S.exporting) { $('prog').firstElementChild.style.width = Math.round(S.t / D * 70) + '%'; $('status').textContent = `🎬 Yozilmoqda… ${fmt(S.t)} / ${fmt(D)} — ilovani yopmang`; }
+  raf = requestAnimationFrame(loop);
+}
+function startPlay(from = S.t) {
+  if (!timeline().length) return;
+  ensureAudio(); AC.resume();
+  if (from >= total() - 0.05) from = 0;
+  S.playing = true; t0 = performance.now() - from * 1000; $('play').textContent = '⏸ Pauza';
+  if (musicEl) { route(musicEl, +$('mVol').value); musicEl.currentTime = from % (musicEl.duration || 1e9); musicEl.play().catch(() => {}); }
+  raf = requestAnimationFrame(loop);
+}
+function stopPlay() {
+  S.playing = false; cancelAnimationFrame(raf); $('play').textContent = '▶️ Ko‘rish';
+  S.clips.forEach(c => c.type === 'video' && c.el.pause()); if (musicEl) musicEl.pause();
+}
+function seekTo(t) { if (S.playing) stopPlay(); S.t = Math.max(0, Math.min(t, total())); syncVideos(S.t, false); setTimeout(() => draw(S.t), 120); draw(S.t); $('time').textContent = `${fmt(S.t)} / ${fmt(total())}`; }
+$('play').onclick = () => { haptic(); S.playing ? stopPlay() : startPlay(); };
+$('stop').onclick = () => { haptic(); seekTo(0); };
+$('seek').oninput = e => seekTo(e.target.value / 1000 * total());
+$('mVol').oninput = e => { if (musicEl?._gain) musicEl._gain.gain.value = +e.target.value; };
+
+// ---------- Eksport: canvas + audio → MediaRecorder → bucket → bot ----------
+function pickMime() {
+  const list = ['video/mp4;codecs=avc1.42E01E,mp4a.40.2', 'video/mp4;codecs=avc1', 'video/mp4', 'video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm'];
+  return list.find(m => window.MediaRecorder && MediaRecorder.isTypeSupported(m)) || '';
+}
+async function api(body) {
+  const r = await fetch(API, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...body, initData: tgw?.initData || '' }) });
+  return r.json();
+}
+function setStatus(txt, pct) { $('status').textContent = txt; if (pct !== undefined) { $('prog').style.display = 'block'; $('prog').firstElementChild.style.width = pct + '%'; } }
+$('export').onclick = async () => {
+  if (S.exporting) return;
+  if (!S.clips.length) { haptic('heavy'); return setStatus('Avval rasm yoki video qo‘shing.'); }
+  const D = total();
+  if (D > 90) return setStatus(`Video ${Math.round(D)} soniya — 90 soniyadan oshmasin. Kliplarni qisqartiring.`);
+  const mime = pickMime();
+  if (!mime || !cv.captureStream) return setStatus('⚠️ Bu qurilmada video yozish qo‘llab-quvvatlanmaydi. Telegram’ni yangilang yoki boshqa telefonda urinib ko‘ring.');
+  S.exporting = true; $('export').disabled = true; haptic('medium');
+  try { tgw?.enableClosingConfirmation?.(); } catch {}
+  stopPlay(); seekTo(0); ensureAudio(); await AC.resume();
+  const stream = cv.captureStream(30);
+  dest.stream.getAudioTracks().forEach(tr => stream.addTrack(tr));
+  const rec = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: S.q === 1080 ? 8_000_000 : 4_000_000, audioBitsPerSecond: 128_000 });
+  const chunks = []; rec.ondataavailable = e => e.data.size && chunks.push(e.data);
+  const stopped = new Promise(r => rec.onstop = r);
+  setStatus('🎬 Yozilmoqda… ilovani yopmang', 1);
+  await new Promise(r => setTimeout(r, 400));
+  rec.start(500);
+  onEnd = () => setTimeout(() => rec.state !== 'inactive' && rec.stop(), 250);
+  startPlay(0);
+  await stopped; onEnd = null;
+  const ext = mime.includes('mp4') ? 'mp4' : 'webm';
+  const blob = new Blob(chunks, { type: mime.split(';')[0] });
+  try {
+    setStatus(`⬆️ Yuklanmoqda… ${(blob.size / 1048576).toFixed(1)} MB`, 75);
+    const u = await api({ action: 'mediaUploadUrl', ext, size: blob.size });
+    if (!u.ok) throw new Error(u.error);
+    const fd = new FormData(); fd.append('cacheControl', '3600'); fd.append('', blob);
+    const up = await fetch(u.url, { method: 'PUT', body: fd, headers: { 'x-upsert': 'false' } });
+    if (!up.ok) throw new Error('Yuklashda xato: ' + up.status);
+    setStatus('📨 Botga yuborilmoqda…', 90);
+    const s = await api({ action: 'mediaSend', path: u.path, width: cv.width, height: cv.height, duration: D, caption: `🎬 ${$('iTitle').value || 'Registan LC'} · ${fmt(D)} · ${cv.width}×${cv.height}` });
+    if (!s.ok) throw new Error(s.error);
+    setStatus('✅ Tayyor! Video bot chatiga yuborildi.', 100);
+    try { tgw?.HapticFeedback?.notificationOccurred('success'); } catch {}
+  } catch (e) {
+    setStatus('⚠️ ' + (e.message || e), 100);
+    try { tgw?.HapticFeedback?.notificationOccurred('error'); } catch {}
+  } finally {
+    S.exporting = false; $('export').disabled = false;
+    try { tgw?.disableClosingConfirmation?.(); } catch {}
+  }
+};
+// 🤖 AI montaj loyihasi (?p=<id>): fayllarni yuklab, rejani qo'llash
+const setChip = (id, key, val) => document.querySelectorAll(`#${id} .chip`).forEach(b => b.classList.toggle('on', b.dataset[key] === val));
+async function loadProject(pid) {
+  $('prog').style.display = 'block';
+  setStatus('🤖 AI montaj yuklanmoqda…', 5);
+  try {
+    const pr = await api({ action: 'aiProject', id: pid });
+    if (!pr.ok) throw new Error(pr.error);
+    const plan = pr.plan || {}, files = pr.files || [];
+    const blobs = [];
+    for (let i = 0; i < files.length; i++) {
+      setStatus(`⬇️ Media yuklanmoqda… ${i + 1}/${files.length}`, 5 + Math.round((i / files.length) * 80));
+      const r = await fetch(API, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'aiFile', id: pid, i, initData: tgw?.initData || '' }) });
+      if (!r.ok || /json/.test(r.headers.get('content-type') || '')) { const j = await r.json().catch(() => ({})); throw new Error(j.error || 'Fayl yuklanmadi'); }
+      blobs[i] = await r.blob();
+    }
+    S.clips = [];
+    for (const c of plan.clips || []) {
+      const b = blobs[c.media]; if (!b) continue;
+      const before = S.clips.length;
+      await addMedia(b);
+      const clip = S.clips[before]; if (!clip) continue;
+      if (clip.type === 'video') { clip.a = Math.max(0, Math.min(clip.len - 0.5, Number(c.trim_start) || 0)); clip.b = Math.min(clip.len, clip.a + (Number(c.seconds) || Math.min(6, clip.len))); }
+      else { clip.dur = Math.max(1, Math.min(10, Number(c.seconds) || 3)); clip.zoom = c.zoom !== false; }
+      clip.text = c.text || ''; clip.pos = ['top', 'mid', 'bot'].includes(c.text_position) ? c.text_position : 'bot';
+    }
+    if (FMT[plan.format]) { S.fmt = plan.format; setChip('formats', 'f', plan.format); }
+    if (['none', 'fade', 'slide', 'zoom'].includes(plan.transition)) { S.trans = plan.transition; setChip('trans', 't', plan.transition); }
+    $('intro').checked = !!plan.intro_title; if (plan.intro_title) { $('iTitle').value = plan.intro_title; $('iSub').value = plan.intro_subtitle || ''; }
+    $('outro').checked = plan.outro !== false; if (plan.outro_text) $('oText').value = plan.outro_text;
+    $('introBox').classList.toggle('hidden', !$('intro').checked); $('outroBox').classList.toggle('hidden', !$('outro').checked);
+    S.sel = S.clips.length ? 0 : -1;
+    resize(); renderStrip(); openEditor(); seekTo(0);
+    setStatus(`🤖 AI montaj tayyor: ${S.clips.length} klip · ${fmt(total())}. Ko‘rib chiqing (▶️), kerak bo‘lsa o‘zgartiring, musiqa qo‘shing va “Tayyorlash”ni bosing.`, 100);
+    try { tgw?.HapticFeedback?.notificationOccurred('success'); } catch {}
+  } catch (e) {
+    setStatus('⚠️ AI loyihasi yuklanmadi: ' + (e.message || e), 100);
+  }
+}
+resize(); renderStrip();
+{ const pid = new URLSearchParams(location.search).get('p') || tgw?.initDataUnsafe?.start_param; if (pid && /^[0-9a-f-]{36}$/i.test(pid)) loadProject(pid); }
+</script>
+</body>
+</html>

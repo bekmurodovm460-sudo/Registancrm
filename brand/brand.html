@@ -1,0 +1,86 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<style>
+  @font-face { font-family: M; font-weight: 500; src: url(fonts/Montserrat_500Medium.ttf); }
+  @font-face { font-family: M; font-weight: 600; src: url(fonts/Montserrat_600SemiBold.ttf); }
+  @font-face { font-family: M; font-weight: 700; src: url(fonts/Montserrat_700Bold.ttf); }
+  @font-face { font-family: M; font-weight: 800; src: url(fonts/Montserrat_800ExtraBold.ttf); }
+  * { margin: 0; box-sizing: border-box; }
+  body { background: #222; font-family: M, sans-serif; }
+  .art { position: relative; overflow: hidden; color: #fff;
+    background: radial-gradient(120% 90% at 20% 15%, #FF7A3D 0%, #EE5A24 45%, #D9461A 100%); }
+  .dots { position: absolute; inset: 0; opacity: .13;
+    background-image: radial-gradient(#fff 1.4px, transparent 1.6px); background-size: 22px 22px; }
+  .ring { position: absolute; border-radius: 50%; border: 2px solid rgba(255,255,255,.16); }
+  .ring.f { background: rgba(255,255,255,.07); border: 0; }
+  svg.icon { display: block; }
+  /* Avatar */
+  #avatar { width: 640px; height: 640px; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+  #avatar .name { font-weight: 700; font-size: 66px; letter-spacing: -1px; margin-top: 10px; }
+  #avatar .tag { font-weight: 600; font-size: 25px; opacity: .95; margin-top: 2px; }
+  /* Cover */
+  #cover { width: 640px; height: 360px; padding: 34px 38px; display: flex; flex-direction: column; justify-content: space-between; }
+  #cover .brand { display: flex; align-items: center; gap: 16px; position: relative; }
+  #cover .name { font-weight: 700; font-size: 46px; letter-spacing: -.8px; line-height: 1; }
+  #cover .tag { font-weight: 600; font-size: 19px; margin-top: 6px; opacity: .95; }
+  #cover h1 { font-weight: 800; font-size: 25px; line-height: 1.22; position: relative; letter-spacing: -.2px; }
+  #cover h1 span { background: #fff; color: #E5501E; padding: 0 8px; border-radius: 8px; }
+  .chips { display: flex; gap: 6px; flex-wrap: nowrap; position: relative; }
+  .chip { display: flex; align-items: center; gap: 7px; background: rgba(255,255,255,.16); border: 1.5px solid rgba(255,255,255,.35);
+    padding: 6px 10px; border-radius: 999px; font-weight: 700; font-size: 12.5px; white-space: nowrap; backdrop-filter: blur(2px); }
+  .chip svg { width: 14px; height: 14px; }
+</style></head>
+<body>
+<svg width="0" height="0" style="position:absolute">
+  <defs>
+    <!-- Registan LC belgisi: 3 kishi kitob o'qiydi, atrofida ochiq doira -->
+    <symbol id="logo" viewBox="0 0 300 300">
+      <path d="M 238 62 A 128 128 0 1 0 270 168" fill="none" stroke="#fff" stroke-width="7" stroke-linecap="round"/>
+      <path d="M 252 84 A 128 128 0 0 1 274 128" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" opacity=".9"/>
+      <circle cx="86" cy="96" r="27" fill="#fff"/>
+      <circle cx="150" cy="86" r="30" fill="#fff"/>
+      <circle cx="214" cy="96" r="27" fill="#fff"/>
+      <!-- chap va o'ng kishilar -->
+      <path d="M 46 140 h 46 v 22 h -26 v 18 h -20 z" fill="#fff"/>
+      <path d="M 254 140 h -46 v 22 h 26 v 18 h 20 z" fill="#fff"/>
+      <path d="M 62 150 h 34 v 98 a 12 12 0 0 1 -12 12 h -10 a 12 12 0 0 1 -12 -12 z" fill="#fff"/>
+      <path d="M 238 150 h -34 v 98 a 12 12 0 0 0 12 12 h 10 a 12 12 0 0 0 12 -12 z" fill="#fff"/>
+      <!-- o'rtadagi kitob -->
+      <path d="M 100 128 q 25 -8 50 6 q 25 -14 50 -6 v 122 h -100 z" fill="#fff"/>
+      <path d="M 150 136 v 112" stroke="#EE5A24" stroke-width="5"/>
+      <path d="M 98 134 v 118 M 202 134 v 118" stroke="#EE5A24" stroke-width="6"/>
+    </symbol>
+    <symbol id="i-kid" viewBox="0 0 24 24"><circle cx="12" cy="7" r="4" fill="#fff"/><path d="M4 21c0-4.4 3.6-8 8-8s8 3.6 8 8z" fill="#fff"/></symbol>
+    <symbol id="i-cam" viewBox="0 0 24 24"><path d="M4 7h3l2-3h6l2 3h3a1 1 0 0 1 1 1v11a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1z" fill="#fff"/><circle cx="12" cy="13" r="4" fill="#EE5A24"/></symbol>
+    <symbol id="i-cup" viewBox="0 0 24 24"><path d="M7 3h10v5a5 5 0 0 1-10 0z M5 4h2v3a2 2 0 0 1-2-2zM19 4h-2v3a2 2 0 0 0 2-2zM10 14h4v3h3v4H7v-4h3z" fill="#fff"/></symbol>
+    <symbol id="i-key" viewBox="0 0 24 24"><circle cx="8" cy="12" r="5" fill="#fff"/><circle cx="8" cy="12" r="2" fill="#EE5A24"/><path d="M12 11h10v3h-2v3h-3v-3h-5z" fill="#fff"/></symbol>
+  </defs>
+</svg>
+
+<div id="avatar" class="art">
+  <div class="dots"></div>
+  <div class="ring f" style="width:520px;height:520px;left:60px;top:60px"></div>
+  <svg class="icon" width="330" height="330" style="position:relative;margin-top:-6px"><use href="#logo"/></svg>
+  <div class="name" style="position:relative">Registan LC</div>
+  <div class="tag" style="position:relative">you belong here!</div>
+</div>
+
+<div style="height:20px"></div>
+
+<div id="cover" class="art">
+  <div class="dots"></div>
+  <div class="ring" style="width:380px;height:380px;right:-120px;top:-150px"></div>
+  <div class="ring f" style="width:260px;height:260px;right:-60px;bottom:-140px"></div>
+  <div class="brand">
+    <svg class="icon" width="96" height="96"><use href="#logo"/></svg>
+    <div><div class="name">Registan LC</div><div class="tag">you belong here!</div></div>
+  </div>
+  <h1>Imtihonlar, natijalar va <span>Kids Mock</span><br>— hammasi bitta botda</h1>
+  <div class="chips">
+    <div class="chip"><svg><use href="#i-kid"/></svg>Kids Mock ro‘yxati</div>
+    <div class="chip"><svg><use href="#i-cam"/></svg>Varaq tekshirish</div>
+    <div class="chip"><svg><use href="#i-key"/></svg>Javoblar</div>
+    <div class="chip"><svg><use href="#i-cup"/></svg>TOP-3</div>
+  </div>
+</div>
+</body></html>

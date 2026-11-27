@@ -115,7 +115,7 @@ Karta rasmi serverda (`supabase/functions/_shared/card.ts`, resvg-wasm + Inter s
 
 ## Telegram Mini App (`web/miniapp.html`)
 
-Botning chap pastki burchagidagi **📱 Ilova** tugmasi ochadi (`setChatMenuButton`, manzil: `https://registanglobusmaktablar.netlify.app/miniapp.html`, `crm_settings.miniAppUrl` bilan o‘zgartiriladi).
+Botning chap pastki burchagidagi **📱 Ilova** tugmasi ochadi (`setChatMenuButton`, manzil `crm_settings.miniAppUrl` da: hozir GitHub'dagi kod `rawcdn.githack.com/bekmurodovm460-sudo/Registancrm/<commit>/web/miniapp.html` orqali ochiladi; Netlify'ga `miniapp.html` yuklangach shu sozlamani Netlify manziliga qaytarish mumkin).
 
 - **🧒 Kids Mock** — forma (ism, sinf, telefon/“📱 Raqamim”, sessiya) → `crm_mock_registrations`, xona avtomatik; “Mening arizalarim”.
 - **📸 Tekshirish** — test → maktab → sinf → ism → kamera. Varaq telefonda o‘qiladi (`omr.js`), baholash serverda; natija sinfdagi o‘quvchiga yoziladi.
