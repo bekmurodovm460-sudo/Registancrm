@@ -1384,7 +1384,7 @@ async function voucherView(chatId: number, refresh = false) {
     const groups = (x.data?.groupsList || []).filter((g: any) => g?.state === 'active');
     const par = x.data?.parent || {};
     const phones = [...new Set([x.data?.phoneNumber, par.motherPhoneNumber, par.fatherPhoneNumber, x.phone].filter(Boolean).map((p: string) => fmtPhone(p)))].slice(0, 2);
-    return v && groups.length ? { id: String(x.id), name: cleanName(x.full_name), raw: x.full_name, phones, own: !!x.data?.phoneNumber, balance: Number(x.data?.balance) || 0, v, groups, fromComment: !VOUCH_RE.test(x.full_name || '') } : null;
+    return v && groups.length ? { id: String(x.id), name: cleanName(x.full_name), raw: x.full_name, comment: x.data?.additional?.comment || '', phones, own: !!x.data?.phoneNumber, balance: Number(x.data?.balance) || 0, v, groups, fromComment: !VOUCH_RE.test(x.full_name || '') } : null;
   }).filter(Boolean) as any[];
   if (!list.length) return void send(chatId, '🎟 Faol guruhda vaucherli o‘quvchi topilmadi.\n\n<i>Edutizimda o‘quvchi ismiga yoki izohiga “vaucher” so‘zini foiz yoki summa bilan yozing: “20% vaucher”, “100 000 so‘m vaucher”.</i>');
   const prices = await voucherPrices();
@@ -1407,7 +1407,8 @@ async function voucherView(chatId: number, refresh = false) {
       const g: any = gmap.get(String(sg._id)) || {};
       const gname = String(g.data?.name || g.name || sg.name || ''), course = String(g.data?.course?.name || '');
       gnames.push(gname);
-      const kids = /kids/i.test(gname) || /kids/i.test(course);
+      // Kids: guruh nomida “kids” yoki o'quvchi ismida/izohida 2–6-sinf (“6-sinf”, “5 sinf”)
+      const kids = /kids/i.test(gname) || /kids/i.test(course) || /(^|[^\d])[2-6]\s*-?\s*sinf/i.test(`${st.raw} ${st.comment || ''}`);
       const p1 = kids ? prices.kids : /ingliz/i.test(course) ? prices.english : /matem/i.test(course) ? prices.math : prices.other;
       subjs.push(subjectOf(course) + (kids ? ' · Kids' : ''));
       price = Math.max(price, Number(p1) || 0);
