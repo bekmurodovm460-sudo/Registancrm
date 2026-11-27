@@ -1377,6 +1377,7 @@ let vouchCache: { at: number; text: string } | null = null;
 async function voucherView(chatId: number, refresh = false) {
   if (!refresh && vouchCache && Date.now() - vouchCache.at < 10 * 60_000) return sendLong(chatId, vouchCache.text, { reply_markup: { inline_keyboard: [[ib('🔄 Yangilash', 'vch:r')]] } });
   await typing(chatId);
+  const wait = await send(chatId, '⏳ Vaucherlar Edutizimdan hisoblanmoqda…');
   const { data: all } = await admin.from('crm_edu_students').select('id,full_name,phone,data').gt('data->>groupsCount', '0').limit(5000);
   const list = (all || []).map((x: any) => {
     const src = `${x.full_name || ''} ${x.data?.additional?.comment || ''}`;
@@ -1398,6 +1399,13 @@ async function voucherView(chatId: number, refresh = false) {
   const local = new Date(Date.now() + 5 * 3600_000), monthKey = local.toISOString().slice(0, 7);
   const monthName = ['Yanvar', 'Fevral', 'Mart', 'Aprel', 'May', 'Iyun', 'Iyul', 'Avgust', 'Sentabr', 'Oktabr', 'Noyabr', 'Dekabr'][local.getUTCMonth()];
   const dm = (iso: string) => { const d = new Date(new Date(iso).getTime() + 5 * 3600_000); return `${String(d.getUTCDate()).padStart(2, '0')}.${String(d.getUTCMonth() + 1).padStart(2, '0')}`; };
+  // Hamma vaucherli o'quvchilar tarixi — Edutizimga bitta kirishda
+  const txAll = await edu('studentTxMany', { ids: list.map((x: any) => x.id) });
+  if (!txAll?.ok) {
+    if (wait?.result?.message_id) await tg(await token(), 'deleteMessage', { chat_id: chatId, message_id: wait.result.message_id }).catch(() => {});
+    return void send(chatId, `⚠️ Edutizimdan ma’lumot olinmadi: ${esc(txAll?.error || 'javob yo‘q')}. Birozdan keyin “🔄 Yangilash”ni bosing.`, { reply_markup: { inline_keyboard: [[ib('🔄 Yangilash', 'vch:r')]] } });
+  }
+  const txMap: Record<string, any[]> = txAll.tx || {};
   const rows: any[] = [];
   for (const st of list) {
     // Oylik narx — BITTA kurs narxi (bir necha guruh bo'lsa ham qo'shilmaydi): ingliz tili 520 000 (Kids emas), qolgani 455 000
@@ -1415,8 +1423,7 @@ async function voucherView(chatId: number, refresh = false) {
     }
     const gname = gnames.join(' + '), subj = subjs.join(' + ');
     // Edutizim: to'lovlar va vaucherlar
-    const r = await edu('read', { path: '/student/transactions-pagin', body: { studentId: st.id }, limit: 200, pages: 5 });
-    const tx: any[] = (r.items || []).filter((t: any) => t.type !== 'attendance');
+    const tx: any[] = (txMap[st.id] || []).filter((t: any) => t.type !== 'attendance');
     const isVoucher = (t: any) => t.type === 'studentBonus' || VOUCH_RE.test(t.paymentTransaction?.name || '');
     const isPay = (t: any) => t.type === 'income' && !isVoucher(t);
     const inMonth = (t: any) => new Date(new Date(t.createdAt).getTime() + 5 * 3600_000).toISOString().slice(0, 7) === monthKey;
@@ -1462,6 +1469,7 @@ async function voucherView(chatId: number, refresh = false) {
     (need.length ? `Kiritish kerak: <b>${sum(totDue)}</b> (${need.length} ta)\n${notClosed ? `❗ ${notClosed} ta o‘quvchida oy yopilmaydi` : '✅ Hammasida oy yopiladi'}\n\n${need.map(card).join('\n\n')}` : '✅ Bu oy kiritilishi kerak bo‘lgan vaucher yo‘q.') +
     (unpaid.length ? `\n\n━━━━━━━━━━\n💳 <b>${monthName}da to‘lov qilishi kerak</b>: ${sum(totPay)} (${unpaid.length} ta)\n\n${unpaid.map(payCard).join('\n\n')}` : '');
   vouchCache = { at: Date.now(), text };
+  if (wait?.result?.message_id) await tg(await token(), 'deleteMessage', { chat_id: chatId, message_id: wait.result.message_id }).catch(() => {});
   await sendLong(chatId, text, { reply_markup: { inline_keyboard: [[ib('🔄 Yangilash', 'vch:r')]] } });
 }
 

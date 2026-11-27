@@ -755,7 +755,7 @@ Deno.serve(async req => {
     const branches: { id: string; name: string }[] = auth.branches.map((b: any) => ({ id: String(b._id), name: b.name }));
     if (body.action === 'test') return json({ ok: true, branches });
     // 'cron' roli = ichki chaqiruv (pg_cron yoki Telegram bot admin bo'limi, x-cron-secret bilan)
-    if (['meta', 'pushLead', 'kassaMeta', 'kassaPay', 'kassaCancel', 'kassaTx', 'read', 'employees', 'absences', 'absenceRisk', 'commentsFor', 'comment', 'teacherReport', 'smsMeta', 'sendSms', 'bells', 'bellDelete', 'priceAudit', 'changePrice', 'paymentDates'].includes(body.action)) {
+    if (['meta', 'pushLead', 'kassaMeta', 'kassaPay', 'kassaCancel', 'kassaTx', 'read', 'employees', 'absences', 'absenceRisk', 'commentsFor', 'comment', 'teacherReport', 'smsMeta', 'sendSms', 'bells', 'bellDelete', 'priceAudit', 'changePrice', 'paymentDates', 'studentTxMany'].includes(body.action)) {
       const br = body.branchId ? branches.find(b => b.id === body.branchId) : branches[0];
       if (!br) throw new Error('Filial topilmadi');
       const headers = { ...baseHeaders(site), Authorization: `Bearer ${auth.token}`, branch: br.id };
@@ -767,6 +767,17 @@ Deno.serve(async req => {
       }
       if (body.action === 'kassaTx') return json(await kassaTx(base, headers, body));
       if (body.action === 'read') return json(await eduRead(base, headers, body));
+      // Bir necha o'quvchining balans tarixi — bitta kirishda (faqat o'qish), 4 tadan parallel
+      if (body.action === 'studentTxMany') {
+        const ids: string[] = (Array.isArray(body.ids) ? body.ids : []).map(String).slice(0, 60);
+        const out: Record<string, any[]> = {};
+        for (let i = 0; i < ids.length; i += 4) {
+          await Promise.all(ids.slice(i, i + 4).map(async id => {
+            out[id] = await pageAll(base, headers, '/student/transactions-pagin', { studentId: id }, 200, 10).catch(() => []);
+          }));
+        }
+        return json({ ok: true, tx: out });
+      }
       if (body.action === 'employees') return json({ ok: true, employees: await employees(base, headers) });
       if (body.action === 'absences') return json({ ok: true, rows: await attendance(base, headers, ['reasonable', 'unreasonable'], body.fromDate, body.toDate) });
       if (body.action === 'absenceRisk') return json({ ok: true, rows: await absenceRisk(base, headers, Number(body.days) || 21) });
