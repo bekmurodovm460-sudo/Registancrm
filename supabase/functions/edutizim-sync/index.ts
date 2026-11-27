@@ -553,6 +553,122 @@ async function kassaCancel(base: string, headers: Record<string, string>, b: any
   return ok ? { ok: true } : { ok: false, error: `${res.status} ${out?.message || ''}`.trim() };
 }
 
+// =========================================================
+// 📅 "To'lov sanasi" (paymentDate): balans 0 ga tushgan kun (qarzdor/0) yoki pul tugaydigan kun (musbat balans)
+//   GET /student/transactions-pagin {studentId}  — beforeAmount/afterAmount bilan balans tarixi
+//   GET /student-list/student/:id → PUT /student-list/student (Edutizim saytining tahrirlash formasi kabi to'liq karta)
+// =========================================================
+const TZH = 5 * 3600_000;
+const localDay = (iso: string | number | Date) => new Date(new Date(iso).getTime() + TZH).toISOString().slice(0, 10);
+const dayIso = (d: string) => new Date(`${d}T00:00:00+05:00`).toISOString(); // Edutizim formasi saqlagandek (mahalliy yarim tun)
+
+function pastZeroDay(tx: any[]) {
+  const list = [...tx].sort((a, b) => String(a.createdAt).localeCompare(String(b.createdAt)));
+  let cand: any = null;
+  list.forEach((t, i) => {
+    const before = Number(t.beforeAmount), after = Number(t.afterAmount);
+    if (!Number.isFinite(after)) return;
+    if (after <= 0 && (before > 0 || i === 0)) cand = t;
+  });
+  if (!cand) return null;
+  return cand.lesson?.date ? String(cand.lesson.date).slice(0, 10) : localDay(cand.actualDate || cand.createdAt);
+}
+
+function futureZeroDay(balance: number, groups: { price: number; days: number[]; endsAt?: string | null; chargedToday: boolean }[], today: string) {
+  const g = groups.filter(x => x.price > 0 && x.days.length);
+  if (!g.length) return null;
+  let b = balance;
+  const t0 = new Date(`${today}T00:00:00Z`).getTime();
+  for (let i = 0; i < 400; i++) {
+    const d = new Date(t0 + i * 86400_000), ds = d.toISOString().slice(0, 10), wd = d.getUTCDay() + 1; // 1 = yakshanba
+    for (const x of g) {
+      if (!x.days.includes(wd) || (i === 0 && x.chargedToday) || (x.endsAt && ds > String(x.endsAt).slice(0, 10))) continue;
+      b -= x.price;
+      if (b <= 0) return ds;
+    }
+  }
+  return null;
+}
+
+function studentPutPayload(s: any, paymentDate: string | null) {
+  const a = s.additional || {}, p = s.parent || {};
+  const idOf = (v: any) => (v && typeof v === 'object' ? v._id ?? v.value ?? null : v ?? null);
+  return {
+    customFields: (Array.isArray(s.customFields) ? s.customFields : []).filter((x: any) => x?._id && x.value !== undefined).map((x: any) => ({ _id: x._id, value: x.value })),
+    _id: s._id, firstName: s.firstName ?? null, lastName: s.lastName ?? null, email: s.email ?? null,
+    birthdate: s.birthdate ?? null, paymentDate, phoneNumber: s.phoneNumber ?? null,
+    phoneVerified: true, skipPhoneVerify: true,
+    moderatorId: idOf(s.moderator) ?? s.moderatorId ?? null, lessonType: idOf(s.lessonType), categoryId: idOf(s.category) ?? s.categoryId ?? null,
+    language: idOf(s.language), surveyId: idOf(s.survey) ?? s.surveyId ?? null,
+    additional: { homeAddress: a.homeAddress ?? null, targetUniversity: a.targetUniversity ?? null, organization: a.organization ?? null, comment: a.comment ?? null },
+    parent: { fatherName: p.fatherName ?? null, fatherPhoneNumber: p.fatherPhoneNumber ?? null, fatherJob: p.fatherJob ?? null, motherName: p.motherName ?? null, motherPhoneNumber: p.motherPhoneNumber ?? null, motherJob: p.motherJob ?? null },
+    tagIds: (s.tags || s.tagIds || []).map((t: any) => idOf(t)).filter(Boolean)
+  };
+}
+
+async function getStudent(base: string, headers: Record<string, string>, id: string) {
+  const r = await fetch(`${base}/student-list/student/${encodeURIComponent(id)}`, { headers });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok || !j?.data?._id) throw new Error(`student ${r.status} ${j?.message || ''}`.trim());
+  return j.data;
+}
+
+async function paymentDates(base: string, headers: Record<string, string>, b: any) {
+  const today = localDay(Date.now());
+  const runId = String(b.runId || `pd-${today}`);
+  let q = admin.from('crm_edu_students').select('id,full_name,data').gt('data->>groupsCount', '0').order('id');
+  if (Array.isArray(b.ids) && b.ids.length) q = q.in('id', b.ids.map(String));
+  else q = q.range(Number(b.offset) || 0, (Number(b.offset) || 0) + Math.min(Number(b.limit) || 20, 60) - 1);
+  const { data: studs, error } = await q;
+  if (error) throw error;
+  // Guruh narxi (1 dars) va holati — /teacher-students-pagin; dars kunlari — CRM'dagi guruh nusxasi
+  const ts = await pageAll(base, headers, '/teacher-students-pagin', {}, 200, 40);
+  const price = new Map<string, { gid: string; price: number; state: string }[]>();
+  for (const row of ts) for (const g of row.groups || []) {
+    const sid = row.student?._id; if (!sid) continue;
+    (price.get(sid) || price.set(sid, []).get(sid)!).push({ gid: g.group?._id, price: Number(g.price) || 0, state: g.state });
+  }
+  const { data: grs } = await admin.from('crm_edu_groups').select('id,days:data->courseDay->days,endsAt:data->endsAt,state:data->state');
+  const gmap = new Map((grs || []).map((g: any) => [g.id, g]));
+  const out: any[] = [];
+  for (const st of studs || []) {
+    const sid = String(st.id), bal = Number(st.data?.balance) || 0, old = st.data?.paymentDate || null;
+    const row: any = { run_id: runId, student_id: sid, full_name: st.full_name, balance: bal, old_date: old };
+    try {
+      const tx = await pageAll(base, headers, '/student/transactions-pagin', { studentId: sid }, 200, 30);
+      let day: string | null;
+      if (bal <= 0) { row.kind = 'past'; day = pastZeroDay(tx); }
+      else {
+        row.kind = 'future';
+        const charged = new Set(tx.filter((t: any) => t.type === 'attendance' && t.lesson?.date && String(t.lesson.date).slice(0, 10) === today).map((t: any) => t.group?._id));
+        const gs = (price.get(sid) || []).filter(x => x.state === 'active').map(x => {
+          const g: any = gmap.get(x.gid) || {};
+          // Narx 0 bo'lsa — shu guruh uchun oxirgi dars yechimi
+          const last = [...tx].reverse().find((t: any) => t.type === 'attendance' && t.group?._id === x.gid && Number(t.amount) < 0);
+          return { price: x.price || Math.abs(Number(last?.amount) || 0), days: Array.isArray(g.days) ? g.days.map(Number) : [], endsAt: g.endsAt || null, chargedToday: charged.has(x.gid) };
+        });
+        day = futureZeroDay(bal, gs, today);
+      }
+      row.new_date = day;
+      if (!day) { row.ok = false; row.error = 'sanani aniqlab bo‘lmadi'; }
+      else if (old && localDay(old) === day) { row.ok = true; row.error = 'o‘zgarmagan'; }
+      else if (b.write) {
+        const cur = await getStudent(base, headers, sid);
+        const payload = studentPutPayload(cur, dayIso(day));
+        const r = await fetch(`${base}/student-list/student`, { method: 'PUT', headers, body: JSON.stringify(payload) });
+        const j = await r.json().catch(() => ({}));
+        row.ok = r.ok && (!j?.code || j.code === 0);
+        if (!row.ok) row.error = `${r.status} ${j?.message || JSON.stringify(j).slice(0, 200)}`.trim();
+        if (b.verify) { row._before = cur; row._after = await getStudent(base, headers, sid); row._payload = payload; }
+      } else row.ok = null;
+    } catch (e) { row.ok = false; row.error = String((e as Error).message || e).slice(0, 300); }
+    const { _before, _after, _payload, ...log } = row;
+    if (b.write) await admin.from('crm_edu_paydate_log').insert(log);
+    out.push(b.verify ? row : log);
+  }
+  return { ok: true, runId, today, count: out.length, written: out.filter(r => r.ok && !r.error).length, rows: out };
+}
+
 Deno.serve(async req => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors });
   const cronSecret = await getSecret('cron_secret');
@@ -614,7 +730,7 @@ Deno.serve(async req => {
     const branches: { id: string; name: string }[] = auth.branches.map((b: any) => ({ id: String(b._id), name: b.name }));
     if (body.action === 'test') return json({ ok: true, branches });
     // 'cron' roli = ichki chaqiruv (pg_cron yoki Telegram bot admin bo'limi, x-cron-secret bilan)
-    if (['meta', 'pushLead', 'kassaMeta', 'kassaPay', 'kassaCancel', 'kassaTx', 'read', 'employees', 'absences', 'absenceRisk', 'commentsFor', 'comment', 'teacherReport', 'smsMeta', 'sendSms', 'bells', 'bellDelete', 'priceAudit', 'changePrice'].includes(body.action)) {
+    if (['meta', 'pushLead', 'kassaMeta', 'kassaPay', 'kassaCancel', 'kassaTx', 'read', 'employees', 'absences', 'absenceRisk', 'commentsFor', 'comment', 'teacherReport', 'smsMeta', 'sendSms', 'bells', 'bellDelete', 'priceAudit', 'changePrice', 'paymentDates'].includes(body.action)) {
       const br = body.branchId ? branches.find(b => b.id === body.branchId) : branches[0];
       if (!br) throw new Error('Filial topilmadi');
       const headers = { ...baseHeaders(site), Authorization: `Bearer ${auth.token}`, branch: br.id };
@@ -645,6 +761,10 @@ Deno.serve(async req => {
         }
         await admin.from('crm_sync_log').insert({ source: 'edutizim-fix', ok: !!r.ok, message: `${body.action} ${body.id || body.studentId || ''} ${body.price || ''} · ${body.by || ''}`.slice(0, 300) });
         return json(r);
+      }
+      if (body.action === 'paymentDates') {
+        if (role !== 'cron' && role !== 'admin') return json({ ok: false, error: 'Ruxsat yo‘q' }, 403);
+        return json(await paymentDates(base, headers, body));
       }
       if (body.action === 'smsMeta') return json({ ok: true, ...(await smsMeta(base, headers, !!body.raw)) });
       if (body.action === 'sendSms') {
