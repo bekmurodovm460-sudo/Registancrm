@@ -161,11 +161,36 @@ async function eduFind(q: string) {
   if (digits.length >= 7) query = query.ilike('phone_digits', `%${digits.slice(-9)}%`);
   else for (const w of q.trim().split(/\s+/).filter(w => w.length >= 2).slice(0, 3)) query = query.ilike('full_name', `%${w.replace(/[%_]/g, '')}%`);
   const { data } = await query;
-  return (data || []).map(toStudent);
+  return withMonthDue((data || []).map(toStudent));
 }
+
+// 📆 Oy oxirigacha: qolgan darslar × 1 dars narxi − joriy balans (qarz bo'lsa qo'shiladi)
+function monthDue(groups: any[], balance: number, nowMs = Date.now()) {
+  const local = new Date(nowMs + 5 * 3600_000);
+  const y = local.getUTCFullYear(), m = local.getUTCMonth(), last = new Date(Date.UTC(y, m + 1, 0)).getUTCDate();
+  // Dars yechimi dars tugagach tushadi — 19:00 dan keyin bugungi dars hisoblangan deb olamiz
+  const from = local.getUTCHours() < 19 ? local.getUTCDate() : local.getUTCDate() + 1;
+  let lessons = 0, total = 0, unknown = false;
+  for (const g of groups || []) {
+    if (!g.price) { unknown = true; continue; }
+    for (let d = from; d <= last; d++) {
+      const dt = new Date(Date.UTC(y, m, d)), ds = dt.toISOString().slice(0, 10);
+      if (!(g.days || []).includes(dt.getUTCDay() + 1) || (g.endsAt && ds > String(g.endsAt).slice(0, 10))) continue;
+      lessons++; total += g.price;
+    }
+  }
+  return { lessons, total, due: Math.max(0, total - balance), until: `${String(last).padStart(2, '0')}.${String(m + 1).padStart(2, '0')}`, unknown, groups: (groups || []).length };
+}
+async function withMonthDue<T extends { id: string; balance: number }>(list: T[]): Promise<(T & { month?: any })[]> {
+  if (!list.length) return list;
+  const { data } = await admin.from('crm_edu_pay_plan').select('student_id,groups').in('student_id', list.map(x => x.id));
+  const plan = new Map((data || []).map((p: any) => [p.student_id, p.groups || []]));
+  return list.map(x => plan.has(x.id) && (plan.get(x.id) as any[]).length ? { ...x, month: monthDue(plan.get(x.id) as any[], x.balance) } : x);
+}
+const monthLine = (mo: any) => !mo ? '' : `\n   📆 Oy oxirigacha (${mo.until}): ${mo.lessons} dars · ${sum(mo.total)} → <b>to‘lashi kerak: ${mo.due ? sum(mo.due) : '0 (yetadi ✅)'}</b>${mo.unknown ? ' <i>(ba’zi guruh narxi noma’lum)</i>' : ''}`;
 const line = (s: any, i?: number) =>
   `${i !== undefined ? `<b>${i + 1}.</b> ` : ''}👤 <b>${esc(s.name)}</b>${s.phone ? ` · ${esc(s.phone)}` : ''}\n` +
-  `   💳 Balans: <b>${s.balance < 0 ? '🔴 ' : ''}${sum(s.balance)}</b>${s.groups ? `\n   👥 ${esc(String(s.groups).slice(0, 80))}` : ''}${s.status ? ` · ${esc(s.status)}` : ''}`;
+  `   💳 Balans: <b>${s.balance < 0 ? '🔴 ' : ''}${sum(s.balance)}</b>${s.groups ? `\n   👥 ${esc(String(s.groups).slice(0, 80))}` : ''}${s.status ? ` · ${esc(s.status)}` : ''}${monthLine(s.month)}`;
 
 async function allBalances() {
   const out: any[] = [];

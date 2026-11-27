@@ -613,6 +613,27 @@ async function getStudent(base: string, headers: Record<string, string>, id: str
   return j.data;
 }
 
+// 💳 To'lov rejasi: har bir o'quvchining faol guruhlari, 1 dars narxi va dars kunlari (bot "oy oxirigacha" hisobi uchun)
+async function savePayPlan(base: string, headers: Record<string, string>) {
+  const ts = await pageAll(base, headers, '/teacher-students-pagin', {}, 200, 40);
+  const { data: grs } = await admin.from('crm_edu_groups').select('id,name,days:data->courseDay->days,endsAt:data->endsAt');
+  const gmap = new Map((grs || []).map((g: any) => [g.id, g]));
+  const plan = new Map<string, any[]>();
+  for (const row of ts) for (const g of row.groups || []) {
+    const sid = row.student?._id, gid = g.group?._id;
+    if (!sid || !gid || g.state !== 'active') continue;
+    const gr: any = gmap.get(gid) || {};
+    const list = plan.get(sid) || plan.set(sid, []).get(sid)!;
+    if (!list.some(x => x.gid === gid)) list.push({ gid, name: g.group?.name || gr.name || '', price: Number(g.price) || 0, days: Array.isArray(gr.days) ? gr.days.map(Number) : [], endsAt: gr.endsAt || null });
+  }
+  const now = new Date().toISOString();
+  const rows = [...plan].map(([student_id, groups]) => ({ student_id, groups, updated_at: now }));
+  for (let i = 0; i < rows.length; i += 500) await admin.from('crm_edu_pay_plan').upsert(rows.slice(i, i + 500));
+  // Endi hech qaysi faol guruhda bo'lmaganlar — rejasi bo'shatiladi
+  if (rows.length) await admin.from('crm_edu_pay_plan').update({ groups: [], updated_at: now }).lt('updated_at', now);
+  return rows.length;
+}
+
 async function paymentDates(base: string, headers: Record<string, string>, b: any) {
   const today = localDay(Date.now());
   const runId = String(b.runId || `pd-${today}`);
@@ -819,7 +840,9 @@ Deno.serve(async req => {
       const { error } = await admin.from('crm_edu_groups').upsert(gRows.slice(i, i + 500));
       if (error) throw error;
     }
-    const stats = { students: sRows.length, groups: gRows.length, branches: targets.map(b => b.name), ms: Date.now() - started, by: role };
+    let payPlan: number | string = 0;
+    try { payPlan = await savePayPlan(base, { ...baseHeaders(site), Authorization: `Bearer ${auth.token}`, branch: targets[0].id }); } catch (e) { payPlan = String((e as Error).message || e).slice(0, 120); }
+    const stats = { students: sRows.length, groups: gRows.length, payPlan, branches: targets.map(b => b.name), ms: Date.now() - started, by: role };
     await admin.from('crm_sync_log').insert({ source: 'edutizim', ok: true, message: `${sRows.length} o‘quvchi, ${gRows.length} guruh (${targets.map(b => b.name).join(', ')})`, stats });
     return json({ ok: true, ...stats });
   } catch (e) {
