@@ -616,11 +616,14 @@ async function getStudent(base: string, headers: Record<string, string>, id: str
 async function paymentDates(base: string, headers: Record<string, string>, b: any) {
   const today = localDay(Date.now());
   const runId = String(b.runId || `pd-${today}`);
-  let q = admin.from('crm_edu_students').select('id,full_name,data').gt('data->>groupsCount', '0').order('id');
+  // Faqat faol guruhda o'qiyotganlar (groupsCount eskirgan bo'lishi mumkin — groupsList holatiga qaraymiz)
+  let q = admin.from('crm_edu_students').select('id,full_name,data').gt('data->>groupsCount', '0').order('id').limit(5000);
   if (Array.isArray(b.ids) && b.ids.length) q = q.in('id', b.ids.map(String));
-  else q = q.range(Number(b.offset) || 0, (Number(b.offset) || 0) + Math.min(Number(b.limit) || 20, 60) - 1);
-  const { data: studs, error } = await q;
+  const { data: all, error } = await q;
   if (error) throw error;
+  const act = (all || []).filter((x: any) => (x.data?.groupsList || []).some((g: any) => g?.state === 'active'));
+  const off = Number(b.offset) || 0;
+  const studs = b.ids?.length ? act : act.slice(off, off + Math.min(Number(b.limit) || 20, 60));
   // Guruh narxi (1 dars) va holati — /teacher-students-pagin; dars kunlari — CRM'dagi guruh nusxasi
   const ts = await pageAll(base, headers, '/teacher-students-pagin', {}, 200, 40);
   const price = new Map<string, { gid: string; price: number; state: string }[]>();
@@ -666,7 +669,7 @@ async function paymentDates(base: string, headers: Record<string, string>, b: an
     if (b.write) await admin.from('crm_edu_paydate_log').insert(log);
     out.push(b.verify ? row : log);
   }
-  return { ok: true, runId, today, count: out.length, written: out.filter(r => r.ok && !r.error).length, rows: out };
+  return { ok: true, runId, today, total: act.length, count: out.length, written: out.filter(r => r.ok && !r.error).length, rows: out };
 }
 
 Deno.serve(async req => {
