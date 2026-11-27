@@ -376,13 +376,58 @@ type Contact = { name: string; role: string; phone: string };
 const fmtPhone = (p: string) => { const d = String(p).replace(/\D/g, '').slice(-9); return d.length === 9 ? `+998 ${d.slice(0, 2)} ${d.slice(2, 5)} ${d.slice(5, 7)} ${d.slice(7)}` : p; };
 async function contacts(): Promise<Contact[]> { return (await getSetting<Contact[]>('eduContacts', [])) || []; }
 async function saveContacts(list: Contact[]) { await admin.from('crm_settings').upsert({ key: 'eduContacts', value: list }); }
+// 👩‍🏫/🧑‍💼 Edutizimdagi ustoz va xodimlar: telefon, lavozim, tug'ilgan kun (Edutizimdan o'qiladi, 10 daqiqa kesh)
+const MONTHS_UZ = ['yanvar', 'fevral', 'mart', 'aprel', 'may', 'iyun', 'iyul', 'avgust', 'sentabr', 'oktabr', 'noyabr', 'dekabr'];
+function bdInfo(bd: string | null, nowMs = Date.now()) {
+  if (!bd || !/^\d{4}-\d{2}-\d{2}/.test(bd)) return null;
+  const [y, m, d] = bd.slice(0, 10).split('-').map(Number);
+  const t = new Date(nowMs + 5 * 3600_000), ty = t.getUTCFullYear(), today = Date.UTC(ty, t.getUTCMonth(), t.getUTCDate());
+  let next = Date.UTC(ty, m - 1, d);
+  if (next < today) next = Date.UTC(ty + 1, m - 1, d);
+  const inDays = Math.round((next - today) / 86400_000), age = new Date(next).getUTCFullYear() - y;
+  return { label: `${d} ${MONTHS_UZ[m - 1]}`, inDays, age: y > 1900 ? age : null };
+}
+const bdText = (b: any) => !b ? '🎂 —' : `🎂 ${b.label}${b.inDays === 0 ? ' — <b>bugun! 🎉</b>' : b.inDays <= 7 ? ` — ${b.inDays} kundan keyin` : ''}${b.age ? ` (${b.age} yosh${b.inDays === 0 ? '' : 'ga to‘ladi'})` : ''}`;
+async function staffList(kind: 't' | 's' | 'all') {
+  const all = (await employeesList()).filter((e: any) => e.name);
+  const list = kind === 'all' ? all : all.filter((e: any) => kind === 't' ? e.isTeacher : !e.isTeacher);
+  return list.sort((a: any, b: any) => String(a.name).localeCompare(String(b.name)));
+}
+async function staffDirectory(chatId: number, data: string) {
+  await typing(chatId);
+  if (data.startsWith('ph:k:')) {
+    const [, , kind, idx] = data.split(':');
+    const e: any = (await staffList(kind as any))[Number(idx)];
+    if (!e?.phone) return void send(chatId, 'Raqam topilmadi.');
+    return void tg(await token(), 'sendContact', { chat_id: chatId, phone_number: fmtPhone(e.phone).replace(/\s/g, ''), first_name: String(e.name).slice(0, 60), last_name: e.role ? `(${String(e.role).slice(0, 40)})` : undefined });
+  }
+  if (data === 'ph:b') {
+    const list = (await staffList('all')).map((e: any) => ({ ...e, b: bdInfo(e.birthdate) })).filter((e: any) => e.b).sort((a: any, b: any) => a.b.inDays - b.b.inDays);
+    const none = (await staffList('all')).length - list.length;
+    const text = list.length
+      ? `🎂 <b>Tug‘ilgan kunlar</b> (eng yaqinidan)\n\n${list.map((e: any) => `${e.b.inDays === 0 ? '🎉' : e.b.inDays <= 7 ? '🔔' : '•'} <b>${esc(e.name)}</b>${e.role ? ` — ${esc(e.role)}` : ''}\n    ${bdText(e.b)}`).join('\n')}${none ? `\n\n<i>${none} kishida tug‘ilgan kun Edutizimda kiritilmagan.</i>` : ''}`
+      : '🎂 Edutizimda tug‘ilgan kunlar kiritilmagan.';
+    return void send(chatId, text.slice(0, 4000), { reply_markup: { inline_keyboard: [[ib('👩‍🏫 Ustozlar', 'ph:e:t'), ib('🧑‍💼 Xodimlar', 'ph:e:s')], [ib('⬅️ Kerakli raqamlar', 'ph:v')]] } });
+  }
+  const kind = data.slice(5) === 't' ? 't' : 's';
+  const list = await staffList(kind);
+  if (!list.length) return void send(chatId, '⚠️ Edutizimdan ro‘yxat olinmadi. Birozdan keyin qayta urinib ko‘ring.');
+  const title = kind === 't' ? '👩‍🏫 <b>Ustozlar</b>' : '🧑‍💼 <b>Xodimlar</b>';
+  const lines = list.map((e: any, i: number) => `${i + 1}. <b>${esc(e.name)}</b>${e.role && kind === 's' ? ` — ${esc(e.role)}` : ''}${kind === 't' && e.activeGroups ? ` · ${e.activeGroups} guruh, ${e.activeStudents} o‘quvchi` : ''}\n    📱 ${e.phone ? esc(fmtPhone(e.phone)) : '—'} · ${bdText(bdInfo(e.birthdate))}`);
+  const btns = list.slice(0, 40).map((e: any, i: number) => ib(`📲 ${String(e.name).slice(0, 22)}`, `ph:k:${kind}:${i}`));
+  const rows: any[] = [];
+  for (let i = 0; i < btns.length; i += 2) rows.push(btns.slice(i, i + 2));
+  rows.push([ib(kind === 't' ? '🧑‍💼 Xodimlar' : '👩‍🏫 Ustozlar', kind === 't' ? 'ph:e:s' : 'ph:e:t'), ib('🎂 Tug‘ilgan kunlar', 'ph:b')]);
+  await send(chatId, `${title} · ${list.length} ta <i>(Edutizimdan)</i>\n\n${lines.join('\n\n')}`.slice(0, 4000), { reply_markup: { inline_keyboard: rows } });
+}
+
 async function phonesView(chatId: number) {
   const list = await contacts();
   const isTop = role() === 'top';
   const text = list.length
     ? `📞 <b>Kerakli raqamlar</b>\n\n${list.map((c, i) => `${i + 1}. <b>${esc(c.name)}</b>${c.role ? ` — ${esc(c.role)}` : ''}\n    📱 ${esc(fmtPhone(c.phone))}`).join('\n\n')}\n\n<i>Raqamni bosib qo‘ng‘iroq qiling yoki pastdagi tugma orqali kontaktni oling.</i>`
     : `📞 <b>Kerakli raqamlar</b>\n\nHozircha raqam kiritilmagan.${isTop ? ' “➕ Qo‘shish” tugmasini bosing.' : ' Top menejer qo‘shadi.'}`;
-  const rows: any[] = [];
+  const rows: any[] = [[ib('👩‍🏫 Ustozlar', 'ph:e:t'), ib('🧑‍💼 Xodimlar', 'ph:e:s')], [ib('🎂 Tug‘ilgan kunlar', 'ph:b')]];
   const cbtn = list.slice(0, 20).map((c, i) => ib(`📲 ${c.name.slice(0, 24)}`, `ph:c:${i}`));
   for (let i = 0; i < cbtn.length; i += 2) rows.push(cbtn.slice(i, i + 2));
   if (isTop) rows.push([ib('➕ Qo‘shish', 'ph:add'), ...(list.length ? [ib('🗑 O‘chirish', 'ph:del')] : [])]);
@@ -395,6 +440,8 @@ async function phonesCallback(chatId: number, data: string) {
     if (!c) return phonesView(chatId);
     return void tg(await token(), 'sendContact', { chat_id: chatId, phone_number: fmtPhone(c.phone).replace(/\s/g, ''), first_name: c.name.slice(0, 60), last_name: c.role ? `(${c.role.slice(0, 40)})` : undefined });
   }
+  if (data.startsWith('ph:e:') || data === 'ph:b' || data.startsWith('ph:k:')) return staffDirectory(chatId, data);
+  if (data === 'ph:v') return phonesView(chatId);
   if (role() !== 'top') return void send(chatId, '⛔ Raqamlarni faqat top menejer o‘zgartiradi.', { reply_markup: menu() });
   if (data === 'ph:add') {
     await setSession(chatId, 'ph_name', {});

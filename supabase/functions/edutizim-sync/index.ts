@@ -290,7 +290,8 @@ const fullName = (o: any) => [o?.firstName, o?.lastName].filter(Boolean).join(' 
 
 async function employees(base: string, headers: Record<string, string>) {
   const list = await pageAll(base, headers, '/hr/employees-pagin', {}, 100, 10);
-  return list.map((e: any) => ({ id: e._id, name: fullName(e), phone: e.phoneNumber || '', digits: String(e.phoneNumber || '').replace(/\D/g, '').slice(-9), roles: (e.roles || e.role ? [].concat(e.roles || e.role).map((r: any) => r?.name || r).filter(Boolean) : []), isTeacher: !!(e.isTeacher ?? (e.type === 'teacher')) }));
+  return list.map((e: any) => ({ id: e._id, name: fullName(e), phone: e.phoneNumber || '', digits: String(e.phoneNumber || '').replace(/\D/g, '').slice(-9), roles: (e.roles || e.role ? [].concat(e.roles || e.role).map((r: any) => r?.name || r).filter(Boolean) : []), isTeacher: !!(e.isTeacher ?? (e.type === 'teacher')),
+    role: e.role?.name || '', birthdate: e.birthdate ? String(e.birthdate).slice(0, 10) : null, activeGroups: Number(e.activeGroups) || 0, activeStudents: Number(e.activeStudents) || 0 }));
 }
 
 const mapAtt = (a: any) => ({
