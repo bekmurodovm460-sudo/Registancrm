@@ -1433,15 +1433,14 @@ async function voucherView(chatId: number, refresh = false) {
     let due = 0, monthly = 0, share = 0, note = '';
     if (st.v.kind === 'pct' && st.v.pct < 100) {
       monthly = Math.round(price * st.v.pct / 100); share = price - monthly;
-      // To'lovga qarab, lekin bir oylik vaucherdan oshmaydi (ortiqcha to'lov — qarz uchun)
-      const byPay = Math.round(P * st.v.pct / (100 - st.v.pct));
-      due = Math.max(0, Math.min(byPay, monthly) - Vd);
-      if (!P) note = 'bu oy hali to‘lov yo‘q';
-      else if (byPay > monthly) note = `to‘lov oylik ulushdan ko‘p (${sum(P)}) — ortig‘i qarzga, vaucher bir oylik`;
+      // Bir oylik vaucher (narx × foiz); quyida Edutizimdagi "To'lanish kerak" bilan cheklanadi
+      due = Math.max(0, monthly - Vd);
     } else if (st.v.kind === 'pct') { monthly = price; share = 0; due = Math.max(0, price - Vd); }
     else if (st.v.kind === 'sum') { monthly = st.v.sum; due = everGiven.length ? 0 : st.v.sum; if (everGiven.length) note = `bir martalik — ${dm(everGiven[everGiven.length - 1].createdAt)} da kiritilgan`; }
     else note = 'foiz yoki summa yozilmagan';
     const m = mustMap[st.id];
+    // Edutizimdagi "To'lanish kerak"dan ortiq vaucher kiritilmaydi; 0 bo'lsa — oy allaqachon yopilgan
+    if (m && due > m.mustPay) { if (m.mustPay <= 0) note = 'oy allaqachon yopilgan (Edutizim: to‘lanish kerak 0)'; due = Math.max(0, m.mustPay); }
     rows.push({ ...st, gname, subj, price, estimate, P, Vd, due, monthly, share, note, lastPay: paid.length ? paid[paid.length - 1].createdAt : null, must: m ? m.mustPay : null, balance: m ? m.balance : st.balance });
   }
   rows.sort((a, b) => b.due - a.due || a.name.localeCompare(b.name));
@@ -1454,18 +1453,13 @@ async function voucherView(chatId: number, refresh = false) {
   const closes = (x: any) => {
     if (x.must === null || x.must === undefined) return '⚪ Edutizimdan “To‘lanish kerak” olinmadi';
     const rest = x.must - x.due;
-    return rest <= 0 ? `✅ Oy yopiladi (Edutizim: to‘lanish kerak ${num(x.must)})` : `❗ Vaucherdan keyin ham <b>${num(rest)} so‘m</b> to‘lanishi kerak (Edutizim: ${num(x.must)})`;
+    return rest <= 0 ? `✅ Oy yopiladi (Edutizim: to‘lanish kerak ${num(x.must)})` : `❗ O‘quvchi yana <b>${num(rest)} so‘m</b> to‘lashi kerak (Edutizim: ${num(x.must)})`;
   };
-  const card = (x: any) => `<b>${esc(x.name)}</b> — ${vLabel(x)}\n📱 ${phone(x)}\nTo‘ladi ${num(x.P)} → vaucher <b>${num(x.due)} so‘m</b>\n${closes(x)}`;
-  // Hali to'lamaganlar: Edutizimda "To'lanish kerak" bor, vaucher hali kiritilmaydi. Foizli bo'lsa — o'quvchi ulushi va vaucher shu summani yopadi
-  const split = (x: any) => {
-    const X = x.must || 0;
-    if (x.v.kind === 'pct' && x.v.pct < 100) { const v = Math.min(Math.round(X * x.v.pct / 100), Math.max(0, x.monthly - x.Vd)); return { pay: X - v, v }; }
-    return { pay: X, v: 0 };
-  };
+  const card = (x: any) => `<b>${esc(x.name)}</b> — ${vLabel(x)}\n📱 ${phone(x)}\n${x.P ? `To‘lagan ${num(x.P)} · ` : ''}Vaucher <b>${num(x.due)} so‘m</b>\n${closes(x)}`;
+  // Vaucher kiritilmaydiganlar (bir martalik berilgan va h.k.), lekin Edutizimda to'lov kerak
   const unpaid = rows.filter(x => !x.due && (x.must || 0) > 0);
-  const totPay = unpaid.reduce((a, x) => a + split(x).pay, 0);
-  const payCard = (x: any) => { const sp = split(x); return `<b>${esc(x.name)}</b> — ${vLabel(x)}\n📱 ${phone(x)}\nEdutizim: to‘lanish kerak ${num(x.must)}\nO‘quvchi to‘laydi: <b>${num(sp.pay)} so‘m</b>${sp.v ? ` + vaucher ${num(sp.v)}` : ''}`; };
+  const totPay = unpaid.reduce((a, x) => a + (x.must || 0), 0);
+  const payCard = (x: any) => `<b>${esc(x.name)}</b> — ${vLabel(x)}\n📱 ${phone(x)}\nTo‘lashi kerak: <b>${num(x.must)} so‘m</b> (Edutizim)${x.note ? `\n<i>${esc(x.note)}</i>` : ''}`;
   const notClosed = need.filter(x => x.must !== null && x.must !== undefined && x.must - x.due > 0).length;
   let text = `🎟 <b>Vaucherlar · ${monthName}</b>\n` +
     (need.length ? `Kiritish kerak: <b>${sum(totDue)}</b> (${need.length} ta)\n${notClosed ? `❗ ${notClosed} ta o‘quvchida oy yopilmaydi` : '✅ Hammasida oy yopiladi'}\n\n${need.map(card).join('\n\n')}` : '✅ Bu oy kiritilishi kerak bo‘lgan vaucher yo‘q.') +
