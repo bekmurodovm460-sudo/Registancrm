@@ -1462,7 +1462,7 @@ async function voucherView(chatId: number, refresh = false) {
     return rest <= 0 ? `✅ Oy yopiladi (Edutizim: to‘lanish kerak ${num(x.must)})` : `❗ O‘quvchi yana <b>${num(rest)} so‘m</b> to‘lashi kerak (Edutizim: ${num(x.must)})`;
   };
   const priceLine = (x: any) => x.lesson ? `📚 1 dars ${num(x.lesson)} × 13 = ${num(x.price)}${x.v.kind === 'pct' ? ` → ${x.v.pct}% = ${num(x.monthly)}` : ''}` : `📚 Oylik ${num(x.price)}${x.v.kind === 'pct' ? ` → ${x.v.pct}% = ${num(x.monthly)}` : ''}`;
-  const card = (x: any) => `<b>${esc(x.name)}</b> — ${vLabel(x)}\n📱 ${phone(x)}\n${priceLine(x)}\n${x.P ? `To‘lagan ${num(x.P)} · ` : ''}Vaucher <b>${num(x.due)} so‘m</b>${x.extra ? ` <i>(+${num(x.extra)} oyni yopish uchun)</i>` : ''}\n${closes(x)}`;
+  const card = (x: any) => `<b>${esc(x.name)}</b> — ${vLabel(x)}\n📱 ${phone(x)}\n${priceLine(x)}\n${x.P ? `To‘lagan ${num(x.P)} · ` : ''}Vaucher <b>${num(x.due)} so‘m</b>\n${closes(x)}`;
   // Vaucher kiritilmaydiganlar (bir martalik berilgan va h.k.), lekin Edutizimda to'lov kerak
   const unpaid = rows.filter(x => !x.due && (x.must || 0) > 0);
   const totPay = unpaid.reduce((a, x) => a + (x.must || 0), 0);
