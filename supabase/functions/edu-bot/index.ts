@@ -1352,7 +1352,7 @@ async function expenseCategory(chatId: number, idx: number) {
 
 // ---------------------------------------------------------
 // 🎟 Vaucherlar: Edutizimda ismi yoki izohida "vaucher" yozilgan o'quvchilar.
-// Oylik narx: ingliz tili 520 000, matematika 455 000, Kids (2–6-sinf) hamma kurs 455 000; boshqa fanlar — 1 dars × 13 (taxminiy).
+// Oylik narx (har bir kurs): ingliz tili 520 000; matematika va boshqa barcha fanlar 455 000; Kids (2–6-sinf) hamma kurs 455 000.
 // Foizli vaucher: to'lov × foiz ÷ (100 − foiz) (= oylik narxning foizi); 100% — oylik narx; aniq summa — bir marta.
 // Edutizimda vaucher "Student ga voucher" (studentBonus), to'lov "Student to'ladi" (income) bo'lib yoziladi.
 // ---------------------------------------------------------
@@ -1371,7 +1371,7 @@ function parseVoucher(text: string) {
 }
 const cleanName = (n: string) => String(n || '').replace(new RegExp(String.raw`\s*\d[\d\s.,]*\s*(%|foiz\w*|so['‘’ʻ\x60]?m|som)?\s*(${VW})`, 'ig'), ' ').replace(new RegExp(VW, 'ig'), ' ').replace(/\s\d{1,3}\s*(%|foiz\w*)(?=\s|$)/ig, ' ').replace(/\s+/g, ' ').trim();
 async function voucherPrices() {
-  return { english: 520000, math: 455000, kids: 455000, ...((await getSetting<any>('eduVoucherPrices', {})) || {}) };
+  return { english: 520000, math: 455000, kids: 455000, other: 455000, ...((await getSetting<any>('eduVoucherPrices', {})) || {}) };
 }
 let vouchCache: { at: number; text: string } | null = null;
 async function voucherView(chatId: number, refresh = false) {
@@ -1410,6 +1410,7 @@ async function voucherView(chatId: number, refresh = false) {
       if (/kids/i.test(gname) || /kids/i.test(course)) { price += prices.kids; subjs.push(subjectOf(course) + ' · Kids'); }
       else if (/ingliz/i.test(course)) { price += prices.english; subjs.push(subjectOf(course)); }
       else if (/matem/i.test(course)) { price += prices.math; subjs.push(subjectOf(course)); }
+      else if (prices.other) { price += prices.other; subjs.push(subjectOf(course)); }
       else { const pl = (pmap.get(st.id) || []).find((x: any) => x.gid === String(sg._id)); price += (Number(pl?.price) || 0) * 13; estimate = true; subjs.push(subjectOf(course)); }
     }
     const gname = gnames.join(' + '), subj = subjs.join(' + ');
