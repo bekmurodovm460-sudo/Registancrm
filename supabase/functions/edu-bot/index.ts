@@ -1352,7 +1352,7 @@ async function expenseCategory(chatId: number, idx: number) {
 
 // ---------------------------------------------------------
 // 🎟 Vaucherlar: Edutizimda ismi yoki izohida "vaucher" yozilgan o'quvchilar.
-// Oylik narx (har bir kurs): ingliz tili 520 000; matematika va boshqa barcha fanlar 455 000; Kids (2–6-sinf) hamma kurs 455 000.
+// Vaucher bitta kurs narxidan: ingliz tili 520 000; matematika va boshqa barcha fanlar 455 000; Kids (2–6-sinf) 455 000.
 // Foizli vaucher: to'lov × foiz ÷ (100 − foiz) (= oylik narxning foizi); 100% — oylik narx; aniq summa — bir marta.
 // Edutizimda vaucher "Student ga voucher" (studentBonus), to'lov "Student to'ladi" (income) bo'lib yoziladi.
 // ---------------------------------------------------------
@@ -1400,18 +1400,17 @@ async function voucherView(chatId: number, refresh = false) {
   const dm = (iso: string) => { const d = new Date(new Date(iso).getTime() + 5 * 3600_000); return `${String(d.getUTCDate()).padStart(2, '0')}.${String(d.getUTCMonth() + 1).padStart(2, '0')}`; };
   const rows: any[] = [];
   for (const st of list) {
-    // Oylik narx — barcha faol guruhlar yig'indisi
+    // Oylik narx — BITTA kurs narxi (bir necha guruh bo'lsa ham qo'shilmaydi): ingliz tili 520 000 (Kids emas), qolgani 455 000
     let price = 0, estimate = false;
     const subjs: string[] = [], gnames: string[] = [];
     for (const sg of st.groups) {
       const g: any = gmap.get(String(sg._id)) || {};
       const gname = String(g.data?.name || g.name || sg.name || ''), course = String(g.data?.course?.name || '');
       gnames.push(gname);
-      if (/kids/i.test(gname) || /kids/i.test(course)) { price += prices.kids; subjs.push(subjectOf(course) + ' · Kids'); }
-      else if (/ingliz/i.test(course)) { price += prices.english; subjs.push(subjectOf(course)); }
-      else if (/matem/i.test(course)) { price += prices.math; subjs.push(subjectOf(course)); }
-      else if (prices.other) { price += prices.other; subjs.push(subjectOf(course)); }
-      else { const pl = (pmap.get(st.id) || []).find((x: any) => x.gid === String(sg._id)); price += (Number(pl?.price) || 0) * 13; estimate = true; subjs.push(subjectOf(course)); }
+      const kids = /kids/i.test(gname) || /kids/i.test(course);
+      const p1 = kids ? prices.kids : /ingliz/i.test(course) ? prices.english : /matem/i.test(course) ? prices.math : prices.other;
+      subjs.push(subjectOf(course) + (kids ? ' · Kids' : ''));
+      price = Math.max(price, Number(p1) || 0);
     }
     const gname = gnames.join(' + '), subj = subjs.join(' + ');
     // Edutizim: to'lovlar va vaucherlar
