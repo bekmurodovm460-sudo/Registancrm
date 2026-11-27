@@ -1356,19 +1356,20 @@ async function expenseCategory(chatId: number, idx: number) {
 // Foizli vaucher: to'lov × foiz ÷ (100 − foiz) (= oylik narxning foizi); 100% — oylik narx; aniq summa — bir marta.
 // Edutizimda vaucher "Student ga voucher" (studentBonus), to'lov "Student to'ladi" (income) bo'lib yoziladi.
 // ---------------------------------------------------------
-const VOUCH_RE = /va[uo]?cher|voucher|ваучер/i;
+const VW = String.raw`\bv[ao]u?n?[cс]h?e?r\w*|в[ао]у?н?ч[еэ]р\w*`;
+const VOUCH_RE = new RegExp(VW, 'i');
 function parseVoucher(text: string) {
   const t = String(text || '').replace(/\s+/g, ' ');
   if (!VOUCH_RE.test(t)) return null;
-  const pct = t.match(/(\d{1,3})\s*(%|foiz)/i);
+  const pct = t.match(/(\d{1,3})\s*(%|foiz\w*|фоиз\w*)/i);
   if (pct && Number(pct[1]) > 0 && Number(pct[1]) <= 100) return { kind: 'pct' as const, pct: Number(pct[1]) };
   const sum = t.match(/(\d[\d\s.,]{2,})\s*(so['‘’ʻ`]?m|som)/i);
   if (sum) { const v = Number(sum[1].replace(/\D/g, '')); if (v >= 1000) return { kind: 'sum' as const, sum: v }; }
-  const bare = t.match(/(\d[\d\s.,]*)\s*va[uo]?cher/i);
+  const bare = t.match(new RegExp(String.raw`(\d[\d\s.,]*)\s*(?:${VW})`, 'i'));
   if (bare) { const v = Number(bare[1].replace(/\D/g, '')); if (v > 0 && v <= 100) return { kind: 'pct' as const, pct: v, guess: true }; if (v >= 1000) return { kind: 'sum' as const, sum: v, guess: true }; }
   return { kind: 'unknown' as const };
 }
-const cleanName = (n: string) => String(n || '').replace(/\s*\d[\d\s.,]*\s*(%|foiz|so['‘’ʻ`]?m|som)?\s*va[uo]?cher\s*/ig, ' ').replace(/\s\d{1,3}\s*(%|foiz)(?=\s|$)/ig, ' ').replace(/\s+/g, ' ').trim();
+const cleanName = (n: string) => String(n || '').replace(new RegExp(String.raw`\s*\d[\d\s.,]*\s*(%|foiz\w*|so['‘’ʻ\x60]?m|som)?\s*(${VW})`, 'ig'), ' ').replace(new RegExp(VW, 'ig'), ' ').replace(/\s\d{1,3}\s*(%|foiz\w*)(?=\s|$)/ig, ' ').replace(/\s+/g, ' ').trim();
 async function voucherPrices() {
   return { english: 520000, math: 455000, kids: 455000, ...((await getSetting<any>('eduVoucherPrices', {})) || {}) };
 }
@@ -1399,19 +1400,23 @@ async function voucherView(chatId: number, refresh = false) {
   const dm = (iso: string) => { const d = new Date(new Date(iso).getTime() + 5 * 3600_000); return `${String(d.getUTCDate()).padStart(2, '0')}.${String(d.getUTCMonth() + 1).padStart(2, '0')}`; };
   const rows: any[] = [];
   for (const st of list) {
-    // Oylik narx (birinchi faol guruh bo'yicha)
-    const g: any = gmap.get(String(st.groups[0]._id)) || {};
-    const gname = String(g.data?.name || g.name || st.groups[0].name || '');
-    const course = String(g.data?.course?.name || '');
-    let price = 0, estimate = false, subj = subjectOf(course);
-    if (/kids/i.test(gname) || /kids/i.test(course)) { price = prices.kids; subj += ' · Kids'; }
-    else if (/ingliz/i.test(course)) price = prices.english;
-    else if (/matem/i.test(course)) price = prices.math;
-    else { const pl = (pmap.get(st.id) || []).find((x: any) => x.gid === String(st.groups[0]._id)); price = (Number(pl?.price) || 0) * 13; estimate = true; }
+    // Oylik narx — barcha faol guruhlar yig'indisi
+    let price = 0, estimate = false;
+    const subjs: string[] = [], gnames: string[] = [];
+    for (const sg of st.groups) {
+      const g: any = gmap.get(String(sg._id)) || {};
+      const gname = String(g.data?.name || g.name || sg.name || ''), course = String(g.data?.course?.name || '');
+      gnames.push(gname);
+      if (/kids/i.test(gname) || /kids/i.test(course)) { price += prices.kids; subjs.push(subjectOf(course) + ' · Kids'); }
+      else if (/ingliz/i.test(course)) { price += prices.english; subjs.push(subjectOf(course)); }
+      else if (/matem/i.test(course)) { price += prices.math; subjs.push(subjectOf(course)); }
+      else { const pl = (pmap.get(st.id) || []).find((x: any) => x.gid === String(sg._id)); price += (Number(pl?.price) || 0) * 13; estimate = true; subjs.push(subjectOf(course)); }
+    }
+    const gname = gnames.join(' + '), subj = subjs.join(' + ');
     // Edutizim: to'lovlar va vaucherlar
     const r = await edu('read', { path: '/student/transactions-pagin', body: { studentId: st.id }, limit: 200, pages: 5 });
     const tx: any[] = (r.items || []).filter((t: any) => t.type !== 'attendance');
-    const isVoucher = (t: any) => t.type === 'studentBonus' || /voucher|vaucher/i.test(t.paymentTransaction?.name || '');
+    const isVoucher = (t: any) => t.type === 'studentBonus' || VOUCH_RE.test(t.paymentTransaction?.name || '');
     const isPay = (t: any) => t.type === 'income' && !isVoucher(t);
     const inMonth = (t: any) => new Date(new Date(t.createdAt).getTime() + 5 * 3600_000).toISOString().slice(0, 7) === monthKey;
     const paid = tx.filter(t => isPay(t) && inMonth(t)), given = tx.filter(t => isVoucher(t) && inMonth(t)), everGiven = tx.filter(isVoucher);
