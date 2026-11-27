@@ -1489,8 +1489,8 @@ async function employeesList() {
 
 async function askContact(chatId: number, first = '') {
   await sticker(chatId, 'welcome');
-  await send(chatId, `👋 Assalomu alaykum${first ? ', <b>' + esc(first) + '</b>' : ''}!\n\n🏛 <b>Registan · Markaz</b> — xodimlar boti.\nKirish uchun pastdagi tugma orqali <b>telefon raqamingizni</b> yuboring. Top menejer tasdiqlagach bot ochiladi.`, {
-    reply_markup: { keyboard: [[{ text: '📱 Raqamni yuborish', request_contact: true }]], resize_keyboard: true, one_time_keyboard: true }
+  await send(chatId, `👋 Assalomu alaykum${first ? ', <b>' + esc(first) + '</b>' : ''}!\n\n🏛 <b>Registan · Markaz</b> — xodimlar boti.\nKirish uchun <b>telefon raqamingizni</b> yuboring:\n• pastdagi <b>📱 Raqamni yuborish</b> tugmasini bosing (ko‘rinmasa — yozish joyi yonidagi ⌨️ belgisini bosing), yoki\n• raqamni yozing: <b>+998 90 123 45 67</b>\n\nTop menejer tasdiqlagach bot ochiladi.`, {
+    reply_markup: { keyboard: [[{ text: '📱 Raqamni yuborish', request_contact: true }]], resize_keyboard: true, is_persistent: true, input_field_placeholder: '+998 90 123 45 67' }
   });
 }
 
@@ -1505,15 +1505,32 @@ async function directorJoin(chatId: number, from: any, phone: string, emp: any =
 
 async function register(chatId: number, m: any) {
   const c = m.contact;
-  if (!c || c.user_id !== m.from?.id) return void send(chatId, '📱 Faqat o‘zingizning raqamingizni tugma orqali yuboring.');
-  const digits = String(c.phone_number || '').replace(/\D/g, '').slice(-9);
+  if (c && c.user_id !== m.from?.id) return void send(chatId, '📱 Faqat o‘zingizning raqamingizni yuboring.');
+  // Tugma orqali — Telegram tasdiqlagan raqam; qo'lda yozilgan — tasdiqlanmagan (top baribir rolni tasdiqlaydi)
+  const verified = !!c;
+  const digits = String(c ? c.phone_number : normPhone(String(m.text || '')) || '').replace(/\D/g, '').slice(-9);
+  if (digits.length !== 9) return askContact(chatId, m.from?.first_name);
   const emp = (await employeesList()).find((e: any) => e.digits === digits);
   const name = emp?.name || [m.from.first_name, m.from.last_name].filter(Boolean).join(' ');
   const dirNames = ((await getSetting<string[]>('directorUsernames', [])) || []).map(x => String(x).toLowerCase().replace(/^@/, ''));
   if (m.from.username && dirNames.includes(String(m.from.username).toLowerCase())) return directorJoin(chatId, m.from, '+998' + digits, emp);
+  // Top oldindan qo'shgan raqam (faqat Telegram tasdiqlagan raqamda) — darhol shu rol
+  const pre = (await getSetting<Record<string, string>>('eduPreApproved', {})) || {};
+  if (verified && pre[digits]) {
+    const role0 = pre[digits] as Role;
+    const { [digits]: _used, ...rest } = pre;
+    await admin.from('crm_settings').upsert({ key: 'eduPreApproved', value: rest });
+    if (role0 === 'director') return directorJoin(chatId, m.from, '+998' + digits, emp);
+    await admin.from('crm_edu_bot_users').upsert({ tg_id: m.from.id, role: role0, full_name: name, phone: '+998' + digits, employee_id: emp?.id || null, tg_username: m.from.username || null, updated_at: new Date().toISOString() });
+    await syncCommands(m.from.id, role0);
+    await sticker(chatId, 'welcome');
+    await send(chatId, `🎉 Xush kelibsiz, <b>${esc(name)}</b>! Siz <b>${ROLE_NAME[role0]}</b> sifatida ulandingiz.\n\nPastdagi tugmalardan foydalaning 👇`, { reply_markup: menuFor(role0) });
+    await notifyTops(`✅ Oldindan qo‘shilgan xodim botga kirdi: <b>${esc(name)}</b> · +998${digits} — ${ROLE_NAME[role0]}`, { reply_markup: { inline_keyboard: [[ib('✏️ Rolni o‘zgartirish', `ur:${m.from.id}`)]] } });
+    return;
+  }
   await admin.from('crm_edu_bot_users').upsert({ tg_id: m.from.id, role: 'pending', full_name: name, phone: '+998' + digits, employee_id: emp?.id || null, tg_username: m.from.username || null, updated_at: new Date().toISOString() });
   await send(chatId, `✅ So‘rovingiz yuborildi.\n👤 ${esc(name)} · +998${digits}${emp ? '\n🗂 Edutizim’da topildi' : ''}\n\nTop menejer rolingizni tasdiqlashi bilan xabar beramiz.`, { reply_markup: { remove_keyboard: true } });
-  await notifyTops(`🆕 <b>Botga kirish so‘rovi</b>\n👤 ${esc(name)}${m.from.username ? ' · @' + esc(m.from.username) : ''}\n📱 +998${digits}\n🗂 Edutizim: ${emp ? 'xodim topildi ✅' : 'topilmadi ⚠️'}\n\nRolini tanlang:`, {
+  await notifyTops(`🆕 <b>Botga kirish so‘rovi</b>\n👤 ${esc(name)}${m.from.username ? ' · @' + esc(m.from.username) : ''}\n📱 +998${digits}${verified ? ' ✅ (Telegram tasdiqlagan)' : ' ⚠️ (qo‘lda yozilgan — Telegram tasdiqlamagan)'}\n🗂 Edutizim: ${emp ? 'xodim topildi ✅' : 'topilmadi ⚠️'}${pre[digits] ? `\n📝 Oldindan qo‘shilgan rol: ${ROLE_NAME[pre[digits]] || pre[digits]}` : ''}\n\nRolini tanlang:`, {
     reply_markup: { inline_keyboard: [[ib('👑 Top', `ua:${m.from.id}:top`), ib('🧭 Katta', `ua:${m.from.id}:senior`), ib('🎧 Servis', `ua:${m.from.id}:service`), ib('👩‍🏫 O‘qituvchi', `ua:${m.from.id}:teacher`)], [ib('👔 Rahbar', `ua:${m.from.id}:director`), ib('🎬 Media', `ua:${m.from.id}:media`), ib('⛔ Rad etish', `ua:${m.from.id}:blocked`)]] }
   });
 }
@@ -1532,8 +1549,29 @@ async function usersPanel(chatId: number) {
   const { data } = await admin.from('crm_edu_bot_users').select('tg_id,full_name,role,phone').order('role').order('full_name').limit(60);
   const list = data || [];
   await send(chatId, `👥 <b>Bot foydalanuvchilari</b> (${list.length})\n\n` + (list.map(u => `${ROLE_NAME[u.role] || u.role} — ${esc(u.full_name)} · ${esc(u.phone || '')}`).join('\n') || 'Hali yo‘q. Xodim botga /start yozib raqamini yuboradi.'), {
-    reply_markup: { inline_keyboard: list.slice(0, 30).map(u => [ib(`✏️ ${String(u.full_name).slice(0, 30)}`, `ur:${u.tg_id}`)]) }
+    reply_markup: { inline_keyboard: [[ib('➕ Xodim qo‘shish (raqam bilan)', 'pa:add')], ...list.slice(0, 30).map(u => [ib(`✏️ ${String(u.full_name).slice(0, 30)}`, `ur:${u.tg_id}`)])] }
   });
+  const pre = (await getSetting<Record<string, string>>('eduPreApproved', {})) || {};
+  const keys = Object.keys(pre);
+  if (keys.length) await send(chatId, `📝 <b>Oldindan qo‘shilgan raqamlar</b> (xodim botga kirib raqamini tugma orqali yuborsa, shu rolni oladi):\n${keys.map(d => `• +998${d} — ${ROLE_NAME[pre[d]] || pre[d]}`).join('\n')}`, {
+    reply_markup: { inline_keyboard: keys.slice(0, 20).map(d => [ib(`❌ +998${d}`, `pa:rm:${d}`)]) }
+  });
+}
+async function preApproveCallback(chatId: number, data: string) {
+  if (role() !== 'top') return void send(chatId, '⛔ Faqat top menejer.');
+  const [, act, d, r0] = data.split(':');
+  const pre = (await getSetting<Record<string, string>>('eduPreApproved', {})) || {};
+  if (act === 'add') { await setSession(chatId, 'pa_phone', {}); return void send(chatId, '➕ Xodimning telefon raqamini yozing (masalan +998 90 123 45 67):', { reply_markup: CANCEL_KB }); }
+  if (act === 'rm') { delete pre[d]; await admin.from('crm_settings').upsert({ key: 'eduPreApproved', value: pre }); return usersPanel(chatId); }
+  if (act === 'set' && /^\d{9}$/.test(d) && ['top', 'senior', 'director', 'service', 'teacher', 'media'].includes(r0)) {
+    // Shu raqam botda allaqachon bo'lsa — darhol rol beramiz
+    const { data: ex } = await admin.from('crm_edu_bot_users').select('tg_id').eq('phone', '+998' + d).maybeSingle();
+    if (ex) { await setSession(chatId, null); return setRole(chatId, Number(ex.tg_id), r0 as Role, als.getStore()?.from); }
+    pre[d] = r0;
+    await admin.from('crm_settings').upsert({ key: 'eduPreApproved', value: pre });
+    await setSession(chatId, null);
+    return void send(chatId, `✅ +998${d} — ${ROLE_NAME[r0]} sifatida oldindan qo‘shildi.\nXodim botga kirib, <b>📱 Raqamni yuborish</b> tugmasini bossa, darhol shu rol bilan ulanadi.\n\nXodimga yuboring: botni oching → Start → 📱 Raqamni yuborish.`, { reply_markup: menu() });
+  }
 }
 
 async function adminPanel(chatId: number) {
@@ -2169,7 +2207,7 @@ function cbAllowed(data: string, r: Role) {
   if (['go', 'home', 'acc', 'acl', 'acu'].includes(p)) return ['top', 'senior', 'service', 'teacher', 'media'].includes(r);
   if (r === 'media') return ['ai', 'ph', 'sch'].includes(p);
   if (r === 'top') return true;
-  if (r === 'senior') return !['bko', 'bkl', 'bkt', 'kt', 'ks', 'km', 'kb', 'ok', 'kx', 'pay', 'ua', 'ur', 'urs', 'adm', 'sms', 'sm1', 'sma', 'smt', 'smx', 'smi', 'smok', 'bd', 'bo', 'bda', 'bdy', 'pfx', 'pga', 'pgc', 'pok', 'tc'].includes(p);
+  if (r === 'senior') return !['pa', 'bko', 'bkl', 'bkt', 'kt', 'ks', 'km', 'kb', 'ok', 'kx', 'pay', 'ua', 'ur', 'urs', 'adm', 'sms', 'sm1', 'sma', 'smt', 'smx', 'smi', 'smok', 'bd', 'bo', 'bda', 'bdy', 'pfx', 'pga', 'pgc', 'pok', 'tc'].includes(p);
   if (r === 'service') return svc.includes(p);
   if (r === 'teacher') return tch.includes(p);
   return false;
@@ -2220,7 +2258,7 @@ async function onMessage(m: any) {
     const dirNames = ((await getSetting<string[]>('directorUsernames', [])) || []).map(x => String(x).toLowerCase().replace(/^@/, ''));
     if (dirNames.includes(String(m.from.username).toLowerCase())) return directorJoin(chatId, m.from, '');
   }
-  if (r === 'none') return m.contact ? register(chatId, m) : askContact(chatId, m.from?.first_name);
+  if (r === 'none') return m.contact || normPhone(text) ? register(chatId, m) : askContact(chatId, m.from?.first_name);
   if (r === 'pending') return void send(chatId, '⏳ So‘rovingiz top menejer tomonidan ko‘rib chiqilmoqda.', { reply_markup: { remove_keyboard: true } });
   if (r === 'blocked') return void send(chatId, '⛔ Botdan foydalanishga ruxsat yo‘q.', { reply_markup: { remove_keyboard: true } });
 
@@ -2313,6 +2351,15 @@ async function onMessage(m: any) {
       if (m.photo || m.video || m.document) return aiMedia(chatId, m);
       if (!text) return;
       return aiAsk(chatId, text, m.from);
+    case 'pa_phone': {
+      if (!isTop) break;
+      const ph = normPhone(m.contact?.phone_number || text);
+      if (!ph) return void send(chatId, 'Raqamni to‘g‘ri yozing: +998 90 123 45 67');
+      const d = ph.slice(-9);
+      return void send(chatId, `📱 +998${d} — qaysi rol?`, { reply_markup: { inline_keyboard: [
+        [ib('👑 Top', `pa:set:${d}:top`), ib('🧭 Katta', `pa:set:${d}:senior`), ib('👔 Rahbar', `pa:set:${d}:director`)],
+        [ib('🎧 Servis', `pa:set:${d}:service`), ib('👩‍🏫 O‘qituvchi', `pa:set:${d}:teacher`), ib('🎬 Media', `pa:set:${d}:media`)]] } });
+    }
     case 'om_qty':
       if (!isTop) break;
       return stockApply(chatId, s, text);
@@ -2490,6 +2537,7 @@ async function onCallback(q: any) {
   if (data.startsWith('bko:')) return bookOrderAction(chatId, data, q.from);
   if (data.startsWith('bkl:')) return bookLibrary(chatId, data);
   if (data.startsWith('om:')) return stockCallback(chatId, data);
+  if (data.startsWith('pa:')) return preApproveCallback(chatId, data);
   if (data === 'rp:hub') return reportsHub(chatId);
   if (data.startsWith('rp:')) { await typing(chatId); return void send(chatId, await summaryReport(data.slice(3) as any), { reply_markup: { inline_keyboard: [[ib('📑 Boshqa hisobotlar', 'rp:hub')]] } }); }
   if (data === 'ai:new') {
