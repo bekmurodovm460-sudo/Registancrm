@@ -2142,18 +2142,57 @@ const B_CL_EFF = '📊 Samaradorligim';
 const MENU_CALL = persist([[B_CL_NEW], [B_CL_MY, B_CL_EFF]]);
 const CALL_DEFAULT = ['Registan_Karshi_Manager'];
 const CALL_ST: Record<string, string> = { pending: '⏳ Kelishi kutilmoqda', writing: '⏳ Yozilmoqda', added: '✅ Edutizimga qo‘shildi', rejected: '❌ Rad etildi', failed: '⚠️ Yozilmadi' };
-async function callOperators(): Promise<string[]> {
-  const v = await getSetting<string[]>('callOperators', CALL_DEFAULT);
-  return (Array.isArray(v) && v.length ? v : CALL_DEFAULT).map(x => String(x).replace(/^@/, '').trim()).filter(Boolean);
+// Operator: username bo'yicha ("Registan_Karshi_Manager") yoki Telegram ID bo'yicha ({ id, name } — username'siz xodim)
+type COp = { key: string; label: string; username?: string; id?: number };
+async function callOps(): Promise<COp[]> {
+  const v = await getSetting<any[]>('callOperators', CALL_DEFAULT);
+  return (Array.isArray(v) ? v : CALL_DEFAULT).map((x: any) => typeof x === 'string'
+    ? { key: supKey(x), label: '@' + String(x).replace(/^@/, '').trim(), username: String(x).replace(/^@/, '').trim() }
+    : x?.id ? { key: 'id' + Number(x.id), label: String(x.name || x.id), id: Number(x.id) } : null).filter(Boolean) as COp[];
 }
-async function isCaller(from: any): Promise<string | null> {
+async function saveOps(list: COp[]) {
+  await admin.from('crm_settings').upsert({ key: 'callOperators', value: list.map(o => o.username || { id: o.id, name: o.label }) });
+}
+async function isCaller(from: any): Promise<COp | null> {
   if (!from?.id) return null;
-  const L = await callOperators();
-  const byName = from.username ? L.find(x => supKey(x) === supKey(from.username)) : null;
-  if (byName) return byName;
+  const L = await callOps();
+  const hit = L.find(o => (o.id && o.id === Number(from.id)) || (o.username && from.username && supKey(o.username) === supKey(from.username)));
+  if (hit) return hit;
   const ch = (await getSetting<Record<string, number>>('callOperatorChats', {})) || {};
   const k = Object.keys(ch).find(k => Number(ch[k]) === Number(from.id));
-  return k ? L.find(x => supKey(x) === k) || null : null;
+  return k ? L.find(o => o.key === k) || null : null;
+}
+// Top menejer: operator qo'shish (username / t.me havola / telefon — botdagi xodim bo'yicha) yoki kirish so'rovidan
+async function addCallOp(chatId: number, raw: string): Promise<string> {
+  const L = await callOps();
+  const t = raw.trim();
+  const ph = /^[+\d\s()-]{9,}$/.test(t) ? normPhone(t) : null;
+  let op: COp | null = null;
+  if (ph) {
+    const { data: u } = await admin.from('crm_edu_bot_users').select('tg_id,full_name,tg_username,phone').ilike('phone', `%${ph.slice(-9)}`).limit(1);
+    if (!u?.length) return `⚠️ ${esc(fmtPhone(ph))} raqamli odam botda topilmadi.\nU avval botga /start bosib, raqamini yuborsin — keyin qayta qo‘shing (yoki username yozing).`;
+    op = u[0].tg_username ? { key: supKey(u[0].tg_username), label: '@' + u[0].tg_username, username: u[0].tg_username } : { key: 'id' + Number(u[0].tg_id), label: u[0].full_name || String(u[0].tg_id), id: Number(u[0].tg_id) };
+    if (!u[0].tg_username) op.label = u[0].full_name || op.label;
+  } else {
+    const un = t.replace(/^(https?:\/\/)?t\.me\//i, '').replace(/^@/, '').trim();
+    if (!/^[A-Za-z][A-Za-z0-9_]{3,31}$/.test(un)) return '⚠️ Username (<b>@Registan_Karshi_Manager</b>), t.me havola yoki telefon raqam yozing.';
+    op = { key: supKey(un), label: '@' + un, username: un };
+  }
+  if (L.some(o => o.key === op!.key || (op!.id && o.id === op!.id))) return `ℹ️ ${esc(op.label)} allaqachon call operator.`;
+  await saveOps([...L, op]);
+  if (op.id) await send(op.id, `📞 Siz <b>call operator</b> sifatida qo‘shildingiz. /start bosing — call profili ochiladi.`).catch(() => {});
+  return `✅ <b>${esc(op.label)}</b> call operator qilib qo‘shildi.${op.id ? '\nUnga xabar yuborildi.' : '\nU botga /start bossa — call profili ochiladi.'}`;
+}
+async function callOpsView(chatId: number) {
+  const [L, chats, st] = await Promise.all([callOps(), getSetting<Record<string, number>>('callOperatorChats', {}), callStats(monthStartIso(0))]);
+  const ch = chats || {};
+  const lines = L.map((o, i) => {
+    const tgId = o.id || ch[o.key];
+    const x = tgId ? st.get(String(tgId)) : null;
+    return `<b>${i + 1}. ${esc(o.label)}</b> · ${tgId ? '✅ botga ulangan' : '⚠️ /start bosmagan'}${x ? `\n   shu oy: yuborgan ${x.sent} · qo‘shilgan ${x.added} · aktiv ${x.active}` : ''}`;
+  });
+  await send(chatId, `👥 <b>Call operatorlar</b>\n\n${lines.join('\n') || '<i>Operator yo‘q</i>'}\n\n<i>Qo‘shish: username, t.me havola yoki botdagi xodimning telefon raqami.</i>`, {
+    reply_markup: { inline_keyboard: [...L.map((o, i) => [ib(`🗑 ${o.label}`.slice(0, 60), `cq:opd:${i}`)]), [ib('➕ Operator qo‘shish', 'cq:op:0'), ib('⬅️ Call yuborganlar', 'cq:home:0')]] } });
 }
 const monthStartIso = (back = 0) => { const n = new Date(Date.now() + TZ); return new Date(Date.UTC(n.getUTCFullYear(), n.getUTCMonth() - back, 1) - TZ).toISOString(); };
 // Globus filiali aktiv guruhlari (Edutizimdan soatlik sinxron nusxasi)
@@ -2199,11 +2238,11 @@ async function managerIds(): Promise<string[]> {
   return [...new Set([...(await adminIds()), ...(data || []).map((r: any) => String(r.tg_id))])];
 }
 const crBtns = (id: number) => ({ inline_keyboard: [[ib('✅ Keldi — Edutizimga qo‘shish', `cq:a:${id}`)], [ib('👥 Guruhni o‘zgartirish', `cq:g:${id}`), ib('❌ Rad etish', `cq:r:${id}`)]] });
-async function callSubmit(chatId: number, d: any, from: any, op: string) {
+async function callSubmit(chatId: number, d: any, from: any, op: COp) {
   const { data: dup } = await admin.from('crm_edu_call_requests').select('id,caller_name,created_at,status').ilike('phone', `%${String(d.phone).replace(/\D/g, '').slice(-9)}`).neq('status', 'rejected').gte('created_at', new Date(Date.now() - 30 * DAY).toISOString()).limit(1);
   if (dup?.length) { await setSession(chatId, null); return void send(chatId, `ℹ️ Bu raqam ${dmy(new Date(dup[0].created_at).getTime())} da yuborilgan (#${dup[0].id}, ${esc(dup[0].caller_name || '')}) — takror yuborilmadi.`, { reply_markup: MENU_CALL }); }
   const { data: o, error } = await admin.from('crm_edu_call_requests').insert({
-    caller_tg: from.id, caller_name: '@' + op, full_name: d.name, phone: d.phone, course_id: d.courseId || null, course_name: d.course || null, level: d.level || null,
+    caller_tg: from.id, caller_name: op.label, full_name: d.name, phone: d.phone, course_id: d.courseId || null, course_name: d.course || null, level: d.level || null,
     group_id: d.groupId || null, group_name: d.groupName || null, note: d.note || null
   }).select('*').single();
   await setSession(chatId, null);
@@ -2211,7 +2250,7 @@ async function callSubmit(chatId: number, d: any, from: any, op: string) {
   const { data: ex } = await admin.from('crm_edu_students').select('full_name').eq('phone_digits', String(d.phone).replace(/\D/g, '').slice(-9)).limit(1);
   const exLine = ex?.length ? `\nℹ️ Bu raqam Edutizimda bor: ${esc(ex[0].full_name)} — tasdiqlansa unga buyurtma ochiladi.` : '';
   let n = 0;
-  for (const id of await managerIds()) { const r = await send(id, `📞 <b>Call center yubordi</b> · @${esc(op)}\n\n${crLine(o)}${exLine}\n\nO‘quvchi kelgach “✅ Keldi” ni bosing — Edutizimga <b>sizning nomingizdan</b> yoziladi.`, { reply_markup: crBtns(o.id) }).catch(() => null); if (r?.ok) n++; }
+  for (const id of await managerIds()) { const r = await send(id, `📞 <b>Call center yubordi</b> · ${esc(op.label)}\n\n${crLine(o)}${exLine}\n\nO‘quvchi kelgach “✅ Keldi” ni bosing — Edutizimga <b>sizning nomingizdan</b> yoziladi.`, { reply_markup: crBtns(o.id) }).catch(() => null); if (r?.ok) n++; }
   await send(chatId, `📨 <b>#${o.id}</b> menejerlarga yuborildi (${n} kishi).\nO‘quvchi kelib Edutizimga qo‘shilsa — shu yerga xabar keladi.`, { reply_markup: MENU_CALL });
 }
 
@@ -2248,11 +2287,11 @@ async function callMine(chatId: number, callerTg: number) {
 }
 
 // --- operator profili (router) ---
-async function callUpdate(update: any, op: string) {
+async function callUpdate(update: any, op: COp) {
   const from = update.message?.from || update.callback_query?.from;
   const chatId = Number(update.message?.chat?.id ?? update.callback_query?.message?.chat?.id ?? from.id);
   const chats = (await getSetting<Record<string, number>>('callOperatorChats', {})) || {};
-  if (Number(chats[supKey(op)]) !== Number(from.id)) await admin.from('crm_settings').upsert({ key: 'callOperatorChats', value: { ...chats, [supKey(op)]: Number(from.id) } });
+  if (Number(chats[op.key]) !== Number(from.id)) await admin.from('crm_settings').upsert({ key: 'callOperatorChats', value: { ...chats, [op.key]: Number(from.id) } });
   const s = await getSession(chatId);
   if (update.callback_query) {
     const q = update.callback_query, data = String(q.data || '');
@@ -2281,7 +2320,7 @@ async function callUpdate(update: any, op: string) {
   const text = String(m.text || '').trim();
   if (text === '/start' || text === '/menu') {
     await setSession(chatId, null);
-    return void send(chatId, `📞 <b>Call center profili</b> · @${esc(op)} · Registan LC (Globus filiali)\n\n• ${B_CL_NEW} — ism, telefon, kurs, daraja va guruhni tanlab menejerlarga yuborasiz\n• O‘quvchi kelib, menejer tasdiqlasa — Edutizimga qo‘shiladi va sizga xabar keladi\n• Guruhda aktiv o‘qiy boshlasa — yana xabar keladi\n• ${B_CL_EFF} — oy davomida nechta yuborganingiz va natijasi`, { reply_markup: MENU_CALL });
+    return void send(chatId, `📞 <b>Call center profili</b> · ${esc(op.label)} · Registan LC (Globus filiali)\n\n• ${B_CL_NEW} — ism, telefon, kurs, daraja va guruhni tanlab menejerlarga yuborasiz\n• O‘quvchi kelib, menejer tasdiqlasa — Edutizimga qo‘shiladi va sizga xabar keladi\n• Guruhda aktiv o‘qiy boshlasa — yana xabar keladi\n• ${B_CL_EFF} — oy davomida nechta yuborganingiz va natijasi`, { reply_markup: MENU_CALL });
   }
   if (text === B_CANCEL || text === '/cancel') { await setSession(chatId, null); return void send(chatId, '❌ Bekor qilindi.', { reply_markup: MENU_CALL }); }
   if (text === B_CL_NEW) { await setSession(chatId, 'cl_name', {}); return void send(chatId, '👤 O‘quvchining familiya va ismini yozing:', { reply_markup: CANCEL_KB }); }
@@ -2310,7 +2349,7 @@ async function callInbox(chatId: number) {
   const { data } = await admin.from('crm_edu_call_requests').select('*').in('status', ['pending', 'failed']).order('created_at').limit(15);
   const st = await callStats(monthStartIso(0));
   const eff = [...st.values()].map(x => `• <b>${esc(x.name)}</b>: yuborgan ${x.sent} · qo‘shilgan ${x.added} (${pct(x.added, x.sent)}%) · aktiv ${x.active} (${pct(x.active, x.sent)}%)`).join('\n');
-  await send(chatId, `📞 <b>Call center yuborganlar</b>\n\n<b>Shu oy:</b>\n${eff || '<i>hali yo‘q</i>'}\n\n⏳ Kelishi kutilayotganlar: <b>${(data || []).length}</b>`, { reply_markup: { inline_keyboard: [[ib('🗂 Shu oy hammasi', 'cq:all:0'), ib('➕ Operator qo‘shish', 'cq:op:0')]] } });
+  await send(chatId, `📞 <b>Call center yuborganlar</b>\n\n<b>Shu oy:</b>\n${eff || '<i>hali yo‘q</i>'}\n\n⏳ Kelishi kutilayotganlar: <b>${(data || []).length}</b>`, { reply_markup: { inline_keyboard: [[ib('🗂 Shu oy hammasi', 'cq:all:0'), ib('👥 Operatorlar', 'cq:ops:0')]] } });
   for (const o of data || []) await send(chatId, `${crLine(o)}\n✍️ ${esc(o.caller_name || '')} · ${dmy(new Date(o.created_at).getTime())}${o.status === 'failed' ? `\n⚠️ Oldingi urinish: ${esc(o.result || '')}` : ''}`, { reply_markup: crBtns(o.id) });
 }
 async function callDecide(chatId: number, data: string, s: any, from: any) {
@@ -2320,10 +2359,32 @@ async function callDecide(chatId: number, data: string, s: any, from: any) {
     const { data: L } = await admin.from('crm_edu_call_requests').select('*').gte('created_at', monthStartIso(0)).order('created_at', { ascending: false }).limit(60);
     return sendLong(chatId, (L || []).length ? `🗂 <b>Shu oy call yuborganlar (${L!.length})</b>\n\n${L!.map(o => `<b>#${o.id}</b> ${esc(o.full_name)} · ${esc(o.course_name || '')} · ${esc(o.caller_name || '')}\n   ${CALL_ST[o.status] || o.status}${o.active_at ? ' · 🎓 aktiv' : ''}${o.manager_name ? ` · ${esc(o.manager_name)}` : ''} · ${dmy(new Date(o.created_at).getTime())}`).join('\n')}` : 'Shu oy hali yo‘q.');
   }
+  if (act === 'home') return callInbox(chatId);
+  if (['op', 'ops', 'opd', 'opdy'].includes(act) && role() !== 'top') return void send(chatId, '⛔ Operatorlarni faqat top menejer boshqaradi.');
+  if (act === 'ops') return callOpsView(chatId);
   if (act === 'op') {
-    if (role() !== 'top') return void send(chatId, '⛔ Operatorni faqat top menejer qo‘shadi.');
     await setSession(chatId, 'cq_op', {});
-    return void send(chatId, `➕ Call operatorning Telegram username’ini yozing (hozir: ${(await callOperators()).map(x => '@' + esc(x)).join(', ')}):`, { reply_markup: CANCEL_KB });
+    return void send(chatId, '➕ <b>Call operator qo‘shish</b>\n\nYozing:\n• Telegram username — <b>@Registan_Karshi_Manager</b>\n• yoki t.me havola\n• yoki telefon raqami (botga /start bosib, raqamini yuborgan bo‘lsa)', { reply_markup: CANCEL_KB });
+  }
+  if (act === 'opd' || act === 'opdy') {
+    const L = await callOps(); const o = L[id];
+    if (!o) return callOpsView(chatId);
+    if (act === 'opd') return void send(chatId, `🗑 <b>${esc(o.label)}</b> call operatorlikdan olinsinmi? (Yuborganlari tarixi saqlanadi.)`, { reply_markup: { inline_keyboard: [[ib('✅ Ha', `cq:opdy:${id}`), ib('❌ Yo‘q', 'cq:ops:0')]] } });
+    await saveOps(L.filter((_, i) => i !== id));
+    const ch = { ...((await getSetting<Record<string, number>>('callOperatorChats', {})) || {}) }; const tgId = o.id || ch[o.key]; delete ch[o.key];
+    await admin.from('crm_settings').upsert({ key: 'callOperatorChats', value: ch });
+    if (tgId) await send(tgId, '📞 Call operator profilingiz yopildi.', { reply_markup: { remove_keyboard: true } }).catch(() => {});
+    await send(chatId, `🗑 ${esc(o.label)} olib tashlandi.`);
+    return callOpsView(chatId);
+  }
+  if (act === 'u') {
+    if (role() !== 'top') return void send(chatId, '⛔ Faqat top menejer.');
+    const { data: u } = await admin.from('crm_edu_bot_users').select('tg_id,full_name,tg_username').eq('tg_id', id).maybeSingle();
+    if (!u) return void send(chatId, 'Foydalanuvchi topilmadi.');
+    const r = await addCallOp(chatId, u.tg_username ? '@' + u.tg_username : '');
+    if (!u.tg_username) { const L = await callOps(); if (!L.some(o => o.id === id)) { await saveOps([...L, { key: 'id' + id, label: u.full_name || String(id), id }]); await send(id, '📞 Siz <b>call operator</b> sifatida qo‘shildingiz. /start bosing — call profili ochiladi.').catch(() => {}); } return void send(chatId, `✅ <b>${esc(u.full_name || String(id))}</b> call operator qilib qo‘shildi. Unga xabar yuborildi.`); }
+    if (u.tg_username) await send(id, '📞 Siz <b>call operator</b> sifatida qo‘shildingiz. /start bosing — call profili ochiladi.').catch(() => {});
+    return void send(chatId, r);
   }
   const { data: o } = await admin.from('crm_edu_call_requests').select('*').eq('id', id).maybeSingle();
   if (!o) return void send(chatId, 'So‘rov topilmadi.');
@@ -2622,7 +2683,7 @@ async function register(chatId: number, m: any) {
   await admin.from('crm_edu_bot_users').upsert({ tg_id: m.from.id, role: 'pending', full_name: name, phone: '+998' + digits, employee_id: emp?.id || null, tg_username: m.from.username || null, updated_at: new Date().toISOString() });
   await send(chatId, `✅ So‘rovingiz yuborildi.\n👤 ${esc(name)} · +998${digits}${emp ? '\n🗂 Edutizim’da topildi' : ''}\n\nTop menejer rolingizni tasdiqlashi bilan xabar beramiz.`, { reply_markup: { remove_keyboard: true } });
   await notifyTops(`🆕 <b>Botga kirish so‘rovi</b>\n👤 ${esc(name)}${m.from.username ? ' · @' + esc(m.from.username) : ''}\n📱 +998${digits}${verified ? ' ✅ (Telegram tasdiqlagan)' : ' ⚠️ (qo‘lda yozilgan — Telegram tasdiqlamagan)'}\n🗂 Edutizim: ${emp ? 'xodim topildi ✅' : 'topilmadi ⚠️'}${pre[digits] ? `\n📝 Oldindan qo‘shilgan rol: ${ROLE_NAME[pre[digits]] || pre[digits]}` : ''}\n\nRolini tanlang:`, {
-    reply_markup: { inline_keyboard: [[ib('👑 Top', `ua:${m.from.id}:top`), ib('🧭 Katta', `ua:${m.from.id}:senior`), ib('🎧 Servis', `ua:${m.from.id}:service`), ib('👩‍🏫 O‘qituvchi', `ua:${m.from.id}:teacher`)], [ib('👔 Rahbar', `ua:${m.from.id}:director`), ib('🎬 Media', `ua:${m.from.id}:media`), ib('⛔ Rad etish', `ua:${m.from.id}:blocked`)]] }
+    reply_markup: { inline_keyboard: [[ib('👑 Top', `ua:${m.from.id}:top`), ib('🧭 Katta', `ua:${m.from.id}:senior`), ib('🎧 Servis', `ua:${m.from.id}:service`), ib('👩‍🏫 O‘qituvchi', `ua:${m.from.id}:teacher`)], [ib('👔 Rahbar', `ua:${m.from.id}:director`), ib('🎬 Media', `ua:${m.from.id}:media`), ib('⛔ Rad etish', `ua:${m.from.id}:blocked`)], [ib('📞 Call operator', `cq:u:${m.from.id}`)]] }
   });
 }
 
@@ -3459,15 +3520,14 @@ async function onMessage(m: any) {
   const s = await getSession(chatId);
   if (isTop && await catalogStep(chatId, s, text, m.from)) return;
   if (isTop && s.step === 'cq_op') {
-    const u = text.replace(/^https?:\/\/t\.me\//i, '').replace(/^@/, '').trim();
-    if (!/^[A-Za-z][A-Za-z0-9_]{3,31}$/.test(u)) return void send(chatId, 'Telegram username yozing, masalan: <b>@Registan_Karshi_Manager</b>');
-    const L = await callOperators();
+    const res = await addCallOp(chatId, text);
+    if (res.startsWith('⚠️')) return void send(chatId, res);
     await setSession(chatId, null);
-    if (!L.some(x => supKey(x) === supKey(u))) await admin.from('crm_settings').upsert({ key: 'callOperators', value: [...L, u] });
-    return void send(chatId, `✅ <b>@${esc(u)}</b> call operator. U botga /start bossa — call profili ochiladi.`, { reply_markup: menu() });
+    await send(chatId, res, { reply_markup: menu() });
+    return callOpsView(chatId);
   }
   if (isTop && s.step === 'pub_add') {
-    const u = text.replace(/^https?:\/\/t\.me\//i, '').replace(/^@/, '').trim();
+    const u = text.replace(/^(https?:\/\/)?t\.me\//i, '').replace(/^@/, '').trim();
     if (!/^[A-Za-z][A-Za-z0-9_]{3,31}$/.test(u)) return void send(chatId, 'Telegram username yozing, masalan: <b>@zomaxcom</b>');
     const L = await supplierList();
     await setSession(chatId, null);
