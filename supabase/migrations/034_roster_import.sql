@@ -18,7 +18,8 @@ begin
       new_schools := new_schools + 1;
     end if;
     if not exists (select 1 from crm_classes where school_id = sch and name = cls) then
-      insert into crm_classes (school_id, name, data) values (sch, cls, jsonb_build_object('name', cls, 'teacher', '', 'phone', '', 'expected', 0));
+      -- crm_classes.school_id ham data->>'schoolId' dan hisoblanadi (generated)
+      insert into crm_classes (name, data) values (cls, jsonb_build_object('name', cls, 'schoolId', sch, 'teacher', '', 'phone', '', 'expected', 0));
       new_classes := new_classes + 1;
     end if;
     select s.id into sid from crm_students s
@@ -32,9 +33,10 @@ begin
       end if;
     else
       sid := nextval('crm_bot_student_seq');
-      insert into crm_students (id, class_name, school_id, data) values (sid, cls, sch, jsonb_build_object(
+      -- class_name va school_id — data dan avtomatik hisoblanadigan ustunlar (generated), shuning uchun faqat data yoziladi
+      insert into crm_students (id, data) values (sid, jsonb_build_object(
         'id', sid, 'fullName', nm, 'className', cls, 'schoolId', sch, 'phone', coalesce(ph, ''),
-        'q1', null, 'q2', null, 'score', null, 'callStatus', case when ph is null then 'Raqamsiz' else 'Qo‘ng‘iroq qilinmagan' end,
+        'q1', null, 'q2', null, 'score', null, 'callStatus', case when ph is null then 'Raqamsiz' else 'Yangi' end,
         'note', 'Telegram bot: Excel ro‘yxatdan' || coalesce(' · ' || p_by, ''), 'source', 'telegram-roster'));
       created := created + 1;
     end if;
