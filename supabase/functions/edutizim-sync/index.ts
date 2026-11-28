@@ -136,7 +136,7 @@ async function pushLeads(base: string, headers: Record<string, string>, body: an
         row.edu_order_id = out?.data?._id || null;
         row.ok = true;
         row.message = 'Buyurtma (mavjud o‘quvchi)';
-        results.push({ ok: true, orderId: row.edu_order_id, message: row.message });
+        results.push({ ok: true, orderId: row.edu_order_id, studentId: sid, message: row.message });
         await admin.from('crm_edu_pushes').insert(row);
         continue;
       }
@@ -159,7 +159,7 @@ async function pushLeads(base: string, headers: Record<string, string>, body: an
       row.edu_student_id = out?.data?.studentId || out?.data?.student?._id || null;
       row.ok = true;
       row.message = 'Lid yaratildi';
-      results.push({ crmId: st.crmId, ok: true, orderId: row.edu_order_id, message: row.message });
+      results.push({ crmId: st.crmId, ok: true, orderId: row.edu_order_id, studentId: row.edu_student_id, message: row.message });
     } catch (e) {
       row.ok = false;
       row.message = String((e as Error).message || e).slice(0, 300);
