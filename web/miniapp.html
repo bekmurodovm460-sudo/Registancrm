@@ -172,9 +172,24 @@
         <div><span class="block text-xs font-extrabold muted mb-2">3. Sinf harfi</span><div id="p-letters" class="grid grid-cols-4 gap-2"><div class="col-span-4 muted text-sm">Avval sinfni tanlang</div></div></div>
         <div id="p-test" class="text-xs font-bold hidden" style="color:var(--brand-2)"></div>
         <div id="p-files" class="flex flex-wrap gap-2"></div>
-        <label><span>4. O‘quvchining familiya va ismi</span><input id="p-name" class="inp" placeholder="Masalan: Karimov Azizbek" /></label>
-        <label><span>5. O‘quvchi telefoni (ixtiyoriy)</span><input id="p-sphone" class="inp" inputmode="tel" placeholder="+998 __ ___ __ __" /></label>
-        <label><span>6. Ota-ona telefoni (ixtiyoriy)</span><input id="p-pphone" class="inp" inputmode="tel" placeholder="+998 __ ___ __ __" /></label>
+        <div>
+          <span class="block text-xs font-extrabold muted mb-2">4. O‘quvchi</span>
+          <div id="p-picked" class="hidden p-3 rounded-2xl flex items-center gap-3" style="background:var(--soft);border:1.5px solid var(--brand)">
+            <div class="text-2xl">👤</div>
+            <div class="flex-1 min-w-0"><div id="p-picked-name" class="font-black truncate"></div><div id="p-picked-cls" class="text-xs muted"></div></div>
+            <button type="button" id="p-change" class="chip px-3">✏️ Boshqa</button>
+          </div>
+          <div id="p-pick" class="space-y-2">
+            <input id="p-find" class="inp" placeholder="🔍 Ism bo‘yicha qidirish" autocomplete="off" />
+            <div id="p-list" class="space-y-1.5 max-h-72 overflow-auto"><div class="muted text-sm">Avval sinf va harfini tanlang</div></div>
+            <button type="button" id="p-newbtn" class="w-full text-center text-xs font-extrabold muted py-1">➕ Ro‘yxatda yo‘q o‘quvchi</button>
+            <label id="p-newwrap" class="hidden"><span>Familiya va ismi</span><input id="p-name" class="inp" placeholder="Masalan: Karimov Azizbek" /></label>
+          </div>
+        </div>
+        <div class="grid grid-cols-2 gap-2">
+          <label><span>5. Otasining telefoni</span><input id="p-father" class="inp" inputmode="tel" placeholder="+998 __ ___ __ __" /></label>
+          <label><span>6. Onasining telefoni</span><input id="p-mother" class="inp" inputmode="tel" placeholder="+998 __ ___ __ __" /></label>
+        </div>
         <div>
           <span class="block text-xs font-extrabold muted mb-2">7. Natija</span>
           <div id="p-mode" class="grid grid-cols-2 gap-2">
@@ -618,6 +633,7 @@
       const b = e.target.closest('[data-pg]'); if (!b) return;
       haptic(); pGrade = b.dataset.pg; pCls = '';
       $('p-grades').querySelectorAll('[data-pg]').forEach(x => x.classList.toggle('on', x === b));
+      pStu = []; pPick(null); $('p-list').innerHTML = '<div class="muted text-sm">Sinf harfini tanlang</div>';
       $('p-letters').innerHTML = '<div class="col-span-4 muted text-sm">⏳</div>';
       const r = await api('pLetters', { school: $('p-school').value, grade: pGrade });
       if (!r.ok) return ($('p-err').textContent = r.error);
@@ -633,7 +649,46 @@
       const b = e.target.closest('[data-pc]'); if (!b) return;
       haptic(); pCls = b.dataset.pc;
       $('p-letters').querySelectorAll('[data-pc]').forEach(x => x.classList.toggle('on', x === b));
+      pLoadStudents();
     };
+    // ---- 4. O'quvchi: CRM'dagi sinf ro'yxatidan tanlash (ism va sinf o'zi chiqadi) ----
+    let pStu = [], pSel = null;
+    async function pLoadStudents(keepId) {
+      pPick(null);
+      $('p-list').innerHTML = '<div class="muted text-sm">⏳ Ro‘yxat yuklanmoqda…</div>';
+      const r = await api('pStudents', { school: $('p-school').value, cls: pCls, test: pTest?.code || '' });
+      if (!r.ok) return ($('p-list').innerHTML = `<div class="text-sm" style="color:var(--bad)">${esc(r.error)}</div>`);
+      pStu = r.students || [];
+      pRenderList();
+      if (keepId) { const nx = pStu.find(x => !x.done && x.id !== keepId); if (nx) pPick(nx); }
+    }
+    function pRenderList() {
+      const q = $('p-find').value.trim().toLowerCase();
+      const L = pStu.filter(x => !q || x.name.toLowerCase().includes(q));
+      const done = pStu.filter(x => x.done).length;
+      $('p-list').innerHTML = (pStu.length ? `<div class="text-xs muted">${esc(pCls)}: ${pStu.length} ta o‘quvchi · ✅ ${done} tasi kiritilgan</div>` : '') +
+        (L.map(x => `<button type="button" class="w-full text-left p-2.5 rounded-xl flex items-center gap-2" style="border:1.5px solid var(--line)${x.done ? ';opacity:.6' : ''}" data-ps="${x.id}">
+          <span>${x.done ? '✅' : '○'}</span><span class="flex-1 font-bold truncate">${esc(x.name)}</span>${x.done ? `<span class="text-xs muted">${x.score} ball</span>` : ''}</button>`).join('')
+        || `<div class="muted text-sm">${pStu.length ? 'Topilmadi' : 'Bu sinfda CRM’da o‘quvchi yo‘q — “➕ Ro‘yxatda yo‘q o‘quvchi” orqali yozing'}</div>`);
+    }
+    function pPick(x) {
+      pSel = x;
+      $('p-picked').classList.toggle('hidden', !x);
+      $('p-pick').classList.toggle('hidden', !!x);
+      $('p-newwrap').classList.add('hidden');
+      $('p-name').value = '';
+      if (x) {
+        $('p-picked-name').textContent = x.name;
+        $('p-picked-cls').textContent = `${$('p-school').selectedOptions[0]?.textContent || ''} · ${pCls}${x.done ? ` · avvalgi natija: ${x.score} ball` : ''}`;
+        $('p-father').value = x.father || ''; $('p-mother').value = x.mother || '';
+        $('p-q1').value = ''; $('p-q2').value = ''; pScore();
+        setTimeout(() => $('p-q1').focus(), 200);
+      }
+    }
+    $('p-find').oninput = pRenderList;
+    $('p-list').onclick = e => { const b = e.target.closest('[data-ps]'); if (!b) return; haptic(); pPick(pStu.find(x => x.id === Number(b.dataset.ps))); };
+    $('p-change').onclick = () => { haptic(); pPick(null); $('p-find').focus(); };
+    $('p-newbtn').onclick = () => { haptic(); $('p-newwrap').classList.toggle('hidden'); $('p-name').focus(); };
     // ---- Natijani kiritish usuli: qo'lda (to'g'ri javoblar soni) yoki varaq ----
     const pSplit = () => {
       const n = Number(pTest?.num_questions) || 0, q1c = Number(pTest?.q1_count) || 0;
@@ -678,14 +733,14 @@
       $('p-err').textContent = '';
       if (!pCls) return ($('p-err').textContent = 'Sinf va harfini tanlang', haptic('err'), false);
       if (!pTest) return ($('p-err').textContent = 'Bu sinf uchun faol test yo‘q', haptic('err'), false);
-      if ($('p-name').value.trim().length < 3) return ($('p-err').textContent = 'O‘quvchining familiya va ismini yozing', haptic('err'), false);
-      for (const id of ['p-sphone', 'p-pphone']) {
+      if (!pSel && $('p-name').value.trim().length < 3) return ($('p-err').textContent = 'O‘quvchini ro‘yxatdan tanlang (yoki “Ro‘yxatda yo‘q” orqali ismini yozing)', haptic('err'), false);
+      for (const id of ['p-father', 'p-mother']) {
         const d = $(id).value.replace(/\D/g, '');
         if (d && d.length < 9) return ($('p-err').textContent = 'Telefon raqamini to‘liq yozing yoki bo‘sh qoldiring', haptic('err'), false);
       }
       return true;
     }
-    const pPayload = () => ({ school: $('p-school').value, cls: pCls, name: $('p-name').value.trim(), studentPhone: $('p-sphone').value, parentPhone: $('p-pphone').value });
+    const pPayload = () => ({ school: $('p-school').value, cls: pCls, studentId: pSel?.id || null, name: pSel ? pSel.name : $('p-name').value.trim(), fatherPhone: $('p-father').value, motherPhone: $('p-mother').value });
     $('p-shot').onclick = () => {
       if (!pValidate()) return;
       $('p-file').value = '';
@@ -713,11 +768,13 @@
       renderResult($('p-result'), pTest, res);
       $('p-result').insertAdjacentHTML('beforeend', `<button id="p-next" class="btn mt-4">➕ ${esc(pCls)} — keyingi o‘quvchi</button>`);
       $('p-next').onclick = () => {
-        ['p-name', 'p-sphone', 'p-pphone', 'p-q1', 'p-q2'].forEach(id => ($(id).value = ''));
+        ['p-name', 'p-father', 'p-mother', 'p-q1', 'p-q2'].forEach(id => ($(id).value = ''));
         pScore();
         $('p-result').classList.add('hidden');
+        $('p-find').value = '';
+        // Ro'yxat yangilanadi va navbatdagi natijasi kiritilmagan o'quvchi o'zi tanlanadi
+        pLoadStudents(pSel?.id || -1);
         window.scrollTo({ top: 0, behavior: 'smooth' });
-        setTimeout(() => $('p-name').focus(), 300);
       };
     }
     $('p-file').onchange = async () => {

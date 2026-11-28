@@ -313,6 +313,7 @@ Deno.serve(async req => {
       // ================= 👮 NAZORATCHILAR =================
       case 'pGrades':
       case 'pLetters':
+      case 'pStudents':
       case 'pFile':
       case 'pCheck': {
         const p = await getProctor();
@@ -334,6 +335,18 @@ Deno.serve(async req => {
           const test = t ? { ...t, files: (t.files || []).map((f: any) => ({ name: f.name, size: f.size })) } : null;
           return json({ ok: true, classes: ((letters as any[]) || []).map(l => l.class_name), test });
         }
+        if (body.action === 'pStudents') {
+          // Tanlangan sinfdagi CRM o'quvchilari: ism, ota/ona telefoni va natija kiritilganmi
+          const cls = String(body.cls || '');
+          const { data: st } = await admin.from('crm_students').select('id,data').eq('school_id', school).eq('class_name', cls).limit(300);
+          const code = String(body.test || '');
+          const list = (st || []).map((x: any) => {
+            const d = x.data || {};
+            return { id: Number(x.id), name: String(d.fullName || ''), father: d.fatherPhone || '', mother: d.motherPhone || (d.fatherPhone ? '' : d.phone || ''),
+              q1: d.q1 ?? null, q2: d.q2 ?? null, score: d.score ?? null, done: d.score !== null && d.score !== undefined && (!code || d.lastExam?.test === code) };
+          }).filter(x => x.name).sort((a, b) => a.name.localeCompare(b.name, 'uz'));
+          return json({ ok: true, students: list });
+        }
         if (body.action === 'pFile') {
           // Testning asl fayli (savollar kitobchasi): 30 daqiqalik vaqtinchalik havola
           const { data: t } = await admin.from('crm_tests').select('code,files,kind,active').eq('code', String(body.code || '')).maybeSingle();
@@ -351,8 +364,15 @@ Deno.serve(async req => {
         const { data: ts } = await admin.from('crm_tests').select('*').eq('active', true).eq('kind', 'school').contains('grades', [grade]).order('created_at', { ascending: false }).limit(1);
         const test = (ts || [])[0];
         if (!test) return json({ ok: false, error: `${grade}-sinf uchun faol maktab testi yo‘q` });
-        const name = String(body.name || '').trim().replace(/\s+/g, ' ').slice(0, 80);
-        if (name.length < 3) return json({ ok: false, error: 'Familiya va ismni yozing' });
+        // Ro'yxatdan tanlangan o'quvchi — ism va sinf CRM'dan olinadi
+        let picked: any = null;
+        if (body.studentId) {
+          const { data: ps } = await admin.from('crm_students').select('id,data,school_id,class_name').eq('id', Number(body.studentId)).maybeSingle();
+          if (!ps || ps.school_id !== school || ps.class_name !== cls) return json({ ok: false, error: 'O‘quvchi bu sinfda topilmadi — ro‘yxatni yangilang' });
+          picked = ps;
+        }
+        const name = String(picked ? picked.data?.fullName : body.name || '').trim().replace(/\s+/g, ' ').slice(0, 80);
+        if (name.length < 3) return json({ ok: false, error: 'O‘quvchini ro‘yxatdan tanlang yoki familiya va ismini yozing' });
         const norm = (t: unknown) => { const d = String(t || '').replace(/\D/g, ''); return d.length >= 9 ? '+998' + d.slice(-9) : null; };
         let answers: string | null = null;
         let g: { total: number; correct: number; q1: number; q2: number; score: number; wrong: { q: number; given: string; right: string }[] };
@@ -374,12 +394,18 @@ Deno.serve(async req => {
         const q2 = Number(test.q1_count) ? g.q2 : 0;
         const { data: sc } = await admin.from('crm_schools').select('data').eq('id', school).maybeSingle();
         const schoolName = (sc?.data as any)?.name || school;
+        const father = norm(body.fatherPhone), mother = norm(body.motherPhone);
         const { data: r, error } = await admin.rpc('crm_bot_record_result', {
           p_school: school, p_class: cls, p_name: name, p_q1: q1, p_q2: q2, p_score: g.score, p_test: test.code,
-          p_student_phone: norm(body.studentPhone), p_parent_phone: norm(body.parentPhone)
+          p_student_phone: norm(body.studentPhone), p_parent_phone: father || mother || norm(body.parentPhone)
         });
         if (error) throw error;
         const rec = (r as any[])?.[0] || null;
+        // Otasi va onasining telefoni alohida saqlanadi
+        if (rec?.student_id && (father || mother)) {
+          const { data: cur } = await admin.from('crm_students').select('data').eq('id', rec.student_id).maybeSingle();
+          await admin.from('crm_students').update({ data: { ...(cur?.data || {}), ...(father ? { fatherPhone: father } : {}), ...(mother ? { motherPhone: mother } : {}) } }).eq('id', rec.student_id);
+        }
         await admin.from('crm_omr_submissions').insert({
           test_code: test.code, source: body.manual ? 'miniapp-proctor-manual' : 'miniapp-proctor', chat_id: chatId, student_name: name, answers,
           correct: g.correct, q1_correct: g.q1, q2_correct: g.q2, score: g.score,
