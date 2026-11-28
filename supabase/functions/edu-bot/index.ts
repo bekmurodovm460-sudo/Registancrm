@@ -1558,9 +1558,10 @@ async function voucherView(chatId: number, refresh = false) {
   const catKey = (c: string) => c.toLowerCase().replace(/[ʻʼ‘’'`]/g, '').replace(/iada|ida/g, 'iada').replace(/\s+/g, ' ').trim();
   const cats = new Map<string, { name: string; list: any[] }>();
   for (const x of need) { const k = x.cat ? catKey(x.cat) : ''; if (!cats.has(k)) cats.set(k, { name: x.cat || '', list: [] }); cats.get(k)!.list.push(x); }
-  const catBlocks = [...cats.entries()].sort((a, b) => (a[0] ? 0 : 1) - (b[0] ? 0 : 1) || b[1].list.reduce((s2, x) => s2 + x.due, 0) - a[1].list.reduce((s2, x) => s2 + x.due, 0))
+  const catSorted = [...cats.entries()].sort((a, b) => (a[0] ? 0 : 1) - (b[0] ? 0 : 1) || b[1].list.reduce((s2, x) => s2 + x.due, 0) - a[1].list.reduce((s2, x) => s2 + x.due, 0));
+  const catBlocks = catSorted
     .map(([k, c]) => `🏷 <b>${k ? esc(c.name) : 'Chegirma turi kiritilmagan'}</b> — ${c.list.length} ta · ${sum(c.list.reduce((s2, x) => s2 + x.due, 0))}\n\n${c.list.map(card).join('\n\n')}`);
-  const catSummary = [...cats.keys()].some(k => k) ? [...cats.entries()].map(([k, c]) => `• ${k ? esc(c.name) : '<i>kiritilmagan</i>'}: ${c.list.length} ta · ${sum(c.list.reduce((s2, x) => s2 + x.due, 0))}`).join('\n') + '\n' : '';
+  const catSummary = [...cats.keys()].some(k => k) ? catSorted.map(([k, c]) => `• ${k ? esc(c.name) : '<i>kiritilmagan</i>'}: ${c.list.length} ta · ${sum(c.list.reduce((s2, x) => s2 + x.due, 0))}`).join('\n') + '\n' : '';
   let text = `🎟 <b>Vaucherlar · ${monthName}</b>\n` +
     (need.length ? `Kiritish kerak: <b>${sum(totDue)}</b> (${need.length} ta)\n${notClosed ? `❗ ${notClosed} ta o‘quvchida oy yopilmaydi` : '✅ Hammasida oy yopiladi'}\n${catSummary}\n${catBlocks.join('\n\n━━━━━━━━━━\n')}` : '✅ Bu oy kiritilishi kerak bo‘lgan vaucher yo‘q.') +
     (unpaid.length ? `\n\n━━━━━━━━━━\n💳 <b>${monthName}da to‘lov qilishi kerak</b>: ${sum(totPay)} (${unpaid.length} ta)\n\n${unpaid.map(payCard).join('\n\n')}` : '');
