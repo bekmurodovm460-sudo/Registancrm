@@ -282,12 +282,16 @@ async function debtTeacher(chatId: number, tid: string) {
   if (!t) return debtTeachers(chatId);
   const L = [...t.list].sort((a, b) => a.balance - b.balance);
   const total = L.reduce((a, x) => a + x.balance, 0);
+  // Edutizim kartasidagi "To'lanish kerak" (bitta kirishda)
+  const mp = await edu('mustPayMany', { ids: L.map(x => x.id) });
+  const must: Record<string, any> = mp?.ok ? mp.must || {} : {};
+  const mustTotal = L.reduce((a, x) => a + (Number(must[x.id]?.mustPay) || 0), 0);
   // To'lov tugmalari uchun (top menejer) — mavjud “find” oqimi
   await setSession(chatId, 'find', { found: L.slice(0, 20) });
-  const body = L.map((x, i) => `<b>${i + 1}. ${esc(x.name)}</b> — <b>${sum(-x.balance)}</b>${x.group ? `\n   👥 ${esc(String(x.group).slice(0, 40))}` : ''}${x.phone ? `\n   📱 <code>${esc(x.phone)}</code>` : ''}`).join('\n');
+  const body = L.map((x, i) => `<b>${i + 1}. ${esc(x.name)}</b> — qarz <b>${sum(-x.balance)}</b>${must[x.id] ? `\n   💳 To‘lanishi kerak: <b>${sum(must[x.id].mustPay)}</b>` : ''}${x.group ? `\n   👥 ${esc(String(x.group).slice(0, 40))}` : ''}${x.phone ? `\n   📱 <code>${esc(x.phone)}</code>` : ''}`).join('\n');
   const rows: any[] = role() === 'top' ? L.slice(0, 10).map((x, i) => [ib(`💰 ${i + 1}. ${x.name.slice(0, 26)} — to‘lov`, `pay:${i}`)]) : [];
   rows.push([ib('⬅️ Ustozlar', 'dbt:t')]);
-  const text = `👩‍🏫 <b>${esc(t.name)}</b> — qarzdorlar: <b>${L.length}</b> ta · jami <b>${sum(-total)}</b>\n\n${body}`;
+  const text = `👩‍🏫 <b>${esc(t.name)}</b> — qarzdorlar: <b>${L.length}</b> ta\n🔴 Jami qarz: <b>${sum(-total)}</b>\n💳 To‘lanishi kerak (Edutizim): <b>${mp?.ok ? sum(mustTotal) : '—'}</b>${mp?.ok ? '' : `\n<i>⚠️ Edutizimdan “To‘lanishi kerak” olinmadi: ${esc(mp?.error || 'javob yo‘q')}</i>`}\n\n${body}`;
   await sendLong(chatId, text, { reply_markup: { inline_keyboard: rows } });
 }
 
