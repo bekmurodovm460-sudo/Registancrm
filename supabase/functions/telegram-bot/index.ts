@@ -983,9 +983,10 @@ async function miniAppUrl() {
 }
 
 async function sendHome(chatId: number, firstName = '', userId?: number) {
-  const [, app] = await Promise.all([
+  const [, app, pr] = await Promise.all([
     send(chatId, `👋 Assalomu alaykum${firstName ? ', <b>' + esc(firstName) + '</b>' : ''}!`, { reply_markup: MENU }),
-    miniAppUrl()
+    miniAppUrl(),
+    userId ? getProctor(userId) : Promise.resolve(null)
   ]);
   const rows: any[] = [
     [ib('🧒 Kids Mock’ga yozilish', 'go:reg'), ib('📸 Natijani tekshirish', 'go:check')],
@@ -993,6 +994,8 @@ async function sendHome(chatId: number, firstName = '', userId?: number) {
     [ib('🔍 Farzandim natijasi', 'go:result'), ib('🏅 Yutuqli karta', 'go:card')],
     [ib('👩‍🏫 Ustozlar', 'go:teacher')]
   ];
+  // Nazoratchi/ustozlar uchun: Excel ro'yxatni CRM'ga yuklash (ota-onalarga ko'rinmaydi)
+  if (pr) rows.push([ib('📥 Excel yuklash (CRM’ga ro‘yxat)', 'xl:start')]);
   if (app) rows.push([{ text: '📱 Ilovani ochish', web_app: { url: app } }]);
   const caption = '<b>Registan LC</b> — you belong here! 🧡\n\n' +
     '🧒 <b>Kids Mock</b> — imtihonga ro‘yxatdan o‘tish\n' +
