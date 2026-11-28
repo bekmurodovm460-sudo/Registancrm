@@ -11,6 +11,7 @@ import { readSheet, rgbaToGray, gradeAnswers } from '../_shared/omr.js';
 import { cardPng, money, PRIZES, promoCode } from '../_shared/card.ts';
 import * as XLSX from 'npm:xlsx@0.18.5';
 import { analyze, computeScore, nameKey, classKey, regIdOf, FIELDS } from '../_shared/evalbee.js';
+import { parseRoster, crmSchool, groupRoster } from '../_shared/roster.ts';
 
 // Asosiy bo'limlar
 const BTN_SEC1 = '📚 Maktab imtihonlari javoblari';
@@ -693,7 +694,7 @@ async function prChooseSchool(chatId: number, p: any) {
   if (!list.length) return void send(chatId, 'Maktablar topilmadi.', { reply_markup: MENU });
   await setSession(chatId, 'pr_school', { proctorId: p.id, proctorName: p.full_name, schoolFilter: p.school_id || null });
   if (list.length === 1) return prChooseGrade(chatId, list[0].id);
-  await send(chatId, '🏫 Maktabni tanlang:\n\n<i>📥 EvalBee’dan yuklab olingan Excel faylni ham shu chatga yuborishingiz mumkin — natijalar CRM’ga yoziladi.</i>', { reply_markup: { inline_keyboard: list.map(x => [{ text: `🏫 ${x.name}`, callback_data: `ps:${x.id}` }]) } });
+  await send(chatId, '🏫 Maktabni tanlang:\n\n<i>📥 EvalBee natija faylini yoki 📋 o‘quvchilar ro‘yxatini (Excel) shu chatga yuborishingiz mumkin — CRM’ga maktab va sinf bo‘yicha joylanadi.</i>', { reply_markup: { inline_keyboard: list.map(x => [{ text: `🏫 ${x.name}`, callback_data: `ps:${x.id}` }]) } });
 }
 
 async function prChooseGrade(chatId: number, school: string) {
@@ -760,16 +761,19 @@ async function handleEvalbeeFile(chatId: number, m: any) {
   if (!p) return void send(chatId, '⛔ Natija faylini faqat CRM’dagi nazoratchi va ustozlar yuboradi. “👮 Nazorat” orqali raqamingizni tasdiqlang.', { reply_markup: MENU });
   if ((m.document.file_size || 0) > 5_000_000) return void send(chatId, '⚠️ Fayl 5 MB dan katta.');
   await tg(await token(), 'sendChatAction', { chat_id: chatId, action: 'typing' });
-  let a;
+  let a, roster;
   try {
     const bytes = await downloadTelegramFile(m.document.file_id);
     const wb = XLSX.read(bytes, { type: 'array' });
-    const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, raw: true, defval: '' }) as unknown[][];
-    a = analyze(rows);
+    const sheets = wb.SheetNames.map((n: string) => ({ name: n, rows: XLSX.utils.sheet_to_json(wb.Sheets[n], { header: 1, raw: false, defval: '' }) as unknown[][] }));
+    a = analyze(XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, raw: true, defval: '' }) as unknown[][]);
+    roster = parseRoster(sheets);
   } catch (e) {
     console.error('evalbee parse', e);
     return void send(chatId, '⚠️ Faylni o‘qib bo‘lmadi. EvalBee’dan <b>Excel (.xlsx)</b> yoki <b>CSV</b> ko‘rinishida yuklab yuboring.');
   }
+  // 📋 Ball ustuni yo'q, lekin ism-familiyalar bor — bu o'quvchilar ro'yxati: CRM'ga maktab/sinf bo'yicha joylanadi
+  if ((!a.ok || !a.records.length) && roster.records.length) return rosterStart(chatId, p, roster.records, m.document.file_name);
   if (!a.ok || !a.records.length) {
     return void send(chatId,
       '⚠️ Faylda kerakli ustunlar topilmadi.\n\nKerak: <b>ism-familiya</b> va <b>ball</b> (yoki 1-fan/2-fan to‘g‘ri javoblari).\n' +
@@ -777,11 +781,70 @@ async function handleEvalbeeFile(chatId: number, m: any) {
       'CRM → 📝 Testlar → “📥 EvalBee importi” orqali ustunlarni qo‘lda tanlab yuklashingiz mumkin.');
   }
   const found = Object.keys(a.map).map(k => (FIELDS as any)[k]).join(', ');
-  await setSession(chatId, 'eb_target', { proctorId: p.id, proctorName: p.full_name, schoolFilter: p.school_id || null, file: m.document.file_name, records: a.records.slice(0, 600) });
+  await setSession(chatId, 'eb_target', { proctorId: p.id, proctorName: p.full_name, schoolFilter: p.school_id || null, file: m.document.file_name, records: a.records.slice(0, 600), roster: roster.records.slice(0, 2000) });
   await send(chatId,
     `📥 <b>${esc(m.document.file_name)}</b>\n👥 ${a.records.length} ta o‘quvchi topildi\n🔎 Ustunlar: ${esc(found)}\n\nNatija qaysi imtihonga yozilsin?`, {
-      reply_markup: { inline_keyboard: [[ib('🏫 Maktab testi', 'eb:school'), ib('🧒 Kids Mock', 'eb:mock')], [ib('❌ Bekor qilish', 'eb:cancel')]] }
+      reply_markup: { inline_keyboard: [[ib('🏫 Maktab testi', 'eb:school'), ib('🧒 Kids Mock', 'eb:mock')], ...(roster.records.length ? [[ib('📋 Faqat ro‘yxat sifatida CRM’ga', 'ro:asroster')]] : []), [ib('❌ Bekor qilish', 'eb:cancel')]] }
     });
+}
+
+// ---------------------------------------------------------
+// 📋 Excel ro'yxat → CRM: maktab → sinf bo'yicha joylash (oldin ko'rib chiqish, keyin tasdiqlash)
+// ---------------------------------------------------------
+async function schoolsMap() {
+  const { data } = await admin.from('crm_schools').select('id,data');
+  return new Map((data || []).map((x: any) => [String(x.id), String(x.data?.name || x.id)]));
+}
+async function rosterStart(chatId: number, p: any, recs: any[], file: string) {
+  const forced = p.school_id ? String(p.school_id) : '';
+  const rows = recs.slice(0, 2000).map((r: any) => {
+    const sc = forced ? { id: forced, name: '' } : crmSchool(r.school);
+    return { name: r.name, cls: r.cls, phone: r.phone, school: sc?.id || '', schoolName: sc?.name || '' };
+  });
+  await setSession(chatId, 'ro_school', { file, rows, by: p.full_name, forced });
+  if (rows.some(r => !r.school)) {
+    const sm = await schoolsMap();
+    const btns = [...sm.entries()].slice(0, 20).map(([id, name]) => [ib(`🏫 ${name}`, `ros:${id}`)]);
+    return void send(chatId, `📋 <b>${esc(file)}</b> — ${rows.length} ta o‘quvchi\n\n${rows.every(r => !r.school) ? 'Faylda maktab ko‘rsatilmagan.' : `${rows.filter(r => !r.school).length} ta o‘quvchida maktab ko‘rsatilmagan.`} Qaysi maktabga joylaymiz?`, {
+      reply_markup: { inline_keyboard: [...btns, [ib('✏️ Boshqa maktab (raqamini yozaman)', 'ro:schtext')], [ib('❌ Bekor qilish', 'ro:x')]] }
+    });
+  }
+  return rosterPreview(chatId);
+}
+async function rosterPreview(chatId: number) {
+  const s = await getSession(chatId);
+  const rows: any[] = s.data.rows || [];
+  const sm = await schoolsMap();
+  rows.forEach(r => { if (sm.has(r.school)) r.schoolName = sm.get(r.school); });
+  const ok = rows.filter(r => r.school && r.cls), noCls = rows.filter(r => r.school && !r.cls);
+  const { data: cls } = await admin.from('crm_classes').select('school_id,name').in('school_id', [...new Set(ok.map(r => r.school))]);
+  const have = new Set((cls || []).map((c: any) => `${c.school_id}|${c.name}`));
+  const groups = groupRoster(ok.map(r => ({ cls: r.cls, school: r.school, schoolName: r.schoolName })));
+  const idOf = new Map(ok.map(r => [r.schoolName || r.school, r.school]));
+  const lines = groups.map(g => `🏫 <b>${esc(g.school)}</b>${sm.has(idOf.get(g.school) || '') ? '' : ' <i>(yangi maktab)</i>'} — ${g.classes.reduce((a, c) => a + c.n, 0)} ta\n` +
+    g.classes.map(c => `   • ${esc(c.cls)} — ${c.n} ta${have.has(`${idOf.get(g.school)}|${c.cls}`) ? '' : ' <i>(yangi sinf)</i>'}`).join('\n')).join('\n\n');
+  await setSession(chatId, 'ro_confirm', { ...s.data, rows });
+  if (!ok.length) { await setSession(chatId, null); return void send(chatId, '⚠️ Hech bir o‘quvchida sinf aniqlanmadi. Faylga “Sinf” ustunini qo‘shing yoki har sinfni alohida varaqqa (“5-A” nomi bilan) joylang.', { reply_markup: MENU }); }
+  await send(chatId, `📋 <b>${esc(s.data.file)}</b>\n👥 CRM’ga joylanadi: <b>${ok.length}</b> ta o‘quvchi\n\n${lines}${noCls.length ? `\n\n⚠️ ${noCls.length} ta o‘quvchida sinf aniqlanmadi — o‘tkazib yuboriladi: ${esc(noCls.slice(0, 5).map(r => r.name).join(', '))}${noCls.length > 5 ? '…' : ''}` : ''}\n\n<i>Shu sinfda shu ismli o‘quvchi bo‘lsa, takror qo‘shilmaydi.</i>`.slice(0, 4000), {
+    reply_markup: { inline_keyboard: [[ib('✅ CRM’ga joylash', 'ro:ok'), ib('❌ Bekor qilish', 'ro:x')]] }
+  });
+}
+async function rosterImport(chatId: number) {
+  const s = await getSession(chatId);
+  if (s.step !== 'ro_confirm') return void send(chatId, 'Faylni qaytadan yuboring.', { reply_markup: MENU });
+  await setSession(chatId, 'ro_busy', {});
+  await tg(await token(), 'sendChatAction', { chat_id: chatId, action: 'typing' });
+  const rows = (s.data.rows || []).filter((r: any) => r.school && r.cls);
+  const tot = { created: 0, existed: 0, phones: 0, newClasses: 0, newSchools: 0 };
+  for (let i = 0; i < rows.length; i += 400) {
+    const { data, error } = await admin.rpc('crm_bot_import_roster', { p_rows: rows.slice(i, i + 400), p_by: s.data.by || null });
+    if (error) { await setSession(chatId, null); return void send(chatId, `⚠️ Xatolik: ${esc(error.message)}\n${i ? `${i} ta o‘quvchi joylandi.` : ''}`, { reply_markup: MENU }); }
+    for (const k of Object.keys(tot) as (keyof typeof tot)[]) tot[k] += Number((data as any)?.[k]) || 0;
+  }
+  await setSession(chatId, null);
+  const groups = groupRoster(rows.map((r: any) => ({ cls: r.cls, school: r.school, schoolName: r.schoolName })));
+  await send(chatId, `✅ <b>Ro‘yxat CRM’ga joylandi</b>\n\n➕ Yangi o‘quvchi: <b>${tot.created}</b>\n♻️ Avvaldan bor edi: <b>${tot.existed}</b>${tot.phones ? ` (${tot.phones} tasiga telefon qo‘shildi)` : ''}${tot.newClasses ? `\n🆕 Yangi sinf: ${tot.newClasses}` : ''}${tot.newSchools ? `\n🏫 Yangi maktab: ${tot.newSchools}` : ''}\n\n${groups.map(g => `🏫 ${esc(g.school)}: ${g.classes.map(c => `${esc(c.cls)} (${c.n})`).join(', ')}`).join('\n')}`.slice(0, 4000), { reply_markup: MENU });
+  await notifyAdmin(`📋 Excel ro‘yxat (bot): ${esc(s.data.by || '')} · ${esc(s.data.file || '')} — ${tot.created} yangi, ${tot.existed} bor edi`);
 }
 
 async function ebChooseSchool(chatId: number) {
@@ -1294,6 +1357,12 @@ async function onMessage(m: any) {
 
   const s = await getSession(chatId);
   switch (s.step) {
+    case 'ro_school_text': {
+      const sc = crmSchool(text);
+      if (!sc) return void send(chatId, 'Maktab raqamini yozing, masalan: 15');
+      await setSession(chatId, 'ro_school', { ...s.data, rows: (s.data.rows || []).map((r: any) => r.school ? r : { ...r, school: sc.id, schoolName: sc.name }) });
+      return rosterPreview(chatId);
+    }
     case 'pr_link':
       return linkProctor(chatId, m);
     case 't_contact':
@@ -1501,6 +1570,21 @@ async function routeCallback(q: any) {
       : `Tushunarli, <b>${esc(reg.full_name)}</b> kelmasligi belgilandi. Fikringiz o‘zgarsa, administratorga yozing: /aloqa`, { reply_markup: MENU });
     if (yn !== 'y') await notifyAdmin(`❌ Kids Mock'ga kelmaydi: <b>${esc(reg.full_name)}</b> · KM-${reg.id} · ${esc(reg.session)} · ${esc(reg.room)}`);
     return;
+  }
+  // 📋 Excel ro'yxat
+  if (data.startsWith('ro:') || data.startsWith('ros:')) {
+    if (data === 'ro:x') { await setSession(chatId, null); return void send(chatId, '❌ Bekor qilindi.', { reply_markup: MENU }); }
+    const pr = await getProctor(q.from?.id);
+    if (!pr) return void send(chatId, '⛔ Ruxsat yo‘q.', { reply_markup: MENU });
+    if (data === 'ro:asroster' && s.step === 'eb_target') return rosterStart(chatId, pr, s.data.roster || [], s.data.file);
+    if (data.startsWith('ros:') && s.step === 'ro_school') {
+      const id = data.slice(4);
+      await setSession(chatId, 'ro_school', { ...s.data, rows: (s.data.rows || []).map((r: any) => r.school ? r : { ...r, school: id, schoolName: '' }) });
+      return rosterPreview(chatId);
+    }
+    if (data === 'ro:schtext' && s.step === 'ro_school') { await setSession(chatId, 'ro_school_text', s.data); return void send(chatId, '🏫 Maktab raqamini yoki nomini yozing (masalan: <b>15</b> yoki <b>15-maktab</b>):'); }
+    if (data === 'ro:ok') return rosterImport(chatId);
+    return void send(chatId, s.step === 'ro_busy' ? '⏳ Joylanmoqda…' : 'Faylni qaytadan yuboring.', { reply_markup: MENU });
   }
   // EvalBee
   if (data.startsWith('eb:') || data.startsWith('ebs:') || data.startsWith('ebc:')) {
