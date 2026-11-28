@@ -755,7 +755,7 @@ Deno.serve(async req => {
     const branches: { id: string; name: string }[] = auth.branches.map((b: any) => ({ id: String(b._id), name: b.name }));
     if (body.action === 'test') return json({ ok: true, branches });
     // 'cron' roli = ichki chaqiruv (pg_cron yoki Telegram bot admin bo'limi, x-cron-secret bilan)
-    if (['meta', 'pushLead', 'kassaMeta', 'kassaPay', 'kassaCancel', 'kassaTx', 'read', 'employees', 'absences', 'absenceRisk', 'commentsFor', 'comment', 'teacherReport', 'smsMeta', 'sendSms', 'bells', 'bellDelete', 'priceAudit', 'changePrice', 'paymentDates', 'studentTxMany', 'mustPayMany', 'employeeGet'].includes(body.action)) {
+    if (['meta', 'pushLead', 'kassaMeta', 'kassaPay', 'kassaCancel', 'kassaTx', 'read', 'employees', 'absences', 'absenceRisk', 'commentsFor', 'comment', 'teacherReport', 'smsMeta', 'sendSms', 'bells', 'bellDelete', 'priceAudit', 'changePrice', 'paymentDates', 'studentTxMany', 'mustPayMany', 'employeeGet', 'studentGetMany'].includes(body.action)) {
       const br = body.branchId ? branches.find(b => b.id === body.branchId) : branches[0];
       if (!br) throw new Error('Filial topilmadi');
       const headers = { ...baseHeaders(site), Authorization: `Bearer ${auth.token}`, branch: br.id };
@@ -767,6 +767,15 @@ Deno.serve(async req => {
       }
       if (body.action === 'kassaTx') return json(await kassaTx(base, headers, body));
       if (body.action === 'read') return json(await eduRead(base, headers, body));
+      // O'quvchi to'liq kartasi (faqat o'qish)
+      if (body.action === 'studentGetMany') {
+        const ids: string[] = (Array.isArray(body.ids) ? body.ids : []).map(String).slice(0, 100);
+        const out: Record<string, any> = {};
+        for (let i = 0; i < ids.length; i += 6) {
+          await Promise.all(ids.slice(i, i + 6).map(async id => { const st = await getStudent(base, headers, id).catch(() => null); if (st) out[id] = st; }));
+        }
+        return json({ ok: true, students: out });
+      }
       // Xodim profili (faqat o'qish): oylik turi va foizi
       if (body.action === 'employeeGet') {
         const ids: string[] = (Array.isArray(body.ids) ? body.ids : [body.id]).filter(Boolean).map(String).slice(0, 60);
