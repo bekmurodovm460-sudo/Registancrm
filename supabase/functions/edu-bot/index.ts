@@ -599,15 +599,27 @@ type CatKit = { name: string; price: number };
 type CatItem = { subject: string; title: string; levels: string[]; kits: CatKit[]; teachers?: string[]; supplier?: string };
 const LV5 = ['A1', 'A2', 'B1', 'B2', 'C1'];
 const BOOK_CATALOG: CatItem[] = [
-  { subject: 'nemis', title: 'Netzwerk neu', levels: ['A1', 'A2', 'B1', 'B2'], kits: [{ name: 'Katta komplekt', price: 50000 }, { name: 'Kichik komplekt', price: 30000 }] },
-  { subject: 'turk', title: 'Yedi İklim', levels: LV5, kits: [{ name: 'Kichik komplekt', price: 15000 }, { name: 'Katta komplekt', price: 25000 }], teachers: ['6a5712c322d19974688bf631', 'jasmina'] },
-  { subject: 'turk', title: 'Yeni İstanbul', levels: LV5, kits: [{ name: 'Komplekt', price: 25000 }], teachers: ['6887244438c8ebe29c4e899a', 'aziza xidirova'] }
+  { subject: 'nemis', title: 'Netzwerk neu', levels: ['A1', 'A2', 'B1', 'B2'], kits: [{ name: 'Katta · Dars kitobi', price: 25000 }, { name: 'Katta · Mashq kitobi', price: 25000 }, { name: 'Kichik · Dars kitobi', price: 15000 }, { name: 'Kichik · Mashq kitobi', price: 15000 }] },
+  { subject: 'turk', title: 'Yedi İklim', levels: LV5, kits: [{ name: 'Dars kitobi', price: 15000 }, { name: 'Mashq kitobi', price: 15000 }], teachers: ['6a5712c322d19974688bf631', 'jasmina'] },
+  { subject: 'turk', title: 'Yeni İstanbul', levels: LV5, kits: [{ name: 'Dars + mashq kitobi', price: 25000 }], teachers: ['6887244438c8ebe29c4e899a', 'aziza xidirova'] }
 ];
 async function catalogFor(subject: string, empId?: string | null, name?: string | null, list?: CatItem[]): Promise<CatItem[]> {
   const cat = list || await getCatalog();
   const subj = String(subject || '').toLowerCase(), nm = String(name || '').toLowerCase();
   return (Array.isArray(cat) ? cat : BOOK_CATALOG).filter(c => subj.includes(String(c.subject).toLowerCase()) &&
     (!c.teachers?.length || c.teachers.some(t => (empId && t === String(empId)) || (!/^[0-9a-f]{24}$/.test(t) && nm.includes(t.toLowerCase())))));
+}
+// Har kitob: dars kitobi va mashq kitobi. Ikkalasi ham bo'lsa — “Dars + mashq” (ikkalasi) varianti avtomatik qo'shiladi
+const kitPrefix = (n: string) => String(n).replace(/\s*[·\-–—:]?\s*(dars|mashq)\s*kitob(i)?\s*$/i, '').trim();
+const kitPart = (n: string) => /dars\s*kitob/i.test(n) && !/mashq/i.test(n) ? 'dars' : /mashq\s*kitob/i.test(n) && !/dars/i.test(n) ? 'mashq' : '';
+function kitOptions(c: CatItem): CatKit[] {
+  const out = [...c.kits];
+  const pre = [...new Set(c.kits.filter(k => kitPart(k.name)).map(k => kitPrefix(k.name)))];
+  for (const p of pre) {
+    const d = c.kits.find(k => kitPart(k.name) === 'dars' && kitPrefix(k.name) === p), m = c.kits.find(k => kitPart(k.name) === 'mashq' && kitPrefix(k.name) === p);
+    if (d && m) out.push({ name: `${p ? p + ' · ' : ''}Dars + mashq kitobi`, price: d.price + m.price });
+  }
+  return out;
 }
 const priceLine = (qty: number, unit?: number | null) => unit ? `💰 ${qty} × ${sum(unit)} = <b>${sum(qty * unit)}</b>` : '';
 // Kitob yetkazuvchilar (@MarsKitob, @zomaxcom): har biri o'z kitoblari va buyurtmalarini ko'radi; botga /start bossa chat_id saqlanadi
@@ -720,7 +732,7 @@ async function catalogCallback(chatId: number, data: string, s: any, from: any, 
   const c = cat[i];
   if (!c || (sup && !sameSup(itemSup(c), sup))) return catalogView(chatId, sup);
   if (p[1] === 'p') { await setSession(chatId, 'sp_price', { i, j }); return void send(chatId, `💲 <b>${esc(c.title)} · ${esc(c.kits[j]?.name || '')}</b>\nHozir: ${sum(c.kits[j]?.price || 0)}\n\nYangi narxni yozing (so‘m):`, { reply_markup: CANCEL_KB }); }
-  if (p[1] === 'ka') { await setSession(chatId, 'sp_addkit', { i }); return void send(chatId, `➕ <b>${esc(c.title)}</b> — komplekt nomi va narxi:\n<i>Katta komplekt 50000</i>\n(bir nechta bo‘lsa — har biri yangi qatorda)`, { reply_markup: CANCEL_KB }); }
+  if (p[1] === 'ka') { await setSession(chatId, 'sp_addkit', { i }); return void send(chatId, `➕ <b>${esc(c.title)}</b> — kitob nomi va narxi:\n<i>Mashq kitobi 15000</i>\n(bir nechta bo‘lsa — har biri yangi qatorda)`, { reply_markup: CANCEL_KB }); }
   if (p[1] === 'lv') { await setSession(chatId, 'sp_lv', { i }); return void send(chatId, `🔤 <b>${esc(c.title)}</b> darajalari: ${c.levels.join(', ') || '—'}\n\nYangi darajalarni yozing: <i>A1, A2, B1, B2</i>\nDarajasiz bo‘lsa: <b>-</b>`, { reply_markup: CANCEL_KB }); }
   if (p[1] === 'kd') {
     if (c.kits.length <= 1) return void send(chatId, '⚠️ Kamida bitta komplekt qolishi kerak. Kitobni butunlay o‘chirish uchun “🗑 Kitobni o‘chirish”.');
@@ -750,11 +762,11 @@ async function catalogStep(chatId: number, s: any, text: string, from: any, sup?
       return true;
     case 'sp_levels':
       await setSession(chatId, 'sp_kits', { ...d, levels: parseLevels(text) });
-      await send(chatId, '💲 Komplektlar va narxlari (har biri yangi qatorda):\n<i>Katta komplekt 50000\nKichik komplekt 30000</i>\n\nBitta narx bo‘lsa: <i>Komplekt 25000</i>', { reply_markup: CANCEL_KB });
+      await send(chatId, '💲 Dars kitobi va mashq kitobi narxlari (har biri yangi qatorda):\n<i>Dars kitobi 15000\nMashq kitobi 15000</i>\n\nKatta/kichik bo‘lsa:\n<i>Katta · Dars kitobi 25000\nKatta · Mashq kitobi 25000\nKichik · Dars kitobi 15000\nKichik · Mashq kitobi 15000</i>\n\n“Dars + mashq” (ikkalasi) varianti ustozga avtomatik chiqadi.', { reply_markup: CANCEL_KB });
       return true;
     case 'sp_kits': {
       const kits = parseKits(text);
-      if (!kits.length) { await send(chatId, '⚠️ Narx topilmadi. Masalan: <i>Katta komplekt 50000</i>'); return true; }
+      if (!kits.length) { await send(chatId, '⚠️ Narx topilmadi. Masalan: <i>Dars kitobi 15000</i>'); return true; }
       const subj = String(d.subject || '').toLowerCase().replace(/\s*tili\s*$/, '').trim() || String(d.subject || '').toLowerCase();
       const item: CatItem = { subject: subj, title: d.title, levels: d.levels || [], kits, supplier: sup || d.supplier || SUPPLIER_DEFAULT };
       cat.push(item);
@@ -1007,7 +1019,7 @@ async function bookAskBook(chatId: number, d: any) {
   }
   if (cat.length) {
     await setSession(chatId, 'bk_book', { ...d, books: [], cat });
-    const txt = cat.map(c => `📘 <b>${esc(c.title)}</b>${c.levels.length ? ` (${c.levels.join(', ')})` : ''} · 🏪 @${esc(itemSup(c))}\n${c.kits.map(k => `   • ${esc(k.name)} — <b>${sum(k.price)}</b>`).join('\n')}`).join('\n\n');
+    const txt = cat.map(c => `📘 <b>${esc(c.title)}</b>${c.levels.length ? ` (${c.levels.join(', ')})` : ''} · 🏪 @${esc(itemSup(c))}\n${kitOptions(c).map(k => `   • ${esc(k.name)} — <b>${sum(k.price)}</b>`).join('\n')}`).join('\n\n');
     const rows: any[] = [];
     cat.forEach((c, ci) => { const lv = c.levels.length ? c.levels : ['']; for (let i = 0; i < lv.length; i += 3) rows.push(lv.slice(i, i + 3).map((l, j) => ib(`📘 ${c.title} ${l}`.trim(), `bkt:c:${ci}:${i + j}`))); });
     rows.push(pubs.length > 1 ? [ib('⬅️ Nashriyotlar', 'bkt:pubs'), ib('✍️ Boshqa kitob', 'bkt:b:-1')] : [ib('✍️ Boshqa kitob (yozaman)', 'bkt:b:-1')]);
@@ -1100,9 +1112,10 @@ async function bookTeacherCallback(chatId: number, data: string, s: any, from: a
     const c: CatItem | undefined = s.data.cat[Number(ci)];
     const lv = c ? (c.levels.length ? c.levels[Number(li)] : '') : undefined;
     if (!c || lv === undefined) return bookAskBook(chatId, s.data);
-    const kit = k === 'k' ? c.kits[Number(ki)] : c.kits.length === 1 ? c.kits[0] : null;
-    if (!kit) return void send(chatId, `📘 <b>${esc(`${c.title} ${lv}`.trim())}</b> — qaysi komplekt? (${s.data.qty} ta)`, {
-      reply_markup: { inline_keyboard: [...c.kits.map((x, i) => [ib(`${x.name} — ${sum(x.price)} × ${s.data.qty} = ${sum(x.price * s.data.qty)}`, `bkt:k:${ci}:${li}:${i}`)]), [ib('⬅️ Kitoblar', 'bkt:cb')]] } });
+    const opts = kitOptions(c);
+    const kit = k === 'k' ? opts[Number(ki)] : opts.length === 1 ? opts[0] : null;
+    if (!kit) return void send(chatId, `📘 <b>${esc(`${c.title} ${lv}`.trim())}</b> — dars kitobi, mashq kitobi yoki ikkalasi? (${s.data.qty} ta)`, {
+      reply_markup: { inline_keyboard: [...opts.map((x, i) => [ib(`${x.name} — ${sum(x.price)}${s.data.qty > 1 ? ` × ${s.data.qty} = ${sum(x.price * s.data.qty)}` : ''}`, `bkt:k:${ci}:${li}:${i}`)]), [ib('⬅️ Kitoblar', 'bkt:cb')]] } });
     const { books: _b, cat: _c, pubs: _ps, pub: _p, ...rest } = s.data;
     return bookAskNote(chatId, { ...rest, book: `${`${c.title} ${lv}`.trim()} · ${kit.name}`, unitPrice: kit.price, supplier: itemSup(c) });
   }
