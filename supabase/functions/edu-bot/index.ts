@@ -263,17 +263,36 @@ async function debtByTeacher() {
   const list = [...teachers.values()].map(t => ({ ...t, total: t.list.reduce((a, x) => a + x.balance, 0) })).sort((a, b) => a.total - b.total);
   return { list, loose, unique: new Set([...list.flatMap(t => t.list.map(x => x.id)), ...loose.map(x => x.id)]).size };
 }
+// Ustoz foizi — Edutizimdagi ustoz profilidan (percent: { name: "35" | "30%lik" }), 10 daqiqa kesh
+let tPctCache: { at: number; map: Record<string, { pct: number | null; label: string }> } | null = null;
+async function teacherPercents(ids: string[]) {
+  const map = tPctCache && Date.now() - tPctCache.at < 600_000 ? { ...tPctCache.map } : {};
+  const need = ids.filter(id => id && id !== 'none' && id !== 'loose' && !(id in map));
+  if (need.length) {
+    const r = await edu('employeeGet', { ids: need });
+    for (const [id, e] of Object.entries<any>(r?.employees || {})) {
+      const label = String(e?.percent?.name || '').trim();
+      const m = label.match(/\d+(?:[.,]\d+)?/);
+      map[id] = { pct: m ? Number(m[0].replace(',', '.')) : null, label };
+    }
+    tPctCache = { at: Date.now(), map };
+  }
+  return map;
+}
+const share = (amount: number, pct: number | null) => pct ? Math.round(amount * pct / 100) : 0;
+
 async function debtTeachers(chatId: number) {
   await typing(chatId);
   const { list, loose, unique } = await debtByTeacher();
   if (!list.length && !loose.length) return void send(chatId, '✅ Aktiv qarzdorlar yo‘q.', { reply_markup: menu() });
   const total = list.reduce((a, t) => a + t.total, 0) + loose.reduce((a, x) => a + x.balance, 0);
-  const lines = list.map((t, i) => `<b>${i + 1}.</b> ${esc(t.name)} — <b>${t.list.length}</b> ta · ${sum(-t.total)}`);
+  const pcts = await teacherPercents(list.map(t => t.id));
+  const lines = list.map((t, i) => { const p = pcts[t.id]?.pct ?? null; return `<b>${i + 1}.</b> ${esc(t.name)} — <b>${t.list.length}</b> ta · ${sum(-t.total)}${p ? `\n    👩‍🏫 ustoz ${p}% → <b>${sum(share(-t.total, p))}</b>` : '\n    👩‍🏫 foiz Edutizimda ko‘rsatilmagan'}`; });
   if (loose.length) lines.push(`• <i>Faol guruhda emas</i> — <b>${loose.length}</b> ta · ${sum(-loose.reduce((a, x) => a + x.balance, 0))}`);
   const rows: any[] = list.slice(0, 40).map(t => [ib(`👩‍🏫 ${t.name.slice(0, 24)} · ${t.list.length} ta`, `dbt:t:${t.id}`)]);
   if (loose.length) rows.push([ib(`👤 Faol guruhda emas · ${loose.length} ta`, 'dbt:t:loose')]);
   rows.push([ib('⬅️ Qarzdorlar', 'dbt:active')]);
-  await send(chatId, `👩‍🏫 <b>Qarzdorlar ustozlar bo‘yicha</b>\n${unique} ta aktiv qarzdor · jami <b>${sum(-total)}</b>\n<i>Ikki ustozda o‘qiydigan o‘quvchi ikkalasida ham ko‘rinadi.</i>\n\n${lines.join('\n')}`.slice(0, 4000), { reply_markup: { inline_keyboard: rows } });
+  await sendLong(chatId, `👩‍🏫 <b>Qarzdorlar ustozlar bo‘yicha</b>\n${unique} ta aktiv qarzdor · jami <b>${sum(-total)}</b>\n<i>Ikki ustozda o‘qiydigan o‘quvchi ikkalasida ham ko‘rinadi. Ustoz foizi — Edutizimdagi ustoz profilidan; “→” qarz to‘lansa ustozga tegadigan summa.</i>\n\n${lines.join('\n')}`, { reply_markup: { inline_keyboard: rows } });
 }
 async function debtTeacher(chatId: number, tid: string) {
   await typing(chatId);
@@ -286,12 +305,15 @@ async function debtTeacher(chatId: number, tid: string) {
   const mp = await edu('mustPayMany', { ids: L.map(x => x.id) });
   const must: Record<string, any> = mp?.ok ? mp.must || {} : {};
   const mustTotal = L.reduce((a, x) => a + (Number(must[x.id]?.mustPay) || 0), 0);
+  const pc = tid === 'loose' ? null : ((await teacherPercents([tid]))[tid] || null);
+  const p = pc?.pct ?? null;
   // To'lov tugmalari uchun (top menejer) — mavjud “find” oqimi
   await setSession(chatId, 'find', { found: L.slice(0, 20) });
-  const body = L.map((x, i) => `<b>${i + 1}. ${esc(x.name)}</b> — qarz <b>${sum(-x.balance)}</b>${must[x.id] ? `\n   💳 To‘lanishi kerak: <b>${sum(must[x.id].mustPay)}</b>` : ''}${x.group ? `\n   👥 ${esc(String(x.group).slice(0, 40))}` : ''}${x.phone ? `\n   📱 <code>${esc(x.phone)}</code>` : ''}`).join('\n');
+  const body = L.map((x, i) => `<b>${i + 1}. ${esc(x.name)}</b> — qarz <b>${sum(-x.balance)}</b>${must[x.id] ? `\n   💳 To‘lanishi kerak: <b>${sum(must[x.id].mustPay)}</b>${p ? ` · ustozga ${sum(share(must[x.id].mustPay, p))}` : ''}` : ''}${x.group ? `\n   👥 ${esc(String(x.group).slice(0, 40))}` : ''}${x.phone ? `\n   📱 <code>${esc(x.phone)}</code>` : ''}`).join('\n');
   const rows: any[] = role() === 'top' ? L.slice(0, 10).map((x, i) => [ib(`💰 ${i + 1}. ${x.name.slice(0, 26)} — to‘lov`, `pay:${i}`)]) : [];
   rows.push([ib('⬅️ Ustozlar', 'dbt:t')]);
-  const text = `👩‍🏫 <b>${esc(t.name)}</b> — qarzdorlar: <b>${L.length}</b> ta\n🔴 Jami qarz: <b>${sum(-total)}</b>\n💳 To‘lanishi kerak (Edutizim): <b>${mp?.ok ? sum(mustTotal) : '—'}</b>${mp?.ok ? '' : `\n<i>⚠️ Edutizimdan “To‘lanishi kerak” olinmadi: ${esc(mp?.error || 'javob yo‘q')}</i>`}\n\n${body}`;
+  const pctLine = tid === 'loose' ? '' : p ? `\n👩‍🏫 Ustoz foizi: <b>${p}%</b>${pc?.label && pc.label !== String(p) ? ` (${esc(pc.label)})` : ''} → qarzdan <b>${sum(share(-total, p))}</b>${mp?.ok ? ` · to‘lanishi kerakdan <b>${sum(share(mustTotal, p))}</b>` : ''}` : '\n👩‍🏫 Ustoz foizi Edutizim profilida ko‘rsatilmagan';
+  const text = `👩‍🏫 <b>${esc(t.name)}</b> — qarzdorlar: <b>${L.length}</b> ta\n🔴 Jami qarz: <b>${sum(-total)}</b>\n💳 To‘lanishi kerak (Edutizim): <b>${mp?.ok ? sum(mustTotal) : '—'}</b>${pctLine}${mp?.ok ? '' : `\n<i>⚠️ Edutizimdan “To‘lanishi kerak” olinmadi: ${esc(mp?.error || 'javob yo‘q')}</i>`}\n\n${body}`;
   await sendLong(chatId, text, { reply_markup: { inline_keyboard: rows } });
 }
 
