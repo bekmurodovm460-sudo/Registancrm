@@ -555,14 +555,8 @@ async function boot(session) {
   }
   await reserveIdBlock();
 
-  // Bo'sh baza: admin uchun standart 711 o'quvchini yuklash
-  if (!state.classes.length && !state.students.length && crm.role === 'admin' && crm.schoolId === '12-maktab') {
-    const def = generateDefault711Data();
-    state.classes = def.classes;
-    state.students = def.students;
-    showToast('Baza bo‘sh edi — standart 711 o‘quvchi bulutga yuklanmoqda', '☁️');
-    window.crmQueueSync();
-  }
+  // Bo'sh baza namunaviy (o'ylab topilgan) 711 o'quvchi bilan avtomatik to'ldirilmaydi —
+  // haqiqiy ro'yxat Excel orqali (CRM yoki imtihon botidagi "📥 Excel yuklash") yuklanadi.
 
   document.getElementById('crm-auth')?.remove();
   decorateHeader();
