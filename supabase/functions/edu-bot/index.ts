@@ -1470,7 +1470,7 @@ async function voucherView(chatId: number, refresh = false) {
     const v = parseVoucher(src);
     const groups = (x.data?.groupsList || []).filter((g: any) => g?.state === 'active');
     const par = x.data?.parent || {};
-    const phones = [...new Set([x.data?.phoneNumber, par.motherPhoneNumber, par.fatherPhoneNumber, x.phone].filter(Boolean).map((p: string) => fmtPhone(p)))].slice(0, 2);
+    const phones = [...new Set([x.data?.phoneNumber, par.motherPhoneNumber, par.fatherPhoneNumber, x.phone].filter((p: any) => String(p || '').replace(/\D/g, '').length >= 9).map((p: string) => fmtPhone(p)))].slice(0, 2);
     return v && groups.length ? { id: String(x.id), name: cleanName(x.full_name), raw: x.full_name, comment: x.data?.additional?.comment || '', phones, own: !!x.data?.phoneNumber, balance: Number(x.data?.balance) || 0, v, groups, fromComment: !VOUCH_RE.test(x.full_name || '') } : null;
   }).filter(Boolean) as any[];
   if (!list.length) return void send(chatId, '🎟 Faol guruhda vaucherli o‘quvchi topilmadi.\n\n<i>Edutizimda o‘quvchi ismiga yoki izohiga “vaucher” so‘zini foiz yoki summa bilan yozing: “20% vaucher”, “100 000 so‘m vaucher”.</i>');
