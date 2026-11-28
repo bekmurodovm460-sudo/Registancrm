@@ -693,6 +693,7 @@ async function prChooseSchool(chatId: number, p: any) {
   const list = (schools || []).map(x => ({ id: x.id as string, name: ((x.data as any)?.name || x.id) as string }));
   if (!list.length) return void send(chatId, 'Maktablar topilmadi.', { reply_markup: MENU });
   await setSession(chatId, 'pr_school', { proctorId: p.id, proctorName: p.full_name, schoolFilter: p.school_id || null });
+  await send(chatId, '📥 <b>Excel yuklash</b> — o‘quvchilar ro‘yxatini CRM’ga maktab va sinf bo‘yicha joylash.', { reply_markup: { inline_keyboard: [[ib('📥 Excel yuklash', 'xl:start')]] } });
   if (list.length === 1) return prChooseGrade(chatId, list[0].id);
   await send(chatId, '🏫 Maktabni tanlang:\n\n<i>📥 EvalBee natija faylini yoki 📋 o‘quvchilar ro‘yxatini (Excel) shu chatga yuborishingiz mumkin — CRM’ga maktab va sinf bo‘yicha joylanadi.</i>', { reply_markup: { inline_keyboard: list.map(x => [{ text: `🏫 ${x.name}`, callback_data: `ps:${x.id}` }]) } });
 }
@@ -772,6 +773,11 @@ async function handleEvalbeeFile(chatId: number, m: any) {
     console.error('evalbee parse', e);
     return void send(chatId, '⚠️ Faylni o‘qib bo‘lmadi. EvalBee’dan <b>Excel (.xlsx)</b> yoki <b>CSV</b> ko‘rinishida yuklab yuboring.');
   }
+  // 📥 "Excel yuklash" bo'limidan yuborilgan fayl — doim o'quvchilar ro'yxati sifatida
+  if ((await getSession(chatId)).step === 'xl_wait') {
+    if (!roster.records.length) return void send(chatId, '⚠️ Faylda o‘quvchilar topilmadi. Birinchi qatorda <b>F.I.Sh.</b> va <b>Sinf</b> sarlavhalari bo‘lsin.\n' + `Topilgan sarlavhalar: <code>${esc(a.headers.filter(Boolean).join(' | ').slice(0, 300))}</code>`, { reply_markup: { inline_keyboard: [[ib('❌ Bekor qilish', 'ro:x')]] } });
+    return rosterStart(chatId, p, roster.records, m.document.file_name);
+  }
   // 📋 Ball ustuni yo'q, lekin ism-familiyalar bor — bu o'quvchilar ro'yxati: CRM'ga maktab/sinf bo'yicha joylanadi
   if ((!a.ok || !a.records.length) && roster.records.length) return rosterStart(chatId, p, roster.records, m.document.file_name);
   if (!a.ok || !a.records.length) {
@@ -795,6 +801,17 @@ async function schoolsMap() {
   const { data } = await admin.from('crm_schools').select('id,data');
   return new Map((data || []).map((x: any) => [String(x.id), String(x.data?.name || x.id)]));
 }
+async function excelSection(chatId: number, userId: number) {
+  const p = await getProctor(userId);
+  if (!p) return startProctor(chatId, userId);
+  await setSession(chatId, 'xl_wait', {});
+  await send(chatId, '📥 <b>Excel yuklash</b>\n\nO‘quvchilar ro‘yxatini <b>Excel (.xlsx)</b> yoki <b>CSV</b> fayl qilib shu chatga yuboring — CRM’ga maktab va sinf bo‘yicha joylayman.\n\n' +
+    '📄 Ustunlar (sarlavha bilan):\n• <b>F.I.Sh.</b> (yoki “Ism familiya”) — shart\n• <b>Sinf</b> — 5-A, 5a, 5 «А» ko‘rinishida\n• <b>Maktab</b> — ixtiyoriy (bo‘lmasa so‘rayman)\n• <b>Telefon</b> — ixtiyoriy\n\n' +
+    '💡 Sinf ustuni bo‘lmasa: har sinfni alohida varaqqa (“5-A” nomi bilan) yoki “5-A sinf” sarlavhasi ostiga yozing.\n\nYozishdan oldin xulosani ko‘rsataman, siz tasdiqlaysiz.', {
+    reply_markup: { inline_keyboard: [[ib('❌ Bekor qilish', 'ro:x')]] }
+  });
+}
+
 async function rosterStart(chatId: number, p: any, recs: any[], file: string) {
   const forced = p.school_id ? String(p.school_id) : '';
   const rows = recs.slice(0, 2000).map((r: any) => {
@@ -1349,6 +1366,7 @@ async function onMessage(m: any) {
   if (text === M_CONTACT || text === BTN_CONTACT || text === '/aloqa') { await Promise.all([setSession(chatId, null), answerContact(chatId)]); return; }
   if (text === '/hisobot') return answerReport(chatId);
   if (text === M_PROCTOR || text === BTN_PROCTOR || text === '/nazorat') return startProctor(chatId, m.from?.id);
+  if (text === '/excel' || text === '📥 Excel yuklash') return excelSection(chatId, m.from?.id);
   if (text === M_HELP || text === BTN_HELP || text === '/yordam' || text === '/help') return sendHelp(chatId);
   if (text === M_TEACHER || text === '/ustoz') return startTeacher(chatId, m.from?.id);
   if (text === '/admin') return void send(chatId, `🛠 Edutizim boshqaruvi alohida botga ko‘chirildi (CRM → 🤖 Telegram Bot → “Edutizim boti”).\nTelegram ID’ingiz: <code>${m.from?.id}</code>`, { reply_markup: MENU });
@@ -1572,8 +1590,9 @@ async function routeCallback(q: any) {
     return;
   }
   // 📋 Excel ro'yxat
-  if (data.startsWith('ro:') || data.startsWith('ros:')) {
+  if (data.startsWith('ro:') || data.startsWith('ros:') || data === 'xl:start') {
     if (data === 'ro:x') { await setSession(chatId, null); return void send(chatId, '❌ Bekor qilindi.', { reply_markup: MENU }); }
+    if (data === 'xl:start') return excelSection(chatId, q.from?.id);
     const pr = await getProctor(q.from?.id);
     if (!pr) return void send(chatId, '⛔ Ruxsat yo‘q.', { reply_markup: MENU });
     if (data === 'ro:asroster' && s.step === 'eb_target') return rosterStart(chatId, pr, s.data.roster || [], s.data.file);
