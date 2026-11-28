@@ -460,11 +460,13 @@ Deno.serve(async req => {
         const bdays = await birthdays().catch(e => ({ error: String(e) }));
         // 📞 Call center: Edutizimga qo'shilgan o'quvchi guruhda aktiv bo'lsa — operatorga xabar (edu-bot o'zi 20 daqiqada bir tekshiradi)
         const calls = await eduBotInternal({ action: 'callTrack' }).catch(e => ({ error: String(e) }));
+        // 💳 Kitob qarzlari: muddati kelganlar — top menejerga kuniga bir marta
+        const bookDebts = await eduBotInternal({ action: 'bookDebts' }).catch(e => ({ error: String(e) }));
         // To'xtab qolgan ommaviy xabarlarni davom ettirish
         const stale = new Date(Date.now() - 3 * 60_000).toISOString();
         const { data: stuck } = await admin.from('crm_broadcasts').select('id').in('status', ['queued', 'sending']).lt('updated_at', stale).limit(3);
         for (const b of stuck || []) EdgeRuntime.waitUntil(work(Number(b.id)));
-        return json({ ok: true, reminders, tasks, daily, inkassa, periodic, paydates, bdays, calls, resumed: (stuck || []).length });
+        return json({ ok: true, reminders, tasks, daily, inkassa, periodic, paydates, bdays, calls, bookDebts, resumed: (stuck || []).length });
       }
       case 'birthdays': {
         if (role !== 'cron' && role !== 'admin') return json({ ok: false, error: 'Ruxsat yo‘q' }, 403);

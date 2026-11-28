@@ -591,6 +591,7 @@ const orderLine = (o: any, full = false) => `<b>#${o.id}</b> · ${esc(o.book)} �
   (o.note ? `\n   💬 <i>${esc(o.note)}</i>` : '') +
   (o.unit_price && !o.out_tx ? `\n   ${priceLine(o.qty, o.unit_price)}` : '') +
   (o.supplier ? `\n   🏪 @${esc(o.supplier)}` : '') +
+  (o.unit_price ? `\n   ${payLine(o)}` : '') +
   `\n   ${ORDER_ST[o.status] || o.status} · ${dmy(new Date(o.created_at).getTime())}` +
   (o.out_tx ? `\n   💸 Edutizim’dan chiqim: ${sum(o.out_amount)} (${o.qty} × ${sum(o.unit_price)})` : '');
 
@@ -622,6 +623,30 @@ function kitOptions(c: CatItem): CatKit[] {
   }
   return out;
 }
+// 💳 To'lov turi: naqd (tasdiqda Edutizimdan chiqim) yoki qarzga (to'lash sanasi bilan; keyin “To'landi” → chiqim)
+const ymd = (d: Date) => new Date(d.getTime() + TZ).toISOString().slice(0, 10);
+const dmyY = (iso: string) => { const [y, m, d] = String(iso).slice(0, 10).split('-'); return `${d}.${m}.${y}`; };
+function parseDue(t: string): string | null {
+  const s0 = String(t).trim();
+  let m = s0.match(/^(\d{1,2})[./-](\d{1,2})(?:[./-](\d{2,4}))?$/);
+  const today = new Date(Date.now() + TZ);
+  if (m) {
+    let y = m[3] ? Number(m[3].length === 2 ? '20' + m[3] : m[3]) : today.getUTCFullYear();
+    const d = Number(m[1]), mo = Number(m[2]);
+    if (d < 1 || d > 31 || mo < 1 || mo > 12) return null;
+    let dt = new Date(Date.UTC(y, mo - 1, d));
+    if (dt.getUTCDate() !== d || dt.getUTCMonth() !== mo - 1) return null;
+    if (!m[3] && dt.getTime() < Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate())) dt = new Date(Date.UTC(++y, mo - 1, d));
+    return dt.toISOString().slice(0, 10);
+  }
+  m = s0.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return null;
+  const dz = new Date(s0 + 'T00:00:00Z');
+  return dz.getUTCDate() === Number(m[3]) && dz.getUTCMonth() === Number(m[2]) - 1 ? s0 : null;
+}
+const payLine = (o: { pay_type?: string; due_date?: string | null; out_tx?: string | null }) => o.pay_type === 'debt'
+  ? (o.out_tx ? '💳 Qarzga edi — ✅ to‘langan' : `💳 <b>Qarzga</b> · to‘lash muddati: <b>${o.due_date ? dmyY(o.due_date) : '—'}</b>${o.due_date && o.due_date < ymd(new Date()) ? ' ⚠️ muddati o‘tgan' : ''}`)
+  : '💵 To‘lov: naqd (tasdiqlanganda)';
 const priceLine = (qty: number, unit?: number | null) => unit ? `💰 ${qty} × ${sum(unit)} = <b>${sum(qty * unit)}</b>` : '';
 // Kitob yetkazuvchilar (@MarsKitob, @zomaxcom): har biri o'z kitoblari va buyurtmalarini ko'radi; botga /start bossa chat_id saqlanadi
 const SUPPLIER_DEFAULT = 'MarsKitob';
@@ -645,7 +670,7 @@ async function notifySupplier(sup: string | null | undefined, text: string): Pro
   if (!id) return false;
   try { await send(id, text); return true; } catch { return false; }
 }
-const supplierText = (o: any) => `📚 <b>Registan LC — kitob buyurtmasi #${o.id}</b>\n\n📘 ${esc(o.book)}\n📦 Soni: <b>${o.qty} ta</b>\n${priceLine(o.qty, o.unit_price)}\n👩‍🏫 Ustoz: ${esc(o.teacher_name)}${o.group_name ? `\n👥 Guruh: ${esc(o.group_name)}` : ''}${o.note ? `\n💬 ${esc(o.note)}` : ''}`;
+const supplierText = (o: any) => `📚 <b>Registan LC — kitob buyurtmasi #${o.id}</b>\n\n📘 ${esc(o.book)}\n📦 Soni: <b>${o.qty} ta</b>\n${priceLine(o.qty, o.unit_price)}\n${payLine(o)}\n👩‍🏫 Ustoz: ${esc(o.teacher_name)}${o.group_name ? `\n👥 Guruh: ${esc(o.group_name)}` : ''}${o.note ? `\n💬 ${esc(o.note)}` : ''}`;
 
 // =========================================================
 // 🏪 Kitob yetkazuvchi (@MarsKitob) profili: buyurtmalar, “tayyor”, hisob-kitob, kitoblar va narxlar (katalog)
@@ -654,7 +679,8 @@ const B_SUP_ORD = '📚 Buyurtmalar';
 const B_SUP_ALL = '🗂 Barcha buyurtmalar';
 const B_SUP_SUM = '💰 Hisob-kitob';
 const B_SUP_CAT = '📘 Kitoblar va narxlar';
-const MENU_SUPPLIER = persist([[B_SUP_ORD, B_SUP_ALL], [B_SUP_CAT, B_SUP_SUM]]);
+const B_SUP_DEBT = '💳 Qarzlar';
+const MENU_SUPPLIER = persist([[B_SUP_ORD, B_SUP_ALL], [B_SUP_DEBT, B_SUP_SUM], [B_SUP_CAT]]);
 const CAT_SUBJ = ['Nemis tili', 'Turk tili', 'Ingliz tili', 'Rus tili'];
 async function isSupplier(from: any): Promise<string | null> {
   if (!from?.id) return null;
@@ -834,7 +860,7 @@ async function supplierSummary(chatId: number, sup: string) {
   const cnt = (f: (o: any) => boolean) => L.filter(f).reduce((a, o) => a + o.qty, 0);
   const byBook = new Map<string, { n: number; s: number }>();
   L.filter(o => o.status !== 'pending').forEach(o => { const b = byBook.get(o.book) || { n: 0, s: 0 }; b.n += o.qty; b.s += o.qty * o.unit_price; byBook.set(o.book, b); });
-  await send(chatId, `💰 <b>Hisob-kitob · shu oy</b>\n\n✅ Tasdiqlangan: <b>${cnt(o => o.status === 'approved')} ta</b> · ${sum(tot(o => o.status === 'approved'))}\n📦 Tayyor/berilgan: <b>${cnt(o => o.status === 'ready')} ta</b> · ${sum(tot(o => o.status === 'ready'))}\n⏳ Tasdiq kutilmoqda: ${cnt(o => o.status === 'pending')} ta · ${sum(tot(o => o.status === 'pending'))}\n💸 Edutizim kassasidan chiqim qilingan: <b>${sum(L.filter(o => o.out_tx).reduce((a, o) => a + (Number(o.out_amount) || 0), 0))}</b>${byBook.size ? `\n\n<b>Kitoblar bo‘yicha:</b>\n${[...byBook.entries()].map(([b, x]) => `• ${esc(b)} — ${x.n} ta · ${sum(x.s)}`).join('\n')}` : ''}`, { reply_markup: menu() });
+  await send(chatId, `💰 <b>Hisob-kitob · shu oy</b>\n\n✅ Tasdiqlangan: <b>${cnt(o => o.status === 'approved')} ta</b> · ${sum(tot(o => o.status === 'approved'))}\n📦 Tayyor/berilgan: <b>${cnt(o => o.status === 'ready')} ta</b> · ${sum(tot(o => o.status === 'ready'))}\n⏳ Tasdiq kutilmoqda: ${cnt(o => o.status === 'pending')} ta · ${sum(tot(o => o.status === 'pending'))}\n💸 Edutizim kassasidan chiqim qilingan: <b>${sum(L.filter(o => o.out_tx).reduce((a, o) => a + (Number(o.out_amount) || 0), 0))}</b>\n💳 Qarzga (to‘lanmagan): <b>${sum(L.filter(o => o.pay_type === 'debt' && !o.out_tx && o.status !== 'pending').reduce((a, o) => a + o.qty * o.unit_price, 0))}</b>${byBook.size ? `\n\n<b>Kitoblar bo‘yicha:</b>\n${[...byBook.entries()].map(([b, x]) => `• ${esc(b)} — ${x.n} ta · ${sum(x.s)}`).join('\n')}` : ''}`, { reply_markup: menu() });
 }
 async function supplierReady(chatId: number, id: number, sup?: string | null) {
   const { data: cur } = await admin.from('crm_edu_book_orders').select('supplier').eq('id', id).maybeSingle();
@@ -845,24 +871,67 @@ async function supplierReady(chatId: number, id: number, sup?: string | null) {
   await send(o.teacher_tg, `📦 Kitob buyurtmangiz <b>#${o.id}</b> tayyor — olib ketishingiz mumkin.\n📘 ${esc(o.book)} — ${o.qty} ta`).catch(() => {});
   await notifyTops(`📦 <b>@${esc(await supplierName(o.supplier))}: buyurtma #${o.id} tayyor</b>\n📘 ${esc(o.book)} — ${o.qty} ta · ${esc(o.teacher_name)}`).catch(() => {});
 }
+// 💳 Nashriyot qarzlari: qarzga olingan (tasdiqlangan, hali to'lanmagan) buyurtmalar
+async function bookDebts(sup?: string | null) {
+  let q = admin.from('crm_edu_book_orders').select('*').eq('pay_type', 'debt').is('out_tx', null).in('status', ['approved', 'ready']).order('due_date', { ascending: true }).limit(100);
+  if (sup) q = supFilter(q, sup);
+  const { data } = await q;
+  return (data || []) as any[];
+}
+async function bookDebtsView(chatId: number, sup?: string | null, asSupplier = false) {
+  const L = await bookDebts(sup);
+  const today = ymd(new Date());
+  const tot = L.reduce((a, o) => a + o.qty * o.unit_price, 0);
+  const over = L.filter(o => o.due_date && o.due_date < today);
+  const { data: paid } = await (sup ? supFilter(admin.from('crm_edu_book_orders').select('out_amount'), sup) : admin.from('crm_edu_book_orders').select('out_amount')).eq('pay_type', 'debt').not('out_tx', 'is', null).gte('paid_at', monthStartIso(0));
+  const paidSum = (paid || []).reduce((a: number, o: any) => a + (Number(o.out_amount) || 0), 0);
+  const line = (o: any) => `<b>#${o.id}</b> · ${esc(o.book)} — ${o.qty} ta · <b>${sum(o.qty * o.unit_price)}</b>${sup ? '' : ` · 🏪 @${esc(o.supplier || SUPPLIER_DEFAULT)}`}\n   📅 ${o.due_date ? dmyY(o.due_date) : '—'}${o.due_date && o.due_date < today ? ' ⚠️ <b>muddati o‘tgan</b>' : o.due_date === today ? ' ⏰ bugun' : ''} · 👩‍🏫 ${esc(o.teacher_name)}`;
+  const rows: any[] = asSupplier ? [] : L.slice(0, 20).map(o => [ib(`✅ #${o.id} to‘landi — ${sum(o.qty * o.unit_price)}`.slice(0, 60), `bkd:p:${o.id}`)]);
+  await sendLong(chatId, `💳 <b>Qarzlar${sup ? ` · @${esc(sup)}` : ' · barcha nashriyotlar'}</b>\n\n💰 Jami qarz: <b>${sum(tot)}</b> (${L.length} ta buyurtma)${over.length ? `\n⚠️ Muddati o‘tgan: <b>${over.length}</b> ta · ${sum(over.reduce((a, o) => a + o.qty * o.unit_price, 0))}` : ''}\n✅ Shu oy to‘langan: ${sum(paidSum)}\n\n${L.map(line).join('\n\n') || '<i>Qarz yo‘q</i>'}${asSupplier ? '' : '\n\n<i>“✅ To‘landi” — Edutizim kassasidan “Kitob” chiqimi qilinadi va nashriyotga xabar boradi.</i>'}`, rows.length ? { reply_markup: { inline_keyboard: rows } } : {});
+}
+// Muddati kelgan/o'tgan qarzlar — top menejerga kuniga bir marta (09:00 dan keyin)
+async function bookDebtRemind(force = false) {
+  const now = new Date(Date.now() + TZ);
+  const day = now.toISOString().slice(0, 10);
+  if (!force && (now.getUTCHours() < 9 || (await getSetting<string>('bookDebtRemindDay', '')) === day)) return { skipped: true };
+  await admin.from('crm_settings').upsert({ key: 'bookDebtRemindDay', value: day });
+  const tomorrow = ymd(new Date(Date.now() + DAY));
+  const L = (await bookDebts()).filter(o => o.due_date && o.due_date <= tomorrow);
+  if (!L.length) return { due: 0 };
+  const txt = L.map(o => `• <b>#${o.id}</b> @${esc(o.supplier || SUPPLIER_DEFAULT)} · ${esc(o.book)} × ${o.qty} — <b>${sum(o.qty * o.unit_price)}</b> · ${o.due_date < day ? `⚠️ muddati o‘tgan (${dmyY(o.due_date)})` : o.due_date === day ? '⏰ bugun' : '📅 ertaga'}`).join('\n');
+  await notifyTops(`💳 <b>Kitob qarzlari — to‘lash vaqti</b>\n\n${txt}\n\nJami: <b>${sum(L.reduce((a, o) => a + o.qty * o.unit_price, 0))}</b>`, { reply_markup: { inline_keyboard: [...L.slice(0, 10).map(o => [ib(`✅ #${o.id} to‘landi`, `bkd:p:${o.id}`)]), [ib('💳 Barcha qarzlar', 'bkd:all')]] } });
+  return { due: L.length };
+}
+async function bookDebtCallback(chatId: number, data: string) {
+  if (data === 'bkd:all') return bookDebtsView(chatId);
+  if (data.startsWith('bkd:p:')) {
+    const id = Number(data.slice(6));
+    const { data: o } = await admin.from('crm_edu_book_orders').select('*').eq('id', id).maybeSingle();
+    if (!o) return void send(chatId, 'Buyurtma topilmadi.');
+    if (o.out_tx) return void send(chatId, `ℹ️ #${id} allaqachon to‘langan.`);
+    return bookPayoutConfirm(chatId, id, o.unit_price);
+  }
+}
 // 🏪 Nashriyotlar (top menejer): ro'yxat, ulanganmi, kitoblari, buyurtmalari, hisob, qo'shish/o'chirish
 async function pubStats() {
   const now = new Date(Date.now() + 5 * 3600_000);
   const from = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1) - 5 * 3600_000).toISOString();
   const [L, chats, cat, { data: ords }] = await Promise.all([supplierList(), supplierChats(), getCatalog(),
     admin.from('crm_edu_book_orders').select('supplier,qty,unit_price,status,created_at').not('unit_price', 'is', null).neq('status', 'rejected').gte('created_at', from)]);
+  const debts = await bookDebts();
   return L.map(name => {
     const os = (ords || []).filter((o: any) => sameSup(o.supplier, name));
     return { name, chat: chats[supKey(name)] || null, books: cat.filter(c => sameSup(itemSup(c), name)).length,
       orders: os.length, pending: os.filter((o: any) => o.status === 'pending').length, approved: os.filter((o: any) => o.status === 'approved').length,
-      qty: os.reduce((a: number, o: any) => a + o.qty, 0), total: os.reduce((a: number, o: any) => a + o.qty * o.unit_price, 0) };
+      qty: os.reduce((a: number, o: any) => a + o.qty, 0), total: os.reduce((a: number, o: any) => a + o.qty * o.unit_price, 0),
+      debt: debts.filter(o => sameSup(o.supplier, name)).reduce((a, o) => a + o.qty * o.unit_price, 0) };
   });
 }
 async function pubsView(chatId: number) {
   const st = await pubStats();
-  const lines = st.map((p, i) => `<b>${i + 1}. @${esc(p.name)}</b> · ${p.chat ? '✅ botga ulangan' : '⚠️ /start bosmagan'}\n   📘 ${p.books} ta kitob · 📚 shu oy ${p.orders} ta buyurtma (${p.qty} dona) · <b>${sum(p.total)}</b>${p.pending ? `\n   ⏳ ${p.pending} ta tasdiq kutilmoqda` : ''}${p.approved ? ` · 📦 ${p.approved} ta tayyorlanmoqda` : ''}`);
+  const lines = st.map((p, i) => `<b>${i + 1}. @${esc(p.name)}</b> · ${p.chat ? '✅ botga ulangan' : '⚠️ /start bosmagan'}\n   📘 ${p.books} ta kitob · 📚 shu oy ${p.orders} ta buyurtma (${p.qty} dona) · <b>${sum(p.total)}</b>${p.pending ? `\n   ⏳ ${p.pending} ta tasdiq kutilmoqda` : ''}${p.approved ? ` · 📦 ${p.approved} ta tayyorlanmoqda` : ''}${p.debt ? `\n   💳 qarz: <b>${sum(p.debt)}</b>` : ''}`);
   await send(chatId, `🏪 <b>Nashriyotlar</b>\nUstoz buyurtmada nashriyotni tanlaydi va uning qo‘shgan kitoblaridan oladi.\n\n${lines.join('\n\n') || '<i>Nashriyot yo‘q</i>'}`, {
-    reply_markup: { inline_keyboard: [...st.map((p, i) => [ib(`🏪 @${p.name}`, `pub:v:${i}`)]), [ib('➕ Nashriyot qo‘shish', 'pub:add')]] }
+    reply_markup: { inline_keyboard: [...st.map((p, i) => [ib(`🏪 @${p.name}`, `pub:v:${i}`)]), [ib('💳 Barcha qarzlar', 'bkd:all'), ib('➕ Nashriyot qo‘shish', 'pub:add')]] }
   });
 }
 async function pubCallback(chatId: number, data: string, s: any) {
@@ -875,15 +944,17 @@ async function pubCallback(chatId: number, data: string, s: any) {
   const i = Number(p[2]);
   if (p[1] === 'v') {
     const st = (await pubStats()).find(x => x.name === name)!;
-    return void send(chatId, `🏪 <b>@${esc(name)}</b>\n${st.chat ? '✅ Botga ulangan — buyurtmalar unga avtomatik boradi' : `⚠️ Hali botga /start bosmagan — buyurtmalar unga yetmaydi.\nUnga bot havolasini yuboring.`}\n\n📘 Kitoblari: <b>${st.books}</b> ta\n📚 Shu oy: <b>${st.orders}</b> ta buyurtma · ${st.qty} dona · <b>${sum(st.total)}</b>\n⏳ Tasdiq kutilmoqda: ${st.pending} · 📦 Tayyorlanmoqda: ${st.approved}`, {
+    return void send(chatId, `🏪 <b>@${esc(name)}</b>\n${st.chat ? '✅ Botga ulangan — buyurtmalar unga avtomatik boradi' : `⚠️ Hali botga /start bosmagan — buyurtmalar unga yetmaydi.\nUnga bot havolasini yuboring.`}\n\n📘 Kitoblari: <b>${st.books}</b> ta\n📚 Shu oy: <b>${st.orders}</b> ta buyurtma · ${st.qty} dona · <b>${sum(st.total)}</b>\n⏳ Tasdiq kutilmoqda: ${st.pending} · 📦 Tayyorlanmoqda: ${st.approved}\n💳 Qarz: <b>${sum(st.debt)}</b>`, {
       reply_markup: { inline_keyboard: [
         [ib('📘 Kitoblari va narxlari', `pub:c:${i}`), ib('📚 Buyurtmalari', `pub:o:${i}`)],
-        [ib('💰 Hisob-kitob (shu oy)', `pub:s:${i}`), { text: `💬 @${name}`, url: `https://t.me/${name}` }],
+        [ib('💳 Qarzlari', `pub:d:${i}`), ib('💰 Hisob-kitob (shu oy)', `pub:s:${i}`)],
+        [{ text: `💬 @${name}`, url: `https://t.me/${name}` }],
         [ib('🗑 Nashriyotni o‘chirish', `pub:del:${i}`), ib('⬅️ Nashriyotlar', 'pub:list')]] } });
   }
   if (p[1] === 'c') return catalogView(chatId, name);
   if (p[1] === 'o') return supplierOrders(chatId, name, true);
   if (p[1] === 's') return supplierSummary(chatId, name);
+  if (p[1] === 'd') return bookDebtsView(chatId, name);
   if (p[1] === 'del') {
     const books = (await getCatalog()).filter(c => sameSup(itemSup(c), name)).length;
     return void send(chatId, `🗑 <b>@${esc(name)}</b> nashriyotlar ro‘yxatidan o‘chirilsinmi?${books ? `\n⚠️ Uning ${books} ta kitobi ustozlarga ko‘rinmay qoladi (katalogda saqlanadi, qayta qo‘shsangiz tiklanadi).` : ''}`, { reply_markup: { inline_keyboard: [[ib('✅ Ha, o‘chirish', `pub:dely:${i}`), ib('❌ Yo‘q', `pub:v:${i}`)]] } });
@@ -914,13 +985,14 @@ async function supplierUpdate(update: any, sup: string) {
   const text = String(m.text || '').trim();
   if (text === '/start' || text === '/menu') {
     await setSession(chatId, null);
-    await send(chatId, `🏪 <b>Kitob yetkazuvchi profili</b> · @${esc(sup)} · Registan LC\n\nBu yerda:\n• ${B_SUP_ORD} — ustozlarning buyurtmalari (narxi bilan); tayyor bo‘lsa “📦 tayyor” bosasiz\n• ${B_SUP_CAT} — kitob qo‘shish, narxni o‘zgartirish\n• ${B_SUP_SUM} — shu oy hisob-kitob\n\nYangi buyurtma kelsa — shu yerga xabar keladi.`, { reply_markup: MENU_SUPPLIER });
+    await send(chatId, `🏪 <b>Kitob yetkazuvchi profili</b> · @${esc(sup)} · Registan LC\n\nBu yerda:\n• ${B_SUP_ORD} — ustozlarning buyurtmalari (narxi bilan); tayyor bo‘lsa “📦 tayyor” bosasiz\n• ${B_SUP_CAT} — kitob qo‘shish, narxni o‘zgartirish\n• ${B_SUP_DEBT} — Registan LC ning sizdan qarzga olgan kitoblari va to‘lash muddatlari\n• ${B_SUP_SUM} — shu oy hisob-kitob\n\nYangi buyurtma kelsa — shu yerga xabar keladi.`, { reply_markup: MENU_SUPPLIER });
     return supplierOrders(chatId, sup);
   }
   if (text === B_CANCEL || text === '/cancel') { await setSession(chatId, null); return void send(chatId, '❌ Bekor qilindi.', { reply_markup: MENU_SUPPLIER }); }
   if (text === B_SUP_ORD) return supplierOrders(chatId, sup);
   if (text === B_SUP_ALL) return supplierOrders(chatId, sup, true);
   if (text === B_SUP_SUM) return supplierSummary(chatId, sup);
+  if (text === B_SUP_DEBT) return bookDebtsView(chatId, sup, true);
   if (text === B_SUP_CAT) { await setSession(chatId, null); return catalogView(chatId, sup); }
   const s = await getSession(chatId);
   if (await catalogStep(chatId, s, text, from, sup)) return;
@@ -1036,13 +1108,23 @@ async function bookAskBook(chatId: number, d: any) {
   });
   if (!books.length) await send(chatId, '✍️ Kitob nomini yozing:', { reply_markup: CANCEL_KB });
 }
+async function bookAskPay(chatId: number, d: any) {
+  await setSession(chatId, 'bk_pt', d);
+  await send(chatId, `📘 ${esc(d.book)} — <b>${d.qty} ta</b>\n${priceLine(d.qty, d.unitPrice)}\n\n💳 <b>To‘lov turi?</b>`, { reply_markup: { inline_keyboard: [
+    [ib('💵 Naqd — tasdiqlanganda to‘lanadi', 'bkt:pt:cash')], [ib('📅 Qarzga — to‘lash sanasi bilan', 'bkt:pt:debt')]] } });
+}
+async function bookAskDue(chatId: number, d: any) {
+  await setSession(chatId, 'bk_due', d);
+  const opt = (days: number) => { const t = new Date(Date.now() + days * DAY); return ib(`${days === 7 ? '1 hafta' : days === 14 ? '2 hafta' : '1 oy'} · ${dmyY(ymd(t))}`, `bkt:pd:${days}`); };
+  await send(chatId, '📅 Qarz qachon to‘lanadi? Tanlang yoki sanani yozing (masalan: <b>15.12</b> yoki <b>15.12.2026</b>):', { reply_markup: { inline_keyboard: [[opt(7), opt(14)], [opt(30)]] } });
+}
 async function bookAskNote(chatId: number, d: any) {
   await setSession(chatId, 'bk_note', d);
   await send(chatId, `💬 Izoh (ixtiyoriy): daraja, nashr, muddat…\nYoki “${B_SKIP}”.`, { reply_markup: SKIP_KB });
 }
 async function bookConfirm(chatId: number, d: any) {
   await setSession(chatId, 'bk_ok', d);
-  await send(chatId, `🧾 <b>Buyurtmani tekshiring</b>\n\n📚 ${esc(d.subject)}${d.group ? ' · ' + esc(d.group) : ''}\n📘 ${esc(d.book)} — <b>${d.qty} ta</b>${d.unitPrice ? `\n${priceLine(d.qty, d.unitPrice)}` : ''}\n👥 ${(d.students || []).map((x: any) => esc(x.name)).join(', ')}${d.note ? `\n💬 ${esc(d.note)}` : ''}${d.unitPrice ? `\n\n📤 Buyurtma @${esc(await supplierName(d.supplier))} ga va top menejerga boradi.` : ''}`, {
+  await send(chatId, `🧾 <b>Buyurtmani tekshiring</b>\n\n📚 ${esc(d.subject)}${d.group ? ' · ' + esc(d.group) : ''}\n📘 ${esc(d.book)} — <b>${d.qty} ta</b>${d.unitPrice ? `\n${priceLine(d.qty, d.unitPrice)}\n${payLine({ pay_type: d.payType, due_date: d.dueDate })}` : ''}\n👥 ${(d.students || []).map((x: any) => esc(x.name)).join(', ')}${d.note ? `\n💬 ${esc(d.note)}` : ''}${d.unitPrice ? `\n\n📤 Buyurtma @${esc(await supplierName(d.supplier))} ga va top menejerga boradi.` : ''}`, {
     reply_markup: { inline_keyboard: [[ib('✅ Yuborish', 'bkt:ok'), ib('❌ Bekor', 'x')]] }
   });
 }
@@ -1050,7 +1132,7 @@ async function bookSubmit(chatId: number, d: any, from: any) {
   const u = me();
   const { data: o, error } = await admin.from('crm_edu_book_orders').insert({
     teacher_tg: from.id, teacher_name: d.forName || u?.full_name || from.first_name || 'Ustoz', employee_id: d.forEmp || u?.employee_id || null,
-    subject: d.subject, group_name: d.group || null, group_id: d.groupId || null, book: d.book, qty: d.qty, note: [d.forName ? `Top menejer buyurtmasi: ${u?.full_name || from.first_name || ''}` : '', d.note || ''].filter(Boolean).join(' · ') || null, unit_price: d.unitPrice || null, supplier: d.unitPrice ? await supplierName(d.supplier) : null,
+    subject: d.subject, group_name: d.group || null, group_id: d.groupId || null, book: d.book, qty: d.qty, note: [d.forName ? `Top menejer buyurtmasi: ${u?.full_name || from.first_name || ''}` : '', d.note || ''].filter(Boolean).join(' · ') || null, unit_price: d.unitPrice || null, pay_type: d.unitPrice && d.payType === 'debt' ? 'debt' : 'cash', due_date: d.unitPrice && d.payType === 'debt' ? d.dueDate || null : null, supplier: d.unitPrice ? await supplierName(d.supplier) : null,
     students: (d.students || []).map((x: any) => ({ id: x.id, name: x.name }))
   }).select('*').single();
   await setSession(chatId, null);
@@ -1065,8 +1147,8 @@ async function bookSubmit(chatId: number, d: any, from: any) {
   } else await send(chatId, `✅ Buyurtma <b>#${o.id}</b> top menejerga yuborildi. Javob shu yerga keladi.`, { reply_markup: menu() });
   const stN = await stockOf(o.subject, o.book);
   const stLine = o.unit_price ? '' : !stN ? '\n📦 Omborda bu kitob yo‘q — sotib olish kerak' : stN.qty >= o.qty ? `\n📦 Omborda: ${stN.qty} ta ✅ yetadi` : `\n📦 Omborda: ${stN.qty} ta — ⚠️ ${o.qty - stN.qty} ta yetishmaydi`;
-  const okBtn = o.unit_price ? ib(`✅ Tasdiqlash + chiqim ${sum(o.qty * o.unit_price)}`, `bko:a:${o.id}`) : ib('✅ Tasdiqlash', `bko:a:${o.id}`);
-  await notifyTops(`📚 <b>Yangi kitob buyurtmasi</b>\n<i>Faqat to‘lov qilgan yangi o‘quvchilar uchun</i>\n\n${orderLine(o, true)}${stLine}${supLine}${o.unit_price ? '\n\n<i>Tasdiqlasangiz shu summa Edutizim kassasidan “Kitob” chiqimi bo‘lib yoziladi.</i>' : ''}`, { reply_markup: { inline_keyboard: [[okBtn], [ib('❌ Rad etish', `bko:r:${o.id}`)]] } });
+  const okBtn = o.unit_price ? (o.pay_type === 'debt' ? ib(`✅ Tasdiqlash (qarzga · ${o.due_date ? dmyY(o.due_date) : ''})`, `bko:a:${o.id}`) : ib(`✅ Tasdiqlash + chiqim ${sum(o.qty * o.unit_price)}`, `bko:a:${o.id}`)) : ib('✅ Tasdiqlash', `bko:a:${o.id}`);
+  await notifyTops(`📚 <b>Yangi kitob buyurtmasi</b>\n<i>Faqat to‘lov qilgan yangi o‘quvchilar uchun</i>\n\n${orderLine(o, true)}${stLine}${supLine}${o.unit_price ? (o.pay_type === 'debt' ? '\n\n<i>Qarzga: tasdiqlansa nashriyot qarzlariga tushadi; to‘langanda “💳 Qarzlar” dan “✅ To‘landi” bosasiz — shunda Edutizimdan chiqim bo‘ladi.</i>' : '\n\n<i>Tasdiqlasangiz shu summa Edutizim kassasidan “Kitob” chiqimi bo‘lib yoziladi.</i>') : ''}`, { reply_markup: { inline_keyboard: [[okBtn], [ib('❌ Rad etish', `bko:r:${o.id}`)]] } });
 }
 async function myBookOrders(chatId: number, tgId: number) {
   const { data } = await admin.from('crm_edu_book_orders').select('*').eq('teacher_tg', tgId).order('created_at', { ascending: false }).limit(15);
@@ -1118,13 +1200,22 @@ async function bookTeacherCallback(chatId: number, data: string, s: any, from: a
     if (!kit) return void send(chatId, `📘 <b>${esc(`${c.title} ${lv}`.trim())}</b> — dars kitobi, mashq kitobi yoki ikkalasi? (${s.data.qty} ta)`, {
       reply_markup: { inline_keyboard: [...opts.map((x, i) => [ib(`${x.name} — ${sum(x.price)}${s.data.qty > 1 ? ` × ${s.data.qty} = ${sum(x.price * s.data.qty)}` : ''}`, `bkt:k:${ci}:${li}:${i}`)]), [ib('⬅️ Kitoblar', 'bkt:cb')]] } });
     const { books: _b, cat: _c, pubs: _ps, pub: _p, ...rest } = s.data;
-    return bookAskNote(chatId, { ...rest, book: `${`${c.title} ${lv}`.trim()} · ${kit.name}`, unitPrice: kit.price, supplier: itemSup(c) });
+    return bookAskPay(chatId, { ...rest, book: `${`${c.title} ${lv}`.trim()} · ${kit.name}`, unitPrice: kit.price, supplier: itemSup(c) });
   }
   if (data.startsWith('bkt:pub:') || data === 'bkt:pubs') {
     if (s.step !== 'bk_book') return bookStart(chatId);
     const { books: _b, cat: _c, pubs, pub: _p, ...rest } = s.data;
     const pub = data === 'bkt:pubs' ? undefined : pubs?.[Number(data.slice(8))];
     return bookAskBook(chatId, pub ? { ...rest, pub } : rest);
+  }
+  if (data.startsWith('bkt:pt:')) {
+    if (s.step !== 'bk_pt') return bookStart(chatId);
+    if (data === 'bkt:pt:debt') return bookAskDue(chatId, { ...s.data, payType: 'debt' });
+    return bookAskNote(chatId, { ...s.data, payType: 'cash', dueDate: null });
+  }
+  if (data.startsWith('bkt:pd:')) {
+    if (s.step !== 'bk_due') return bookStart(chatId);
+    return bookAskNote(chatId, { ...s.data, dueDate: ymd(new Date(Date.now() + Number(data.slice(7)) * DAY)) });
   }
   if (data === 'bkt:cb') {
     if (s.step !== 'bk_book') return bookStart(chatId);
@@ -1159,6 +1250,7 @@ async function bookOrdersTop(chatId: number, all = false) {
     : [...(o.out_tx ? [] : [ib(`💸 #${o.id} chiqim`, `bko:o:${o.id}`)]), ib(`📦 #${o.id} tayyor`, `bko:d:${o.id}`)]));
   rows.push([ib(all ? '⏳ Faqat faollari' : '🗂 Hammasi (oxirgi 25)', all ? 'bko:list' : 'bko:all'), ib('📦 Kitoblar ombori', 'om:v')]);
   rows.push([ib('📘 Kitoblar va narxlar (katalog)', 'sup:cat'), ib('➕ Buyurtma berish', 'bkt:tp')]);
+  rows.push([ib('💳 Nashriyot qarzlari', 'bkd:all')]);
   await send(chatId, list.length
     ? `📚 <b>Kitob buyurtmalari</b>${all ? '' : ` · faol (${pend} ta kutilmoqda)`}\n\n${list.map(o => orderLine(o, true)).join('\n\n')}`.slice(0, 4000)
     : '📚 Faol kitob buyurtmasi yo‘q.', { reply_markup: { inline_keyboard: rows } });
@@ -1200,14 +1292,15 @@ async function bookOrderAction(chatId: number, data: string, from: any) {
   if (status === 'approved' && !o.unit_price) stockNote = stA ? `\n📦 Omborda: <b>${stA.qty}</b> ta${stA.qty < o.qty ? ` — ⚠️ ${o.qty - stA.qty} ta yetishmaydi` : ' ✅ yetadi'}` : '\n📦 Omborda bu kitob yo‘q';
   await send(chatId, `${ORDER_ST[status]}: #${o.id} · ${esc(o.book)} — ${o.qty} ta (${esc(o.teacher_name)})${stockNote}`, status === 'approved' && !o.unit_price ? { reply_markup: { inline_keyboard: [[ib('💸 Edutizim’dan chiqim qilish', `bko:o:${o.id}`)], [ib('📦 Tayyor bo‘lganda bosing', `bko:d:${o.id}`)]] } } : {});
   if (o.unit_price && (status === 'approved' || status === 'rejected')) {
-    await notifySupplier(o.supplier, status === 'approved' ? `✅ <b>Buyurtma #${o.id} tasdiqlandi</b>\n📘 ${esc(o.book)} — ${o.qty} ta\n${priceLine(o.qty, o.unit_price)}\nTayyorlashingiz mumkin.` : `❌ Buyurtma #${o.id} bekor qilindi (${esc(o.book)} — ${o.qty} ta).`);
+    await notifySupplier(o.supplier, status === 'approved' ? `✅ <b>Buyurtma #${o.id} tasdiqlandi</b>\n📘 ${esc(o.book)} — ${o.qty} ta\n${priceLine(o.qty, o.unit_price)}\n${payLine(o)}\nTayyorlashingiz mumkin.` : `❌ Buyurtma #${o.id} bekor qilindi (${esc(o.book)} — ${o.qty} ta).`);
   }
   const msg = status === 'approved' ? `✅ Kitob buyurtmangiz <b>#${o.id}</b> tasdiqlandi.\n📘 ${esc(o.book)} — ${o.qty} ta\nTayyor bo‘lganda xabar beramiz.`
     : status === 'rejected' ? `❌ Kitob buyurtmangiz <b>#${o.id}</b> rad etildi.\n📘 ${esc(o.book)} — ${o.qty} ta\nSavol bo‘lsa, top menejerga yozing.`
     : `📦 Kitob buyurtmangiz <b>#${o.id}</b> tayyor — olib ketishingiz mumkin.\n📘 ${esc(o.book)} — ${o.qty} ta`;
   await send(o.teacher_tg, msg).catch(() => {});
   // Narxli katalog buyurtmasi: tasdiq = Edutizim kassasidan chiqim
-  if (status === 'approved' && o.unit_price && !o.out_tx) {
+  if (status === 'approved' && o.unit_price && o.pay_type === 'debt') await send(chatId, `📅 #${o.id} qarzga yozildi: <b>${sum(o.qty * o.unit_price)}</b> · @${esc(await supplierName(o.supplier))} · muddat <b>${o.due_date ? dmyY(o.due_date) : '—'}</b>\nTo‘laganda: 🏪 Nashriyotlar → 💳 Qarzlari → ✅ To‘landi.`);
+  if (status === 'approved' && o.unit_price && !o.out_tx && o.pay_type !== 'debt') {
     await setSession(chatId, 'bk_pay', { id: o.id, price: o.unit_price, amount: o.unit_price * o.qty });
     await bookPayoutExecute(chatId, o.id, from);
   }
@@ -1248,7 +1341,8 @@ async function bookPayoutExecute(chatId: number, id: number, from: any) {
     amount: s.data.amount, comment: `[Bot ${by}] Kitob #${o.id}: ${o.book} × ${o.qty} · ${o.teacher_name}`.slice(0, 200), by });
   await setSession(chatId, null);
   if (!r.ok) return void send(chatId, `⚠️ Kassaga yozilmadi: ${esc(r.error)}`, { reply_markup: menu() });
-  await admin.from('crm_edu_book_orders').update({ unit_price: s.data.price, out_amount: s.data.amount, out_tx: r.id || 'ok', out_at: new Date().toISOString(), out_by: me()?.full_name || by }).eq('id', id);
+  await admin.from('crm_edu_book_orders').update({ unit_price: s.data.price, out_amount: s.data.amount, out_tx: r.id || 'ok', out_at: new Date().toISOString(), out_by: me()?.full_name || by, paid_at: new Date().toISOString() }).eq('id', id);
+  if (o.pay_type === 'debt') await notifySupplier(o.supplier, `✅ <b>Qarz to‘landi</b> · buyurtma #${o.id}\n📘 ${esc(o.book)} — ${o.qty} ta\n💰 <b>${sum(s.data.amount)}</b>`);
   await sticker(chatId, 'bajarildi');
   const rows: any[] = [];
   if (r.id) rows.push([ib('↩️ Chiqimni bekor qilish', `kx:${r.id}`)]);
@@ -3407,7 +3501,7 @@ function cbAllowed(data: string, r: Role) {
   if (['go', 'home', 'acc', 'acl', 'acu'].includes(p)) return ['top', 'senior', 'service', 'teacher', 'media'].includes(r);
   if (r === 'media') return ['ai', 'ph', 'sch'].includes(p);
   if (r === 'top') return true;
-  if (r === 'senior') return !['pub', 'pa', 'ub', 'ue', 'bko', 'bkl', 'bkt', 'kt', 'ks', 'km', 'kb', 'ok', 'kx', 'pay', 'ua', 'ur', 'urs', 'adm', 'sms', 'sm1', 'sma', 'smt', 'smx', 'smi', 'smok', 'bd', 'bo', 'bda', 'bdy', 'pfx', 'pga', 'pgc', 'pok', 'tc'].includes(p);
+  if (r === 'senior') return !['pub', 'bkd', 'pa', 'ub', 'ue', 'bko', 'bkl', 'bkt', 'kt', 'ks', 'km', 'kb', 'ok', 'kx', 'pay', 'ua', 'ur', 'urs', 'adm', 'sms', 'sm1', 'sma', 'smt', 'smx', 'smi', 'smok', 'bd', 'bo', 'bda', 'bdy', 'pfx', 'pga', 'pgc', 'pok', 'tc'].includes(p);
   if (r === 'service') return svc.includes(p);
   if (r === 'teacher') return tch.includes(p);
   return false;
@@ -3570,6 +3664,13 @@ async function onMessage(m: any) {
       const price = parseAmount(text);
       if (!price || price < 1000) return void send(chatId, 'Bitta kitob narxini so‘mda yozing, masalan: 85000 yoki 85k');
       return bookPayoutConfirm(chatId, s.data.id, price);
+    }
+    case 'bk_due': {
+      if (r !== 'teacher' && !isTop) break;
+      const due = parseDue(text);
+      if (!due) return void send(chatId, 'Sanani yozing, masalan: <b>15.12</b> yoki <b>15.12.2026</b>');
+      if (due < ymd(new Date())) return void send(chatId, 'O‘tgan sana bo‘lmaydi — keyingi sanani yozing.');
+      return bookAskNote(chatId, { ...s.data, dueDate: due });
     }
     case 'bk_note':
       if (r !== 'teacher' && !isTop) break;
@@ -3781,6 +3882,7 @@ async function onCallback(q: any) {
   if (data.startsWith('ph:')) return phonesCallback(chatId, data);
   if (data.startsWith('sup:d:')) return supplierReady(chatId, Number(data.slice(6)));
   if (data.startsWith('pub:')) return pubCallback(chatId, data, s);
+  if (data.startsWith('bkd:')) return bookDebtCallback(chatId, data);
   if (data.startsWith('sup:')) return catalogCallback(chatId, data, s, q.from);
   if (data.startsWith('bkt:')) return bookTeacherCallback(chatId, data, s, q.from);
   if (data.startsWith('bko:')) return bookOrderAction(chatId, data, q.from);
@@ -3898,6 +4000,7 @@ Deno.serve(async req => {
     if (b.action === 'autoReport' && (b.kind === 'week' || b.kind === 'month')) return new Response(JSON.stringify({ ok: true, ...(await sendAutoReport(b.kind)) }), { headers: { 'Content-Type': 'application/json' } });
     if (b.action === 'smsReport' && ['day', 'inkassa'].includes(b.kind)) return new Response(JSON.stringify({ ok: true, ...(await smsReport(b.kind)) }), { headers: { 'Content-Type': 'application/json' } });
     // 🎟 Vaucher hisobotini top menejerga (yoki ko'rsatilgan chatga) post qilish
+    if (b.action === 'bookDebts') return new Response(JSON.stringify({ ok: true, ...(await bookDebtRemind(!!b.force)) }), { headers: { 'Content-Type': 'application/json' } });
     if (b.action === 'callTrack') return new Response(JSON.stringify({ ok: true, ...(await callTrack(!!b.force)) }), { headers: { 'Content-Type': 'application/json' } });
     if (b.action === 'voucherPost') {
       const to = Number(b.chatId) || Number((await adminIds())[0]);
