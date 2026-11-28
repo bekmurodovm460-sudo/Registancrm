@@ -1471,7 +1471,9 @@ async function voucherView(chatId: number, refresh = false) {
     const groups = (x.data?.groupsList || []).filter((g: any) => g?.state === 'active');
     const par = x.data?.parent || {};
     const phones = [...new Set([x.data?.phoneNumber, par.motherPhoneNumber, par.fatherPhoneNumber, x.phone].filter((p: any) => String(p || '').replace(/\D/g, '').length >= 9).map((p: string) => fmtPhone(p)))].slice(0, 2);
-    return v && groups.length ? { id: String(x.id), name: cleanName(x.full_name), raw: x.full_name, comment: x.data?.additional?.comment || '', phones, own: !!x.data?.phoneNumber, balance: Number(x.data?.balance) || 0, v, groups, fromComment: !VOUCH_RE.test(x.full_name || '') } : null;
+    const cfId = (x.data?.customFieldsData || []).find((f: any) => /chegirma/i.test(String(f?.name || '')))?._id;
+    const cat0 = cfId ? String((x.data?.customFields || []).find((f: any) => f?._id === cfId)?.value ?? '').trim() : '';
+    return v && groups.length ? { id: String(x.id), name: cleanName(x.full_name), raw: x.full_name, cat0, comment: x.data?.additional?.comment || '', phones, own: !!x.data?.phoneNumber, balance: Number(x.data?.balance) || 0, v, groups, fromComment: !VOUCH_RE.test(x.full_name || '') } : null;
   }).filter(Boolean) as any[];
   if (!list.length) return void send(chatId, '🎟 Faol guruhda vaucherli o‘quvchi topilmadi.\n\n<i>Edutizimda o‘quvchi ismiga yoki izohiga “vaucher” so‘zini foiz yoki summa bilan yozing: “20% vaucher”, “100 000 so‘m vaucher”.</i>');
   const prices = await voucherPrices();
@@ -1533,7 +1535,7 @@ async function voucherView(chatId: number, refresh = false) {
     let extra = 0;
     const roundUp = Number(prices.roundUp ?? 10000);
     if (m && due > 0 && m.mustPay - due > 0 && m.mustPay - due <= roundUp) { extra = m.mustPay - due; due = m.mustPay; }
-    rows.push({ ...st, cat: String(m?.chegirma || '').trim(), gname, subj, price, estimate, lesson, extra, P, Vd, due, monthly, share, note, lastPay: paid.length ? paid[paid.length - 1].createdAt : null, must: m ? m.mustPay : null, balance: m ? m.balance : st.balance });
+    rows.push({ ...st, cat: String(m?.chegirma || st.cat0 || '').trim(), gname, subj, price, estimate, lesson, extra, P, Vd, due, monthly, share, note, lastPay: paid.length ? paid[paid.length - 1].createdAt : null, must: m ? m.mustPay : null, balance: m ? m.balance : st.balance });
   }
   rows.sort((a, b) => b.due - a.due || a.name.localeCompare(b.name));
   const totDue = rows.reduce((a, x) => a + x.due, 0), totGiven = rows.reduce((a, x) => a + x.Vd, 0), totPaid = rows.reduce((a, x) => a + x.P, 0);
@@ -1549,22 +1551,32 @@ async function voucherView(chatId: number, refresh = false) {
   };
   const priceLine = (x: any) => x.lesson ? `📚 1 dars ${num(x.lesson)} × 13 = ${num(x.price)}${x.v.kind === 'pct' ? ` → ${x.v.pct}% = ${num(x.monthly)}` : ''}` : `📚 Oylik ${num(x.price)}${x.v.kind === 'pct' ? ` → ${x.v.pct}% = ${num(x.monthly)}` : ''}`;
   const card = (x: any) => `<b>${esc(x.name)}</b> — ${vLabel(x)}\n📱 ${phone(x)}\n${priceLine(x)}\n${x.P ? `To‘lagan ${num(x.P)} · ` : ''}Vaucher <b>${num(x.due)} so‘m</b>\n${closes(x)}`;
-  // Vaucher kiritilmaydiganlar (bir martalik berilgan va h.k.), lekin Edutizimda to'lov kerak
+  // Vaucher kiritish kerak bo'lmaganlar — kategoriyasida bitta qatorda, holati bilan
   const unpaid = rows.filter(x => !x.due && (x.must || 0) > 0);
   const totPay = unpaid.reduce((a, x) => a + (x.must || 0), 0);
-  const payCard = (x: any) => `<b>${esc(x.name)}</b> — ${vLabel(x)}\n📱 ${phone(x)}\nTo‘lashi kerak: <b>${num(x.must)} so‘m</b> (Edutizim)${x.note ? `\n<i>${esc(x.note)}</i>` : ''}`;
+  const restLine = (x: any) => {
+    const st = (x.must || 0) > 0 ? `💳 to‘lashi kerak <b>${num(x.must)}</b>` : x.Vd > 0 ? `✅ bu oy vaucher kiritilgan (${num(x.Vd)})` : '✅ oy yopilgan';
+    return `• ${esc(x.name)} — ${vLabel(x)}: ${st}${x.note && !/oy allaqachon yopilgan/.test(x.note) ? ` <i>(${esc(x.note)})</i>` : ''}\n   📱 ${phone(x)}`;
+  };
   const notClosed = need.filter(x => x.must !== null && x.must !== undefined && x.must - x.due > 0).length;
-  // Kategoriyalar — Edutizim profilidagi "Chegirma turi" bo'yicha (yozilishi har xil bo'lsa ham bitta guruh)
+  // Kategoriyalar — Edutizim profilidagi "Chegirma turi" bo'yicha (yozilishi har xil bo'lsa ham bitta guruh); kategoriyaning HAMMA o'quvchisi
   const catKey = (c: string) => c.toLowerCase().replace(/[ʻʼ‘’'`]/g, '').replace(/iada|ida/g, 'iada').replace(/\s+/g, ' ').trim();
   const cats = new Map<string, { name: string; list: any[] }>();
-  for (const x of need) { const k = x.cat ? catKey(x.cat) : ''; if (!cats.has(k)) cats.set(k, { name: x.cat || '', list: [] }); cats.get(k)!.list.push(x); }
-  const catSorted = [...cats.entries()].sort((a, b) => (a[0] ? 0 : 1) - (b[0] ? 0 : 1) || b[1].list.reduce((s2, x) => s2 + x.due, 0) - a[1].list.reduce((s2, x) => s2 + x.due, 0));
-  const catBlocks = catSorted
-    .map(([k, c]) => `🏷 <b>${k ? esc(c.name) : 'Chegirma turi kiritilmagan'}</b> — ${c.list.length} ta · ${sum(c.list.reduce((s2, x) => s2 + x.due, 0))}\n\n${c.list.map(card).join('\n\n')}`);
-  const catSummary = [...cats.keys()].some(k => k) ? catSorted.map(([k, c]) => `• ${k ? esc(c.name) : '<i>kiritilmagan</i>'}: ${c.list.length} ta · ${sum(c.list.reduce((s2, x) => s2 + x.due, 0))}`).join('\n') + '\n' : '';
+  for (const x of rows) { const k = x.cat ? catKey(x.cat) : ''; if (!cats.has(k)) cats.set(k, { name: x.cat || '', list: [] }); cats.get(k)!.list.push(x); }
+  const dueOf = (c: { list: any[] }) => c.list.reduce((s2, x) => s2 + x.due, 0);
+  const catSorted = [...cats.entries()].sort((a, b) => (a[0] ? 0 : 1) - (b[0] ? 0 : 1) || dueOf(b[1]) - dueOf(a[1]) || b[1].list.length - a[1].list.length);
+  const catBlocks = catSorted.map(([k, c]) => {
+    const nd = c.list.filter(x => x.due > 0), rest = c.list.filter(x => !x.due);
+    return `🏷 <b>${k ? esc(c.name) : 'Chegirma turi kiritilmagan'}</b> — ${c.list.length} ta · kiritish kerak ${sum(dueOf(c))}` +
+      (nd.length ? `\n\n${nd.map(card).join('\n\n')}` : '') +
+      (rest.length ? `\n\n<b>Vaucher kerak emas (${rest.length}):</b>\n${rest.map(restLine).join('\n')}` : '');
+  });
+  const catSummary = catSorted.map(([k, c]) => `• ${k ? esc(c.name) : '<i>kiritilmagan</i>'}: ${c.list.length} ta · ${sum(dueOf(c))}`).join('\n');
   let text = `🎟 <b>Vaucherlar · ${monthName}</b>\n` +
-    (need.length ? `Kiritish kerak: <b>${sum(totDue)}</b> (${need.length} ta)\n${notClosed ? `❗ ${notClosed} ta o‘quvchida oy yopilmaydi` : '✅ Hammasida oy yopiladi'}\n${catSummary}\n${catBlocks.join('\n\n━━━━━━━━━━\n')}` : '✅ Bu oy kiritilishi kerak bo‘lgan vaucher yo‘q.') +
-    (unpaid.length ? `\n\n━━━━━━━━━━\n💳 <b>${monthName}da to‘lov qilishi kerak</b>: ${sum(totPay)} (${unpaid.length} ta)\n\n${unpaid.map(payCard).join('\n\n')}` : '');
+    `👥 Vaucherli o‘quvchilar: <b>${rows.length}</b>\n` +
+    `🎟 Kiritish kerak: <b>${sum(totDue)}</b> (${need.length} ta)${notClosed ? ` · ❗ ${notClosed} tasida oy yopilmaydi` : ''}\n` +
+    (unpaid.length ? `💳 To‘lov qilishi kerak: <b>${sum(totPay)}</b> (${unpaid.length} ta)\n` : '') +
+    `\n${catSummary}\n\n${catBlocks.join('\n\n━━━━━━━━━━\n')}`;
   vouchCache = { at: Date.now(), text };
   if (wait?.result?.message_id) await tg(await token(), 'deleteMessage', { chat_id: chatId, message_id: wait.result.message_id }).catch(() => {});
   await sendLong(chatId, text, { reply_markup: { inline_keyboard: [[ib('🔄 Yangilash', 'vch:r')]] } });
