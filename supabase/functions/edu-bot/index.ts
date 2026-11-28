@@ -224,11 +224,71 @@ async function debtors(chatId: number, scope: 'active' | 'all' = 'active') {
   await setSession(chatId, 'find', { found: top });
   const total = list.reduce((a, b) => a + b.balance, 0);
   const rows = top.slice(0, 10).map((s, i) => [ib(`💰 ${i + 1}. ${s.name.slice(0, 30)} — to‘lov`, `pay:${i}`)]);
+  rows.push([ib('👩‍🏫 Ustozlar bo‘yicha', 'dbt:t')]);
   rows.push([scope === 'active' ? ib('📋 Barcha qarzdorlar (ketganlar bilan)', 'dbt:all') : ib('✅ Faqat aktiv qarzdorlar', 'dbt:active')]);
   if (role() === 'top') rows.push([ib('📩 Qarzdorlarga SMS yuborish', 'sms')]);
   await send(chatId, `🔴 <b>${scope === 'active' ? 'Aktiv o‘quvchilar qarzi' : 'Barcha qarzdorlar'}: ${list.length}</b> · jami <b>${sum(-total)}</b>\nEng katta 20 tasi:\n\n${top.map((s, i) => `<b>${i + 1}.</b> ${esc(s.name)} — <b>${sum(-s.balance)}</b>${s.active ? '' : ' · <i>guruhda emas</i>'}${s.phone ? ` · ${esc(s.phone)}` : ''}`).join('\n')}`, {
     reply_markup: { inline_keyboard: rows }
   });
+}
+
+// ---------------------------------------------------------
+// 👩‍🏫 Qarzdorlar ustozlar kesimida (Edutizim: o'quvchining faol guruhlari → guruh ustozi)
+// ---------------------------------------------------------
+const tName = (t: any) => [t?.firstName, t?.lastName].filter(Boolean).join(' ').trim() || 'Ustoz';
+async function debtByTeacher() {
+  const studs: any[] = [];
+  for (let from = 0; from < 20000; from += 1000) {
+    const { data } = await admin.from('crm_edu_students').select('id,full_name,phone,data').lt('data->balance', 0).range(from, from + 999);
+    studs.push(...(data || []));
+    if (!data || data.length < 1000) break;
+  }
+  const { data: grs } = await admin.from('crm_edu_groups').select('id,name,data');
+  const gmap = new Map((grs || []).map((g: any) => [String(g.id), g]));
+  const teachers = new Map<string, { id: string; name: string; list: any[] }>();
+  const loose: any[] = [];
+  for (const s of studs) {
+    const bal = Number(s.data?.balance) || 0;
+    if (bal >= 0 || !(Number(s.data?.groupsCount) > 0)) continue;
+    const st = { id: String(s.id), name: s.full_name, phone: s.phone || '', balance: bal, groups: s.data?.groups || '', active: true, status: '' };
+    const act = (s.data?.groupsList || []).filter((g: any) => g?.state === 'active');
+    if (!act.length) { loose.push(st); continue; }
+    for (const g of act) {
+      const gr: any = gmap.get(String(g._id)) || {};
+      const tid = String(gr.data?.teacherId || gr.data?.teacher?._id || 'none');
+      const t = teachers.get(tid) || teachers.set(tid, { id: tid, name: tid === 'none' ? 'Ustoz biriktirilmagan' : tName(gr.data?.teacher), list: [] }).get(tid)!;
+      t.list.push({ ...st, group: String(gr.data?.name || g.name || '') });
+    }
+  }
+  const list = [...teachers.values()].map(t => ({ ...t, total: t.list.reduce((a, x) => a + x.balance, 0) })).sort((a, b) => a.total - b.total);
+  return { list, loose, unique: new Set([...list.flatMap(t => t.list.map(x => x.id)), ...loose.map(x => x.id)]).size };
+}
+async function debtTeachers(chatId: number) {
+  await typing(chatId);
+  const { list, loose, unique } = await debtByTeacher();
+  if (!list.length && !loose.length) return void send(chatId, '✅ Aktiv qarzdorlar yo‘q.', { reply_markup: menu() });
+  const total = list.reduce((a, t) => a + t.total, 0) + loose.reduce((a, x) => a + x.balance, 0);
+  const lines = list.map((t, i) => `<b>${i + 1}.</b> ${esc(t.name)} — <b>${t.list.length}</b> ta · ${sum(-t.total)}`);
+  if (loose.length) lines.push(`• <i>Faol guruhda emas</i> — <b>${loose.length}</b> ta · ${sum(-loose.reduce((a, x) => a + x.balance, 0))}`);
+  const rows: any[] = list.slice(0, 40).map(t => [ib(`👩‍🏫 ${t.name.slice(0, 24)} · ${t.list.length} ta`, `dbt:t:${t.id}`)]);
+  if (loose.length) rows.push([ib(`👤 Faol guruhda emas · ${loose.length} ta`, 'dbt:t:loose')]);
+  rows.push([ib('⬅️ Qarzdorlar', 'dbt:active')]);
+  await send(chatId, `👩‍🏫 <b>Qarzdorlar ustozlar bo‘yicha</b>\n${unique} ta aktiv qarzdor · jami <b>${sum(-total)}</b>\n<i>Ikki ustozda o‘qiydigan o‘quvchi ikkalasida ham ko‘rinadi.</i>\n\n${lines.join('\n')}`.slice(0, 4000), { reply_markup: { inline_keyboard: rows } });
+}
+async function debtTeacher(chatId: number, tid: string) {
+  await typing(chatId);
+  const { list, loose } = await debtByTeacher();
+  const t = tid === 'loose' ? { name: 'Faol guruhda emas', list: loose } : list.find(x => x.id === tid);
+  if (!t) return debtTeachers(chatId);
+  const L = [...t.list].sort((a, b) => a.balance - b.balance);
+  const total = L.reduce((a, x) => a + x.balance, 0);
+  // To'lov tugmalari uchun (top menejer) — mavjud “find” oqimi
+  await setSession(chatId, 'find', { found: L.slice(0, 20) });
+  const body = L.map((x, i) => `<b>${i + 1}. ${esc(x.name)}</b> — <b>${sum(-x.balance)}</b>${x.group ? `\n   👥 ${esc(String(x.group).slice(0, 40))}` : ''}${x.phone ? `\n   📱 <code>${esc(x.phone)}</code>` : ''}`).join('\n');
+  const rows: any[] = role() === 'top' ? L.slice(0, 10).map((x, i) => [ib(`💰 ${i + 1}. ${x.name.slice(0, 26)} — to‘lov`, `pay:${i}`)]) : [];
+  rows.push([ib('⬅️ Ustozlar', 'dbt:t')]);
+  const text = `👩‍🏫 <b>${esc(t.name)}</b> — qarzdorlar: <b>${L.length}</b> ta · jami <b>${sum(-total)}</b>\n\n${body}`;
+  await sendLong(chatId, text, { reply_markup: { inline_keyboard: rows } });
 }
 
 // ---------------------------------------------------------
@@ -2888,6 +2948,8 @@ async function onCallback(q: any) {
   if (data.startsWith('mys:')) return managerMyStats(chatId, data.slice(4) as any);
   // Statistika, xarajatlar, qarzdorlar
   if (data === 'dbt:active' || data === 'dbt:all') return debtors(chatId, data === 'dbt:all' ? 'all' : 'active');
+  if (data === 'dbt:t') return debtTeachers(chatId);
+  if (data.startsWith('dbt:t:')) return debtTeacher(chatId, data.slice(6));
   if (data === 'st:sync') { await sync(chatId); return stats(chatId); }
   if (data.startsWith('ex:')) return expenses(chatId, data.slice(3) as Period);
   if (data.startsWith('ink:')) return inkassa(chatId, data.slice(4));
