@@ -33,6 +33,7 @@ const B_PHONES = '📞 Kerakli raqamlar';
 const B_BOOK = '📚 Kitob buyurtma';
 const B_BOOKS = '📚 Kitob buyurtmalari';
 const B_STOCK = '📦 Kitoblar ombori';
+const B_PUB = '🏪 Nashriyotlar';
 const B_MEDIA = '🎬 Video montaj';
 const B_AI = '🤖 AI yordamchi';
 const B_REPORTS = '📑 Hisobotlar';
@@ -53,7 +54,7 @@ const B_SKIP = '⏭ O‘tkazib yuborish';
 
 const kb = (rows: string[][]) => ({ keyboard: rows.map(r => r.map(text => ({ text }))), resize_keyboard: true });
 const persist = (rows: string[][], ph = 'Bo‘limni tanlang…') => ({ ...kb(rows), is_persistent: true, input_field_placeholder: ph });
-const MENU = persist([[B_IN, B_OUT], [B_INK, B_EXP], [B_BELL, B_PRICE], [B_NEW, B_MGR], [B_ATT, B_RISK], [B_STATS, B_SCHED], [B_BOOK, B_BOOKS], [B_STOCK, B_MEDIA], [B_AI, B_REPORTS], [B_PHONES], [B_DEBT, B_FIND], [B_TEACH, B_TASKS], [B_LEAD, B_ORDER], [B_LREQ, B_VOUCH], [B_ADMIN]]);
+const MENU = persist([[B_IN, B_OUT], [B_INK, B_EXP], [B_BELL, B_PRICE], [B_NEW, B_MGR], [B_ATT, B_RISK], [B_STATS, B_SCHED], [B_BOOK, B_BOOKS], [B_PUB, B_STOCK], [B_MEDIA, B_AI], [B_REPORTS, B_PHONES], [B_DEBT, B_FIND], [B_TEACH, B_TASKS], [B_LEAD, B_ORDER], [B_LREQ, B_VOUCH], [B_ADMIN]]);
 const MENU_SENIOR = persist([[B_ATT, B_RISK], [B_NEW, B_MGR], [B_STATS, B_EXP], [B_INK, B_SCHED], [B_STOCK, B_MEDIA], [B_AI, B_REPORTS], [B_PHONES], [B_BELL, B_PRICE], [B_DEBT, B_FIND], [B_TEACH, B_TASKS], [B_LEAD, B_ORDER], [B_LREQ, B_VOUCH]]);
 const MENU_SERVICE = persist([[B_ATT, B_RISK], [B_NEW, B_MY], [B_FIND, B_DEBT], [B_LEAD, B_ORDER], [B_LREQ, B_SCHED], [B_AI, B_PHONES]]);
 const MENU_TEACHER = persist([[B_MY, B_MYTASK], [B_MYDEBT], [B_SCHED, B_PHONES], [B_AI]]);
@@ -61,9 +62,9 @@ const MENU_DIRECTOR = persist([[B_REPORTS], [B_STATS, B_EXP], [B_INK, B_ATT], [B
 const MENU_MEDIA = persist([[B_MEDIA, B_AI], [B_SCHED, B_PHONES]]);
 const MENU_TEACHER_BOOK = persist([[B_MY, B_MYTASK], [B_MYDEBT, B_BOOK], [B_SCHED, B_PHONES], [B_AI]]);
 // Bosh sahifadagi bosib tanlanadigan (inline) bo'limlar — rolga qarab
-const GO: Record<string, string> = { kirim: B_IN, chiqim: B_OUT, davomat: B_ATT, xavf: B_RISK, stat: B_STATS, xarajat: B_EXP, inkassa: B_INK, jadval: B_SCHED, raqam: B_PHONES, kitob: B_BOOK, kitoblar: B_BOOKS, ombor: B_STOCK, montaj: B_MEDIA, ai: B_AI, hisobot: B_REPORTS, qarz: B_DEBT, qidir: B_FIND, ustoz: B_TEACH, vazifa: B_TASKS, lid: B_LEAD, buyurtma: B_ORDER, lidsorov: B_LREQ, vaucher: B_VOUCH, admin: B_ADMIN, natijam: B_MY, myvazifa: B_MYTASK, myqarz: B_MYDEBT, bell: B_BELL, narx: B_PRICE, yangi: B_NEW, mgr: B_MGR };
+const GO: Record<string, string> = { kirim: B_IN, chiqim: B_OUT, davomat: B_ATT, xavf: B_RISK, stat: B_STATS, xarajat: B_EXP, inkassa: B_INK, jadval: B_SCHED, raqam: B_PHONES, kitob: B_BOOK, kitoblar: B_BOOKS, nashriyot: B_PUB, ombor: B_STOCK, montaj: B_MEDIA, ai: B_AI, hisobot: B_REPORTS, qarz: B_DEBT, qidir: B_FIND, ustoz: B_TEACH, vazifa: B_TASKS, lid: B_LEAD, buyurtma: B_ORDER, lidsorov: B_LREQ, vaucher: B_VOUCH, admin: B_ADMIN, natijam: B_MY, myvazifa: B_MYTASK, myqarz: B_MYDEBT, bell: B_BELL, narx: B_PRICE, yangi: B_NEW, mgr: B_MGR };
 const GO_ROWS: Record<string, string[][]> = {
-  top: [['kirim', 'chiqim'], ['inkassa', 'xarajat'], ['bell', 'narx'], ['yangi', 'mgr'], ['davomat', 'xavf'], ['stat', 'jadval'], ['kitob', 'kitoblar'], ['ombor', 'montaj'], ['ai', 'hisobot'], ['raqam'], ['qarz', 'qidir'], ['ustoz', 'vazifa'], ['lid', 'buyurtma'], ['lidsorov', 'vaucher'], ['admin']],
+  top: [['kirim', 'chiqim'], ['inkassa', 'xarajat'], ['bell', 'narx'], ['yangi', 'mgr'], ['davomat', 'xavf'], ['stat', 'jadval'], ['kitob', 'kitoblar'], ['nashriyot', 'ombor'], ['montaj', 'ai'], ['hisobot', 'raqam'], ['qarz', 'qidir'], ['ustoz', 'vazifa'], ['lid', 'buyurtma'], ['lidsorov', 'vaucher'], ['admin']],
   senior: [['davomat', 'xavf'], ['yangi', 'mgr'], ['stat', 'xarajat'], ['inkassa', 'jadval'], ['ombor', 'montaj'], ['ai', 'hisobot'], ['raqam'], ['bell', 'narx'], ['qarz', 'qidir'], ['ustoz', 'vazifa'], ['lid', 'buyurtma'], ['lidsorov', 'vaucher']],
   service: [['davomat', 'xavf'], ['yangi', 'natijam'], ['qidir', 'qarz'], ['lid', 'buyurtma'], ['lidsorov', 'jadval'], ['ai', 'raqam']],
   teacher: [['natijam', 'myvazifa'], ['myqarz'], ['jadval', 'raqam'], ['ai']],
@@ -830,6 +831,55 @@ async function supplierReady(chatId: number, id: number, sup?: string | null) {
   await send(chatId, `📦 #${o.id} tayyor deb belgilandi. Ustoz va top menejerga xabar berildi.`);
   await send(o.teacher_tg, `📦 Kitob buyurtmangiz <b>#${o.id}</b> tayyor — olib ketishingiz mumkin.\n📘 ${esc(o.book)} — ${o.qty} ta`).catch(() => {});
   await notifyTops(`📦 <b>@${esc(await supplierName(o.supplier))}: buyurtma #${o.id} tayyor</b>\n📘 ${esc(o.book)} — ${o.qty} ta · ${esc(o.teacher_name)}`).catch(() => {});
+}
+// 🏪 Nashriyotlar (top menejer): ro'yxat, ulanganmi, kitoblari, buyurtmalari, hisob, qo'shish/o'chirish
+async function pubStats() {
+  const now = new Date(Date.now() + 5 * 3600_000);
+  const from = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1) - 5 * 3600_000).toISOString();
+  const [L, chats, cat, { data: ords }] = await Promise.all([supplierList(), supplierChats(), getCatalog(),
+    admin.from('crm_edu_book_orders').select('supplier,qty,unit_price,status,created_at').not('unit_price', 'is', null).neq('status', 'rejected').gte('created_at', from)]);
+  return L.map(name => {
+    const os = (ords || []).filter((o: any) => sameSup(o.supplier, name));
+    return { name, chat: chats[supKey(name)] || null, books: cat.filter(c => sameSup(itemSup(c), name)).length,
+      orders: os.length, pending: os.filter((o: any) => o.status === 'pending').length, approved: os.filter((o: any) => o.status === 'approved').length,
+      qty: os.reduce((a: number, o: any) => a + o.qty, 0), total: os.reduce((a: number, o: any) => a + o.qty * o.unit_price, 0) };
+  });
+}
+async function pubsView(chatId: number) {
+  const st = await pubStats();
+  const lines = st.map((p, i) => `<b>${i + 1}. @${esc(p.name)}</b> · ${p.chat ? '✅ botga ulangan' : '⚠️ /start bosmagan'}\n   📘 ${p.books} ta kitob · 📚 shu oy ${p.orders} ta buyurtma (${p.qty} dona) · <b>${sum(p.total)}</b>${p.pending ? `\n   ⏳ ${p.pending} ta tasdiq kutilmoqda` : ''}${p.approved ? ` · 📦 ${p.approved} ta tayyorlanmoqda` : ''}`);
+  await send(chatId, `🏪 <b>Nashriyotlar</b>\nUstoz buyurtmada nashriyotni tanlaydi va uning qo‘shgan kitoblaridan oladi.\n\n${lines.join('\n\n') || '<i>Nashriyot yo‘q</i>'}`, {
+    reply_markup: { inline_keyboard: [...st.map((p, i) => [ib(`🏪 @${p.name}`, `pub:v:${i}`)]), [ib('➕ Nashriyot qo‘shish', 'pub:add')]] }
+  });
+}
+async function pubCallback(chatId: number, data: string, s: any) {
+  const p = data.split(':');
+  const L = await supplierList();
+  if (data === 'pub:list') return pubsView(chatId);
+  if (data === 'pub:add') { await setSession(chatId, 'pub_add', {}); return void send(chatId, '➕ Nashriyotning Telegram username’ini yozing (masalan: <b>@zomaxcom</b>):', { reply_markup: CANCEL_KB }); }
+  const name = L[Number(p[2])];
+  if (!name) return pubsView(chatId);
+  const i = Number(p[2]);
+  if (p[1] === 'v') {
+    const st = (await pubStats()).find(x => x.name === name)!;
+    return void send(chatId, `🏪 <b>@${esc(name)}</b>\n${st.chat ? '✅ Botga ulangan — buyurtmalar unga avtomatik boradi' : `⚠️ Hali botga /start bosmagan — buyurtmalar unga yetmaydi.\nUnga bot havolasini yuboring.`}\n\n📘 Kitoblari: <b>${st.books}</b> ta\n📚 Shu oy: <b>${st.orders}</b> ta buyurtma · ${st.qty} dona · <b>${sum(st.total)}</b>\n⏳ Tasdiq kutilmoqda: ${st.pending} · 📦 Tayyorlanmoqda: ${st.approved}`, {
+      reply_markup: { inline_keyboard: [
+        [ib('📘 Kitoblari va narxlari', `pub:c:${i}`), ib('📚 Buyurtmalari', `pub:o:${i}`)],
+        [ib('💰 Hisob-kitob (shu oy)', `pub:s:${i}`), { text: `💬 @${name}`, url: `https://t.me/${name}` }],
+        [ib('🗑 Nashriyotni o‘chirish', `pub:del:${i}`), ib('⬅️ Nashriyotlar', 'pub:list')]] } });
+  }
+  if (p[1] === 'c') return catalogView(chatId, name);
+  if (p[1] === 'o') return supplierOrders(chatId, name, true);
+  if (p[1] === 's') return supplierSummary(chatId, name);
+  if (p[1] === 'del') {
+    const books = (await getCatalog()).filter(c => sameSup(itemSup(c), name)).length;
+    return void send(chatId, `🗑 <b>@${esc(name)}</b> nashriyotlar ro‘yxatidan o‘chirilsinmi?${books ? `\n⚠️ Uning ${books} ta kitobi ustozlarga ko‘rinmay qoladi (katalogda saqlanadi, qayta qo‘shsangiz tiklanadi).` : ''}`, { reply_markup: { inline_keyboard: [[ib('✅ Ha, o‘chirish', `pub:dely:${i}`), ib('❌ Yo‘q', `pub:v:${i}`)]] } });
+  }
+  if (p[1] === 'dely') {
+    await admin.from('crm_settings').upsert({ key: 'bookSuppliers', value: L.filter(x => x !== name) });
+    await send(chatId, `🗑 @${esc(name)} o‘chirildi.`);
+    return pubsView(chatId);
+  }
 }
 async function supplierUpdate(update: any, sup: string) {
   const from = update.message?.from || update.callback_query?.from;
@@ -3008,7 +3058,7 @@ async function myStats(chatId: number, which: 'm' | 'pm' = 'm') {
 // =========================================================
 const ACCESS: Record<string, Role[]> = {
   // matn tugmalari
-  [B_IN]: ['top'], [B_OUT]: ['top'], [B_STATS]: ['top', 'senior'], [B_EXP]: ['top', 'senior'], [B_INK]: ['top', 'senior'], [B_SCHED]: ['top', 'senior', 'service', 'teacher', 'media'], [B_PHONES]: ['top', 'senior', 'service', 'teacher', 'media'], [B_BOOK]: ['teacher', 'top'], [B_BOOKS]: ['top'], [B_STOCK]: ['top', 'senior'], [B_MEDIA]: ['top', 'senior', 'media'], [B_REPORTS]: ['top', 'senior'], [B_AI]: ['top', 'senior', 'service', 'teacher', 'media'], [B_TEACH]: ['top', 'senior'], [B_TASKS]: ['top', 'senior'], [B_ADMIN]: ['top'], [B_BELL]: ['top', 'senior'], [B_PRICE]: ['top', 'senior'], [B_NEW]: ['top', 'senior', 'service'], [B_MGR]: ['top', 'senior'],
+  [B_IN]: ['top'], [B_OUT]: ['top'], [B_STATS]: ['top', 'senior'], [B_EXP]: ['top', 'senior'], [B_INK]: ['top', 'senior'], [B_SCHED]: ['top', 'senior', 'service', 'teacher', 'media'], [B_PHONES]: ['top', 'senior', 'service', 'teacher', 'media'], [B_BOOK]: ['teacher', 'top'], [B_BOOKS]: ['top'], [B_PUB]: ['top'], [B_STOCK]: ['top', 'senior'], [B_MEDIA]: ['top', 'senior', 'media'], [B_REPORTS]: ['top', 'senior'], [B_AI]: ['top', 'senior', 'service', 'teacher', 'media'], [B_TEACH]: ['top', 'senior'], [B_TASKS]: ['top', 'senior'], [B_ADMIN]: ['top'], [B_BELL]: ['top', 'senior'], [B_PRICE]: ['top', 'senior'], [B_NEW]: ['top', 'senior', 'service'], [B_MGR]: ['top', 'senior'],
   [B_ATT]: ['top', 'senior', 'service'], [B_RISK]: ['top', 'senior', 'service'], [B_FIND]: ['top', 'senior', 'service'], [B_DEBT]: ['top', 'senior', 'service'], [B_LEAD]: ['top', 'senior', 'service'], [B_ORDER]: ['top', 'senior', 'service'], [B_LREQ]: ['top', 'senior', 'service'], [B_VOUCH]: ['top', 'senior'],
   [B_MY]: ['teacher', 'service'], [B_MYTASK]: ['teacher'], [B_MYDEBT]: ['teacher']
 };
@@ -3021,7 +3071,7 @@ function cbAllowed(data: string, r: Role) {
   if (['go', 'home', 'acc', 'acl', 'acu'].includes(p)) return ['top', 'senior', 'service', 'teacher', 'media'].includes(r);
   if (r === 'media') return ['ai', 'ph', 'sch'].includes(p);
   if (r === 'top') return true;
-  if (r === 'senior') return !['pa', 'ub', 'ue', 'bko', 'bkl', 'bkt', 'kt', 'ks', 'km', 'kb', 'ok', 'kx', 'pay', 'ua', 'ur', 'urs', 'adm', 'sms', 'sm1', 'sma', 'smt', 'smx', 'smi', 'smok', 'bd', 'bo', 'bda', 'bdy', 'pfx', 'pga', 'pgc', 'pok', 'tc'].includes(p);
+  if (r === 'senior') return !['pub', 'pa', 'ub', 'ue', 'bko', 'bkl', 'bkt', 'kt', 'ks', 'km', 'kb', 'ok', 'kx', 'pay', 'ua', 'ur', 'urs', 'adm', 'sms', 'sm1', 'sma', 'smt', 'smx', 'smi', 'smok', 'bd', 'bo', 'bda', 'bdy', 'pfx', 'pga', 'pgc', 'pok', 'tc'].includes(p);
   if (r === 'service') return svc.includes(p);
   if (r === 'teacher') return tch.includes(p);
   return false;
@@ -3106,6 +3156,7 @@ async function onMessage(m: any) {
   if (r === 'teacher' && (text === B_BOOK || cmd === '/kitob')) return bookStart(chatId);
   if (isTop && (text === B_BOOK || cmd === '/kitob')) return bookPickTeacher(chatId);
   if (isTop && (text === B_BOOKS || cmd === '/kitoblar')) return bookOrdersTop(chatId);
+  if (isTop && (text === B_PUB || cmd === '/nashriyotlar')) return pubsView(chatId);
   if (isMgr && (text === B_STOCK || cmd === '/ombor')) { await setSession(chatId, null); return stockView(chatId); }
   if (isMgr && (text === B_TEACH || cmd === '/oqituvchilar')) return teachersView(chatId, 'm');
   if (isMgr && (text === B_TASKS || cmd === '/vazifalar')) return tasksTop(chatId);
@@ -3131,6 +3182,16 @@ async function onMessage(m: any) {
 
   const s = await getSession(chatId);
   if (isTop && await catalogStep(chatId, s, text, m.from)) return;
+  if (isTop && s.step === 'pub_add') {
+    const u = text.replace(/^https?:\/\/t\.me\//i, '').replace(/^@/, '').trim();
+    if (!/^[A-Za-z][A-Za-z0-9_]{3,31}$/.test(u)) return void send(chatId, 'Telegram username yozing, masalan: <b>@zomaxcom</b>');
+    const L = await supplierList();
+    await setSession(chatId, null);
+    if (L.some(x => supKey(x) === supKey(u))) { await send(chatId, `ℹ️ @${esc(u)} allaqachon ro‘yxatda.`, { reply_markup: menu() }); return pubsView(chatId); }
+    await admin.from('crm_settings').upsert({ key: 'bookSuppliers', value: [...L, u] });
+    await send(chatId, `✅ <b>@${esc(u)}</b> nashriyot sifatida qo‘shildi.\nU botga /start bossa — profili ochiladi va kitoblarini o‘zi qo‘shadi.`, { reply_markup: menu() });
+    return pubsView(chatId);
+  }
   switch (s.step) {
     case 'note':
       if (!isStaff) break;
@@ -3375,6 +3436,7 @@ async function onCallback(q: any) {
   if (data === 'sch:r') return scheduleSend(chatId, true);
   if (data.startsWith('ph:')) return phonesCallback(chatId, data);
   if (data.startsWith('sup:d:')) return supplierReady(chatId, Number(data.slice(6)));
+  if (data.startsWith('pub:')) return pubCallback(chatId, data, s);
   if (data.startsWith('sup:')) return catalogCallback(chatId, data, s, q.from);
   if (data.startsWith('bkt:')) return bookTeacherCallback(chatId, data, s, q.from);
   if (data.startsWith('bko:')) return bookOrderAction(chatId, data, q.from);
