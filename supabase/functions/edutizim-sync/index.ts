@@ -816,7 +816,10 @@ Deno.serve(async req => {
             const st = await getStudent(base, headers, id).catch(() => null);
             if (st) {
               const left = Number(st.leftAmountAndLessonsCount?.leftPriceAmount) || 0, bal = Number(st.balance) || 0;
-              must[id] = { left, lessons: Number(st.leftAmountAndLessonsCount?.lessonsCount) || 0, balance: bal, mustPay: Math.max(0, left - bal) };
+              // Profildagi "Chegirma turi" maxsus maydoni (vaucher kategoriyasi)
+              const cfId = (st.customFieldsData || []).find((f: any) => /chegirma/i.test(String(f?.name || '')))?._id;
+              const chegirma = cfId ? String((st.customFields || []).find((f: any) => f?._id === cfId)?.value ?? '').trim() : '';
+              must[id] = { left, lessons: Number(st.leftAmountAndLessonsCount?.lessonsCount) || 0, balance: bal, mustPay: Math.max(0, left - bal), chegirma };
             }
           }));
         }
